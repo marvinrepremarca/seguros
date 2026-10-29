@@ -74,7 +74,7 @@ Pruebas k6 (objetivos en testing.md), ZAP, restauración de backup probada, runb
 
 | Ítem | Estado | Fecha | Notas |
 |---|---|---|---|
-| Fase 0 | 🟨 En curso | 2026-10-29 | Hecho: 0.1, 0.2 |
+| Fase 0 | 🟨 En curso | 2026-10-29 | Hecho: 0.1–0.3 |
 | Fase 1 | ⬜ Pendiente | | |
 | Fase 2 | ⬜ Pendiente | | |
 | Fase 3 | ⬜ Pendiente | | |
