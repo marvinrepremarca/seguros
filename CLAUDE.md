@@ -13,7 +13,7 @@ Eres un ingeniero de software sénior trabajando en un **ERP multi-tenant para a
 - Reglas por área: `.claude/rules/*.md` (se cargan según la ruta que edites).
 
 ## Stack (no lo cambies sin ADR aprobado; todo sin licencias de pago — ARCHITECTURE.md §9)
-Go 1.25 · chi · OpenAPI-first (oapi-codegen) · pgx + sqlc · goose · Watermill (outbox PG) · River OSS · PostgreSQL 17 (RLS) · Valkey · Keycloak + BFF · React 19 + TS strict + Vite · TanStack Router/Query · Zustand · Tailwind + shadcn/ui · OpenFeature · OpenTelemetry · Docker Compose + Traefik.
+Go 1.26 · chi · OpenAPI-first (oapi-codegen) · pgx + sqlc · goose · Watermill (outbox PG) · River OSS · PostgreSQL 17 (RLS) · Valkey · Keycloak + BFF · React 19 + TS strict + Vite · TanStack Router/Query · Zustand · Tailwind + shadcn/ui · OpenFeature · OpenTelemetry · Docker Compose + Traefik.
 
 ## Estructura del repositorio
 ```
@@ -61,7 +61,7 @@ docs/                                      arquitectura, dominio, ADRs
 ## Comandos
 | Acción | Comando |
 |---|---|
-| Levantar dependencias | `docker compose -f deploy/compose.dev.yml up -d` (Podman/Rancher Desktop en Windows) |
+| Levantar dependencias | `docker compose -f deploy/compose.dev.yml up -d` (dentro o fuera del Dev Container; motor: Docker Desktop) |
 | Generar código | `make generate` (sqlc + oapi-codegen + constantes de flags) |
 | Verificación completa backend | `make check` |
 | Pruebas | `go test -race ./...` · integración: `go test -race -tags=integration ./...` |

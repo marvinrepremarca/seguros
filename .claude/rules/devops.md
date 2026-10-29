@@ -8,10 +8,10 @@ paths:
 # Reglas de contenedores y DevOps
 
 ## Dockerfiles
-- Multi-stage. Build con `golang:1.25` (`CGO_ENABLED=0 go build -trimpath -ldflags="-s -w"`, caché de módulos con `--mount=type=cache`); runtime `gcr.io/distroless/static-debian12:nonroot`. Frontend: estáticos embebidos con `embed` o `nginx-unprivileged`.
+- Multi-stage. Build con `golang:1.26` (`CGO_ENABLED=0 go build -trimpath -ldflags="-s -w"`, caché de módulos con `--mount=type=cache`); runtime `gcr.io/distroless/static-debian12:nonroot`. Frontend: estáticos embebidos con `embed` o `nginx-unprivileged`.
 - Imagen base fijada por **digest**. `USER nonroot` (UID 65532). Sin shell en runtime; healthcheck con subcomando del propio binario (`/app/api healthcheck`).
 - `.dockerignore` excluye `.git`, `node_modules`, `.env*`, `**/*_test.go`, `test/`.
-- Desarrollo local en Windows/macOS: Podman Desktop o Rancher Desktop (Docker Desktop requiere suscripción paga en empresas medianas/grandes).
+- Desarrollo local: Docker Desktop + Dev Container (`.devcontainer/`). Docker Desktop es gratuito solo bajo el umbral de licencia (ARCHITECTURE.md §9). Herramientas nuevas se agregan al `Dockerfile` del Dev Container con versión fijada, nunca instaladas a mano.
 - Sin secretos en `ARG`/`ENV`/capas. Usa BuildKit `--mount=type=secret` si un build lo necesita.
 
 ## Compose / runtime

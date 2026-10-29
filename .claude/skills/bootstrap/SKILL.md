@@ -6,7 +6,7 @@ description: Construye las fundaciones del repositorio (Fase 0) y la plataforma 
 
 ## Antes de empezar
 1. Lee `docs/ROADMAP.md` (tabla de seguimiento) para saber en qué entregable vas. Nunca rehagas uno marcado ✅ sin pedirlo.
-2. Verifica herramientas: `go version` (≥1.25), `node -v` (≥22), `pnpm -v`, motor de contenedores con `docker compose version` o `podman compose version`, `make -v`. Si falta alguna, **detente** y di al usuario exactamente qué instalar; no busques atajos.
+2. Verifica que estás dentro del Dev Container (`test -f /.dockerenv` o variable `REMOTE_CONTAINERS`); si no, pide al usuario abrir el proyecto con *Reopen in Container*. Luego verifica herramientas: `go version` (≥1.26), `node -v` (≥22), `pnpm -v`, motor de contenedores con `docker compose version` o `podman compose version`, `make -v`. Si falta alguna, **detente** y di al usuario exactamente qué instalar; no busques atajos.
 3. Si falta el path del módulo Go (`github.com/<org>/seguros`), pregúntalo.
 
 ## Método por entregable (repite para cada fila de la fase)

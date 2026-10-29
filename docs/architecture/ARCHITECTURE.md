@@ -10,7 +10,7 @@
 | Capa | Decisión | Por qué en una línea |
 |---|---|---|
 | Estilo | **Monolito modular** + **Arquitectura Hexagonal/Clean** por módulo, **DDD** | Un equipo, un VPS, dominio rico: máxima coherencia hoy, extracción a microservicios mañana sin reescribir. |
-| Backend | **Go 1.25** (BSD) · `net/http` + chi · pgx + sqlc · contrato OpenAPI-first (oapi-codegen) | Binario estático de ~20 MB, ~30 MB de RAM por instancia, concurrencia nativa (goroutines), compilación estricta, cero licencias. |
+| Backend | **Go 1.26** (BSD) · `net/http` + chi · pgx + sqlc · contrato OpenAPI-first (oapi-codegen) | Binario estático de ~20 MB, ~30 MB de RAM por instancia, concurrencia nativa (goroutines), compilación estricta, cero licencias. |
 | Mensajería / jobs | **Watermill** (MIT) con **outbox transaccional en PostgreSQL** + **River** (MPL-2.0, solo edición OSS) para jobs programados; RabbitMQ cuando haya >1 nodo | Consistencia eventual sin perder eventos; empieza sin broker extra. |
 | Frontend | **React 19 + TypeScript (strict) + Vite**, TanStack Router/Query, Zustand, Tailwind + shadcn/ui, React Hook Form + Zod | SPA para back-office intensivo; ecosistema maduro y testeable. |
 | Auth | **Keycloak** (OIDC/OAuth2.1, MFA) + patrón **BFF** (cookies httpOnly, sin tokens en el navegador) | Estándar, multi-tenant (Organizations), elimina robo de tokens por XSS. |
@@ -20,7 +20,7 @@
 | Documentos | Almacenamiento **S3-compatible**: **SeaweedFS** (Apache-2.0) en VPS o Cloudflare R2; cifrado SSE + URLs prefirmadas | Pólizas, soportes de siniestros, SARLAFT. (MinIO descartado: AGPL y sin binarios comunitarios desde 2025.) |
 | Feature flags | **OpenFeature** (SDK estándar) + proveedor propio en PostgreSQL + caché Valkey, evaluado por tenant/plan/rol | Encender/apagar módulos y funcionalidades de forma independiente por tenant. |
 | Observabilidad | **OpenTelemetry** → Grafana LGTM (Loki, Grafana, Tempo, Mimir/Prometheus) | Trazas, métricas y logs correlacionados, vendor-neutral. |
-| DevOps | Docker Engine (Apache-2.0) multi-stage, imagen `distroless/static` non-root, **Docker Compose** + **Traefik** en VPS; ruta a **k3s**. En estaciones de desarrollo: **Podman Desktop** o **Rancher Desktop** (no Docker Desktop, que es de pago para empresas) | Simple hoy, Kubernetes-compatible mañana. CI/CD con GitHub Actions + GHCR. |
+| DevOps | Docker Engine (Apache-2.0) multi-stage, imagen `distroless/static` non-root, **Docker Compose** + **Traefik** en VPS; ruta a **k3s**. En estaciones de desarrollo: **Docker Desktop** (permitido: la empresa está bajo el umbral de licencia, ver §9) + **Dev Container** con todas las herramientas | Simple hoy, Kubernetes-compatible mañana. CI/CD con GitHub Actions + GHCR. |
 
 ---
 
@@ -114,7 +114,7 @@ flowchart LR
 
 ## 3. Backend
 
-**Go 1.25 (licencia BSD-3).** Todas las librerías elegidas son MIT, BSD, Apache-2.0 o MPL-2.0, sin ediciones de pago.
+**Go 1.26 (licencia BSD-3).** Todas las librerías elegidas son MIT, BSD, Apache-2.0 o MPL-2.0, sin ediciones de pago.
 
 Por qué Go frente a Python para este caso:
 - **Rendimiento y memoria en VPS:** un proceso Go atiende miles de conexiones concurrentes con decenas de MB; Python (FastAPI/Django) necesitaría varios workers y 5–10× más RAM para la misma carga de picos.
@@ -195,7 +195,7 @@ Por qué Go frente a Python para este caso:
 ## 6. Contenedores y DevOps
 
 ### 6.1 Imágenes
-- Dockerfile multi-stage; build con `golang:1.25` (`CGO_ENABLED=0`, `-trimpath`, `-ldflags="-s -w"`); runtime `gcr.io/distroless/static-debian12:nonroot` (sin shell, non-root); frontend servido como estáticos embebidos en el binario (`embed`) o por nginx-unprivileged.
+- Dockerfile multi-stage; build con `golang:1.26` (`CGO_ENABLED=0`, `-trimpath`, `-ldflags="-s -w"`); runtime `gcr.io/distroless/static-debian12:nonroot` (sin shell, non-root); frontend servido como estáticos embebidos en el binario (`embed`) o por nginx-unprivileged.
 - Imágenes fijadas por **digest**, escaneadas con Trivy, SBOM (Syft) y firmadas (Cosign). `HEALTHCHECK` vía endpoints `/health/live` y `/health/ready`.
 - Filesystem de solo lectura, `no-new-privileges`, capabilities eliminadas, límites de CPU/RAM.
 
@@ -269,7 +269,7 @@ Detalle operativo: [.claude/rules/feature-flags.md](../../.claude/rules/feature-
 
 ## 9. Política de licencias
 
-Solo se admiten componentes con licencias **MIT, BSD, Apache-2.0, MPL-2.0, ISC, PostgreSQL**. AGPL/GPL solo para **herramientas o servicios usados sin modificar** (Grafana, Loki, k6, golangci-lint), nunca enlazados en el binario. Prohibido: ediciones "Pro/Enterprise" de pago (River Pro, Watermill Pro), licencias BSL/SSPL (HashiCorp Vault ≥1.15, Redis ≥7.4), Docker Desktop en empresas >250 empleados o >USD 10M, GitHub Advanced Security/CodeQL en repos privados (usar Semgrep CE + gosec). Verificación automática en CI con `go-licenses` y `license-checker` (npm).
+Solo se admiten componentes con licencias **MIT, BSD, Apache-2.0, MPL-2.0, ISC, PostgreSQL**. AGPL/GPL solo para **herramientas o servicios usados sin modificar** (Grafana, Loki, k6, golangci-lint), nunca enlazados en el binario. Prohibido: ediciones "Pro/Enterprise" de pago (River Pro, Watermill Pro), licencias BSL/SSPL (HashiCorp Vault ≥1.15, Redis ≥7.4), Docker Desktop **solo** mientras la empresa tenga <250 empleados y <USD 10M de ingresos anuales (si se supera: suscripción paga o migrar a Rancher Desktop, mismos comandos), GitHub Advanced Security/CodeQL en repos privados (usar Semgrep CE + gosec). Verificación automática en CI con `go-licenses` y `license-checker` (npm).
 
 ---
 

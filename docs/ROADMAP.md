@@ -3,7 +3,7 @@
 > Orden **obligatorio** de construcción. Un agente no empieza una fase hasta que la anterior cumple su *Definición de Hecho* (DoD). Al terminar cada entregable, actualiza su estado en la tabla de seguimiento (§ final) en el mismo commit.
 > Para ejecutar las fases 0 y 1 usa la skill `/bootstrap`. Para las fases de negocio usa `/new-module` y `/new-use-case`.
 
-Prerrequisitos de la estación de trabajo: Go 1.25+, Node 22 LTS + pnpm 9+, Podman Desktop o Rancher Desktop (Docker Compose compatible), git, make (en Windows: Git Bash + `make` vía Scoop/Chocolatey, o usar `go run ./tools/task` si se decide sin make — requiere ADR).
+Prerrequisitos de la estación de trabajo: **Docker Desktop**, **VS Code** con la extensión *Dev Containers* y git. Todo lo demás (Go 1.26, Node 22, pnpm, make, sqlc, oapi-codegen, goose, golangci-lint, go-arch-lint, gosec, govulncheck, go-licenses, Claude Code) viene en el **Dev Container** (`.devcontainer/`): en VS Code, *Reopen in Container*. Las versiones de las herramientas se fijan en `.devcontainer/Dockerfile`; actualizarlas es un cambio deliberado con commit propio.
 
 ---
 
@@ -12,7 +12,7 @@ Objetivo: que `make check` y `pnpm check` corran en verde sobre un proyecto vac�
 
 | # | Entregable | Detalle |
 |---|---|---|
-| 0.1 | `src/backend/go.mod` | módulo `github.com/<org>/seguros` (preguntar `<org>` al usuario), Go 1.25 |
+| 0.1 | `src/backend/go.mod` | módulo `github.com/<org>/seguros` (preguntar `<org>` al usuario), Go 1.26 |
 | 0.2 | `Makefile` raíz | targets: `generate`, `fmt`, `lint`, `arch`, `test`, `test-integration`, `check` (= fmt+lint+arch+test), `migrate-up`, `dev-up`, `dev-down` |
 | 0.3 | `.golangci.yml` | linters de `.claude/rules/architecture.md` §Estilo, incluido `depguard` y `forbidigo` |
 | 0.4 | `.go-arch-lint.yml` | componentes `platform`, `domain`, `app`, `adapters`, `contracts`, `cmd`; reglas de import |
