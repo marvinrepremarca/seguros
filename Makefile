@@ -18,7 +18,8 @@ generate: generate-sqlc generate-openapi ## sqlc + oapi-codegen + go generate (c
 	cd $(BACKEND) && go generate ./...
 
 generate-sqlc:
-	cd $(BACKEND) && sqlc generate
+	@cd $(BACKEND) && if grep -qE '^sql: \[\]' sqlc.yaml; then echo "sqlc: sin módulos configurados"; \
+	else sqlc generate && sqlc vet; fi
 
 # Un spec por módulo: api/openapi/<modulo>.yaml → internal/modules/<modulo>/adapters/http/api.gen.go
 generate-openapi:
