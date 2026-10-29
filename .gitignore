@@ -1,0 +1,34 @@
+# Secretos y entorno
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+*.p12
+secrets/
+
+# Go
+src/backend/bin/
+*.test
+*.out
+coverage.*
+
+# Node / frontend
+node_modules/
+src/frontend/dist/
+src/frontend/playwright-report/
+src/frontend/test-results/
+*.tsbuildinfo
+
+# Editores y SO
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Claude Code (local, no compartido)
+.claude/settings.local.json
+CLAUDE.local.md
