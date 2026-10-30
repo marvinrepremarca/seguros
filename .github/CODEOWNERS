@@ -1,0 +1,13 @@
+# Revisión obligatoria por dueños. Ajusta los equipos a los de la organización en GitHub
+# (deben existir y tener acceso de escritura, o GitHub ignora la regla).
+*                                        @repremarca/seguros-maintainers
+
+# Áreas sensibles: seguridad, dinero, multi-tenant, despliegue y reglas del agente.
+/src/backend/internal/platform/          @repremarca/seguros-maintainers @repremarca/seguros-security
+/src/backend/migrations/                 @repremarca/seguros-maintainers @repremarca/seguros-security
+/deploy/                                 @repremarca/seguros-maintainers @repremarca/seguros-security
+/.github/                                @repremarca/seguros-maintainers @repremarca/seguros-security
+/.claude/                                @repremarca/seguros-maintainers
+/docs/architecture/                      @repremarca/seguros-maintainers
+/docs/adr/                               @repremarca/seguros-maintainers
+/docs/domain/                            @repremarca/seguros-maintainers

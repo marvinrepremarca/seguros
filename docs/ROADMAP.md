@@ -74,7 +74,7 @@ Pruebas k6 (objetivos en testing.md), ZAP, restauración de backup probada, runb
 
 | Ítem | Estado | Fecha | Notas |
 |---|---|---|---|
-| Fase 0 | 🟨 En curso | 2026-10-29 | Hecho: 0.1–0.8 |
+| Fase 0 | 🟨 En curso | 2026-10-30 | 0.1–0.9 hechos; make check, pnpm check y compose sanos en local. Pendiente: CI en verde (sin remoto aún) y revisión del punto de control |
 | Fase 1 | ⬜ Pendiente | | |
 | Fase 2 | ⬜ Pendiente | | |
 | Fase 3 | ⬜ Pendiente | | |
