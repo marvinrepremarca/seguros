@@ -58,7 +58,7 @@ vuln: ## govulncheck
 	cd $(BACKEND) && govulncheck ./...
 
 licenses: ## Falla si alguna dependencia enlazada tiene licencia fuera de ARCHITECTURE.md §9
-	cd $(BACKEND) && go-licenses check ./... \
+	cd $(BACKEND) && go-licenses check ./... --ignore $(GO_MOD) \
 	  --allowed_licenses=MIT,BSD-2-Clause,BSD-3-Clause,Apache-2.0,MPL-2.0,ISC,PostgreSQL
 
 migrate-up: ## Aplica migraciones (local) con el rol migrator
