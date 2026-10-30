@@ -7,7 +7,8 @@
     "ghcr.io/anthropics/devcontainer-features/claude-code:1": {}
   },
   "remoteEnv": {
-    "TESTCONTAINERS_HOST_OVERRIDE": "host.docker.internal"
+    "TESTCONTAINERS_HOST_OVERRIDE": "host.docker.internal",
+    "LOCAL_WORKSPACE_FOLDER": "${localWorkspaceFolder}"
   },
   "postCreateCommand": "corepack enable && corepack prepare pnpm@9.15.0 --activate",
   "forwardPorts": [5173, 8080],

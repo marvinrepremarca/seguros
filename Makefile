@@ -6,10 +6,10 @@ SHELL := bash
 BACKEND  := src/backend
 FRONTEND := src/frontend
 GO_MOD   := github.com/repremarca/seguros
-COMPOSE  := docker compose -f deploy/compose.dev.yml --env-file deploy/.env
+COMPOSE  := docker compose -f deploy/compose.dev.yml
 
 .PHONY: help generate generate-sqlc generate-openapi fmt fmt-check lint arch test test-integration \
-        check vuln licenses migrate-up dev-up dev-down
+        check vuln licenses migrate-up dev-env dev-up dev-down
 
 help: ## Lista los targets
 	@grep -hE '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -63,6 +63,9 @@ licenses: ## Falla si alguna dependencia enlazada tiene licencia fuera de ARCHIT
 
 migrate-up: ## Aplica migraciones (local) con el rol migrator
 	cd $(BACKEND) && go run ./cmd/migrate up
+
+dev-env: ## Crea/completa deploy/.env con secretos aleatorios locales
+	deploy/scripts/dev-env.sh
 
 dev-up: ## Levanta dependencias de desarrollo
 	$(COMPOSE) up -d --wait
