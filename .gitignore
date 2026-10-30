@@ -32,3 +32,4 @@ Thumbs.db
 # Claude Code (local, no compartido)
 .claude/settings.local.json
 CLAUDE.local.md
+src/frontend/coverage/
