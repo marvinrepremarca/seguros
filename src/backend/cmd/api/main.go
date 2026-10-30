@@ -105,11 +105,11 @@ func healthcheck() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
 	target := "http://" + net.JoinHostPort("127.0.0.1", port) + "/health/live"
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil) //nolint:gosec // G704: destino fijo 127.0.0.1; el puerto sale de la config del propio contenedor
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, target, nil) // #nosec G704 -- destino fijo 127.0.0.1; el puerto sale de la config del propio contenedor
 	if err != nil {
 		return fmt.Errorf("creando petición: %w", err)
 	}
-	resp, err := http.DefaultClient.Do(req) //nolint:gosec // G704: ver arriba
+	resp, err := http.DefaultClient.Do(req) // #nosec G704 -- ver arriba
 	if err != nil {
 		return fmt.Errorf("consultando /health/live: %w", err)
 	}
