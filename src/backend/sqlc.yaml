@@ -20,11 +20,11 @@ overrides:
         go_type: github.com/google/uuid.NullUUID
       # Vigencias: date → kernel.Date (solo fecha, sin zona; CLAUDE.md regla 5).
       - db_type: date
-        go_type: github.com/repremarca/seguros/internal/platform/kernel.Date
+        go_type: github.com/marvinrepremarca/seguros/internal/platform/kernel.Date
       - db_type: date
         nullable: true
         go_type:
-          import: github.com/repremarca/seguros/internal/platform/kernel
+          import: github.com/marvinrepremarca/seguros/internal/platform/kernel
           type: Date
           pointer: true
       - db_type: timestamptz

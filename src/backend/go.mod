@@ -1,3 +1,3 @@
-module github.com/repremarca/seguros
+module github.com/marvinrepremarca/seguros
 
 go 1.26

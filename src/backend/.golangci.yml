@@ -162,4 +162,4 @@ formatters:
   enable: [gofmt, goimports]
   settings:
     goimports:
-      local-prefixes: [github.com/repremarca/seguros]
+      local-prefixes: [github.com/marvinrepremarca/seguros]

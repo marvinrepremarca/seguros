@@ -15,7 +15,7 @@ import (
 	"testing"
 )
 
-const modulePath = "github.com/repremarca/seguros"
+const modulePath = "github.com/marvinrepremarca/seguros"
 
 var forbiddenPackageNames = []string{"common", "utils", "util", "helpers", "shared", "misc"}
 

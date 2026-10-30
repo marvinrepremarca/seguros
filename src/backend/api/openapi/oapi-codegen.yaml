@@ -10,7 +10,7 @@ generate:
 additional-imports:
   - package: github.com/shopspring/decimal
   - package: github.com/google/uuid
-  - package: github.com/repremarca/seguros/internal/platform/kernel
+  - package: github.com/marvinrepremarca/seguros/internal/platform/kernel
 output-options:
   skip-prune: false
   nullable-type: true
@@ -23,4 +23,4 @@ output-options:
       formats:
         decimal: { type: decimal.Decimal, import: github.com/shopspring/decimal }
         uuid: { type: uuid.UUID, import: github.com/google/uuid }
-        date: { type: kernel.Date, import: github.com/repremarca/seguros/internal/platform/kernel }
+        date: { type: kernel.Date, import: github.com/marvinrepremarca/seguros/internal/platform/kernel }
