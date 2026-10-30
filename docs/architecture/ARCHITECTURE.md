@@ -269,7 +269,15 @@ Detalle operativo: [.claude/rules/feature-flags.md](../../.claude/rules/feature-
 
 ## 9. Política de licencias
 
-Solo se admiten componentes con licencias **MIT, BSD, Apache-2.0, MPL-2.0, ISC, PostgreSQL**. AGPL/GPL solo para **herramientas o servicios usados sin modificar** (Grafana, Loki, k6, golangci-lint), nunca enlazados en el binario. Prohibido: ediciones "Pro/Enterprise" de pago (River Pro, Watermill Pro), licencias BSL/SSPL (HashiCorp Vault ≥1.15, Redis ≥7.4), Docker Desktop **solo** mientras la empresa tenga <250 empleados y <USD 10M de ingresos anuales (si se supera: suscripción paga o migrar a Rancher Desktop, mismos comandos), GitHub Advanced Security/CodeQL en repos privados (usar Semgrep CE + gosec). Verificación automática en CI con `go-licenses` y `license-checker` (npm).
+Detalle y justificación: [ADR 0011](../adr/0011-politica-de-licencias-sin-pago-por-uso.md). **Principio: ningún software por el que haya que pagar por uso, usuario, instancia o umbral, y ninguna licencia que obligue a publicar el código propio.**
+
+- **Permitidas en cualquier capa:** licencias permisivas y de dominio público (MIT, MIT-0, BSD, 0BSD, ISC, Apache-2.0, PostgreSQL, Zlib, BlueOak-1.0.0, Unlicense, CC0-1.0, Python-2.0; CC-BY-4.0 solo para datos) y MPL-2.0 sin modificar sus archivos.
+- **Solo como herramienta o servicio sin modificar:** GPL/LGPL/AGPL (Grafana, Loki, k6, golangci-lint); nunca enlazadas en el binario ni empaquetadas en el frontend.
+- **Prohibidas:** ediciones "Pro/Enterprise" de pago (River Pro, Watermill Pro), licencias BSL/SSPL/Elastic/Commons Clause (HashiCorp Vault ≥1.15, Redis ≥7.4), GitHub Advanced Security/CodeQL en repos privados (usar Semgrep CE + gosec).
+- **Docker Desktop** solo en estaciones de desarrollo mientras la empresa tenga <250 empleados y <USD 10M de ingresos anuales (si se supera: suscripción o Rancher Desktop, mismos comandos); servidores con Docker Engine.
+- Costos de infraestructura (VPS, backups externos, SMS/WhatsApp) no son licencias; se prefieren alternativas autoalojadas y proveedores detrás de un puerto.
+
+Verificación automática en CI con `go-licenses` (`make licenses`) y `license-checker` (`pnpm licenses`).
 
 ---
 

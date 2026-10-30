@@ -162,7 +162,7 @@ jobs:
       - run: go install github.com/google/go-licenses/v2@"${GO_LICENSES_VERSION}"
       - run: make licenses
       - run: pnpm -C src/frontend install --frozen-lockfile
-      - run: pnpm -C src/frontend licenses
+      - run: pnpm -C src/frontend licenses:check
 
   secrets:
     needs: integration

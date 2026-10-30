@@ -70,7 +70,7 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "api:generate": "orval --config orval.config.ts",
-    "licenses": "license-checker-rseidelsohn --production --excludePrivatePackages --onlyAllow \"MIT;ISC;Apache-2.0;BSD-2-Clause;BSD-3-Clause;MPL-2.0\"",
-    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test"
+    "check": "pnpm format:check && pnpm lint && pnpm typecheck && pnpm test",
+    "licenses:check": "license-checker-rseidelsohn --production --excludePrivatePackages --onlyAllow \"MIT;MIT-0;BSD-2-Clause;BSD-3-Clause;0BSD;ISC;Apache-2.0;PostgreSQL;Zlib;BlueOak-1.0.0;Unlicense;CC0-1.0;Python-2.0;CC-BY-4.0;MPL-2.0\""
   }
 }
