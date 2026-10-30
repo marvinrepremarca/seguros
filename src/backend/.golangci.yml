@@ -93,7 +93,7 @@ linters:
               desc: "usa html/template"
             - pkg: github.com/lib/pq
               desc: "usa jackc/pgx v5"
-            - pkg: database/sql
+            - pkg: database/sql$ # exacto: database/sql/driver (interfaces Scanner/Valuer) sí se permite
               desc: "usa pgx v5 + sqlc"
             - pkg: gorm.io
               desc: "sin ORM (ARCHITECTURE.md §3)"
