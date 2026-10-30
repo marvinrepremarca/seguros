@@ -130,6 +130,17 @@ func TestLoadMigrator(t *testing.T) {
 	require.ErrorContains(t, err, "SEGUROS_MIGRATOR_DB_URL")
 }
 
+func TestLoadPlatformCtl(t *testing.T) {
+	t.Parallel()
+	cfg, err := config.LoadPlatformCtl(env(map[string]string{"SEGUROS_DB_URL": dsn("")}))
+	require.NoError(t, err)
+	assert.Equal(t, "seguros-platformctl", cfg.ServiceName)
+	assert.Equal(t, dsn(""), cfg.DB.URL.Reveal())
+
+	_, err = config.LoadPlatformCtl(env(map[string]string{}))
+	require.ErrorContains(t, err, "SEGUROS_DB_URL")
+}
+
 func TestSecretIsRedacted(t *testing.T) {
 	t.Parallel()
 	s := config.NewSecret(sentinel)

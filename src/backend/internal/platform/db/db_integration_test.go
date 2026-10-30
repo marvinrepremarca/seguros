@@ -210,6 +210,25 @@ func TestNoAccessWithoutWithTenantTx(t *testing.T) {
 	require.Error(t, err, "app.tenant_id no persiste fuera de la transacción")
 }
 
+// WithoutTenantTx no da acceso a tablas con RLS: app.tenant_id queda vacío y la política falla.
+func TestWithoutTenantTxCannotReadTenantData(t *testing.T) {
+	t.Parallel()
+	d := openApp(t)
+	insertItem(newTenant(t), t, d, "x")
+	ctx := newTenant(t) // aunque el contexto tenga tenant, no se usa
+	err := d.WithoutTenantTx(ctx, func(tx pgx.Tx) error {
+		var n int
+		return tx.QueryRow(ctx, `SELECT count(*) FROM dbtest.items`).Scan(&n)
+	})
+	require.ErrorContains(t, err, "invalid input syntax for type uuid")
+
+	var one int
+	require.NoError(t, d.WithoutTenantTx(context.Background(), func(tx pgx.Tx) error {
+		return tx.QueryRow(context.Background(), `SELECT 1`).Scan(&one)
+	}))
+	assert.Equal(t, 1, one)
+}
+
 func TestAppRoleCannotDDLOrBypassRLS(t *testing.T) {
 	t.Parallel()
 	d := openApp(t)

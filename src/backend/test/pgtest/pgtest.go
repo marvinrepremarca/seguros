@@ -11,15 +11,22 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"time"
 
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
+
+	"github.com/marvinrepremarca/seguros/internal/platform/config"
+	"github.com/marvinrepremarca/seguros/internal/platform/db"
+	"github.com/marvinrepremarca/seguros/internal/platform/db/migrate"
+	"github.com/marvinrepremarca/seguros/migrations"
 )
 
 // Env es una instancia de PostgreSQL con los roles de la aplicación.
@@ -125,4 +132,33 @@ func composeImage(composeFile, service string) (string, error) {
 		return "", fmt.Errorf("pgtest: imagen de %q no encontrada en el compose", service)
 	}
 	return string(m[1]), nil
+}
+
+// MigrateAll aplica todas las migraciones reales de los módulos (migrations.FS) con el rol
+// migrator, igual que cmd/migrate.
+func (e *Env) MigrateAll(ctx context.Context) error {
+	sqlDB, err := migrate.Open(e.MigratorURL)
+	if err != nil {
+		return fmt.Errorf("pgtest: %w", err)
+	}
+	runErr := migrate.New(sqlDB, migrations.FS, slog.New(slog.DiscardHandler)).Up(ctx)
+	if cerr := sqlDB.Close(); cerr != nil {
+		runErr = errors.Join(runErr, cerr)
+	}
+	if runErr != nil {
+		return fmt.Errorf("pgtest: migrando: %w", runErr)
+	}
+	return nil
+}
+
+// OpenApp abre el pool de la aplicación (rol seguros_app, sujeto a RLS).
+func (e *Env) OpenApp(ctx context.Context) (*db.DB, error) {
+	d, err := db.Open(ctx, config.Database{
+		URL: config.NewSecret(e.AppURL), MaxConns: 8, MinConns: 0,
+		MaxConnLifetime: time.Hour, StatementTimeout: 10 * time.Second,
+	}, db.Options{ApplicationName: "pgtest"})
+	if err != nil {
+		return nil, fmt.Errorf("pgtest: abriendo BD: %w", err)
+	}
+	return d, nil
 }

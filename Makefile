@@ -9,7 +9,7 @@ GO_MOD   := github.com/marvinrepremarca/seguros
 COMPOSE  := deploy/scripts/compose.sh
 
 .PHONY: help generate generate-sqlc generate-openapi fmt fmt-check lint arch test test-integration \
-        check vuln licenses migrate-up migrate-status run-api dev-env dev-up dev-down dev-status dev-logs
+        check vuln licenses migrate-up migrate-status run-api platformctl dev-env dev-up dev-down dev-status dev-logs
 
 help: ## Lista los targets
 	@grep -hE '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -68,6 +68,9 @@ migrate-up: ## Aplica migraciones al PostgreSQL de desarrollo con el rol migrato
 
 migrate-status: ## Versión y migraciones pendientes por módulo (desarrollo)
 	cd $(BACKEND) && SEGUROS_MIGRATOR_DB_URL="$$($(DEV_DB_URL) migrator)" go run ./cmd/migrate status
+
+platformctl: ## Operaciones de super-admin en desarrollo (ej. make platformctl args="tenant create ...")
+	cd $(BACKEND) && SEGUROS_DB_URL="$$($(DEV_DB_URL) app)" go run ./cmd/platformctl $(args)
 
 run-api: ## Ejecuta la API local contra las dependencias de desarrollo
 	cd $(BACKEND) && SEGUROS_DB_URL="$$($(DEV_DB_URL) app)" go run ./cmd/api

@@ -125,6 +125,24 @@ func LoadAPI(lookup LookupFunc) (API, error) {
 	return cfg, r.err()
 }
 
+// PlatformCtl es la configuración de cmd/platformctl (operaciones de super-administrador).
+type PlatformCtl struct {
+	Common
+	DB Database
+}
+
+// LoadPlatformCtl carga y valida la configuración de cmd/platformctl. Usa el rol de la app
+// (sujeto a RLS): cada operación fija el tenant sobre el que actúa.
+func LoadPlatformCtl(lookup LookupFunc) (PlatformCtl, error) {
+	r := reader{lookup: lookup}
+	cfg := PlatformCtl{
+		Common: r.common("seguros-platformctl"),
+		DB:     r.database("SEGUROS_DB_URL"),
+	}
+	r.postgresURL("SEGUROS_DB_URL", cfg.DB.URL, cfg.Env)
+	return cfg, r.err()
+}
+
 // LoadMigrator carga y valida la configuración de cmd/migrate.
 func LoadMigrator(lookup LookupFunc) (Migrator, error) {
 	r := reader{lookup: lookup}
