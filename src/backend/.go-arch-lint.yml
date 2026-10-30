@@ -21,6 +21,7 @@ components:
     in:
       - internal/platform/config/**
       - internal/platform/obs/**
+      - internal/platform/reqctx/**
       - internal/platform/httpx/**
       - internal/platform/db/**
       - internal/platform/authz/**
@@ -33,6 +34,7 @@ components:
   app: { in: internal/modules/*/app/** }
   adapters: { in: internal/modules/*/adapters/** }
   contracts: { in: internal/modules/*/contracts/** }
+  migrations: { in: migrations }
   cmd: { in: cmd/** }
   testsupport: { in: test/** }
 

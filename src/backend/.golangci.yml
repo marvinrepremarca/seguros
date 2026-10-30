@@ -93,7 +93,7 @@ linters:
               desc: "usa html/template"
             - pkg: github.com/lib/pq
               desc: "usa jackc/pgx v5"
-            - pkg: database/sql
+            - pkg: database/sql$ # exacto: database/sql/driver (interfaces Scanner/Valuer) sí se permite
               desc: "usa pgx v5 + sqlc"
             - pkg: gorm.io
               desc: "sin ORM (ARCHITECTURE.md §3)"
@@ -150,6 +150,10 @@ linters:
       - path-except: internal/modules/[^/]+/(domain|app)/
         linters: [forbidigo]
         text: panic
+      # goose solo funciona sobre database/sql: se permite únicamente en el runner de migraciones.
+      - path: internal/platform/db/migrate/
+        linters: [depguard]
+        text: database/sql
       # Pruebas: se permiten globals de tablas y reloj real en helpers.
       - path: _test\.go
         linters: [gochecknoglobals, forbidigo, gosec]
