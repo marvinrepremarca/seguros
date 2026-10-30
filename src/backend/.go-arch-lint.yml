@@ -21,6 +21,7 @@ components:
     in:
       - internal/platform/config/**
       - internal/platform/obs/**
+      - internal/platform/reqctx/**
       - internal/platform/httpx/**
       - internal/platform/db/**
       - internal/platform/authz/**
