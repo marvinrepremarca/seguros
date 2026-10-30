@@ -1,4 +1,4 @@
-# Dependencias de desarrollo local. Uso: `make dev-env && make dev-up`.
+# Dependencias de desarrollo local. Uso: `make dev-up` (usa deploy/scripts/compose.sh).
 # Variables en deploy/.env (ver .env.example). Ningún valor secreto vive en este archivo.
 #
 # Excepción de desarrollo a .claude/rules/devops.md: los servicios publican puertos SOLO en
@@ -6,7 +6,7 @@
 # En staging/prod (deploy/compose.yml, Fase 6) los servicios de `data` no publican puertos.
 #
 # Bind mounts: con docker-outside-of-docker el daemon resuelve rutas en el HOST, así que se usa
-# LOCAL_WORKSPACE_FOLDER (lo define .devcontainer/devcontainer.json); fuera del contenedor, la raíz del repo.
+# LOCAL_WORKSPACE_FOLDER (lo detecta deploy/scripts/compose.sh); fuera del contenedor, la raíz del repo.
 name: seguros-dev
 
 x-hardening: &hardening

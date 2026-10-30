@@ -5,11 +5,11 @@ SHELL := bash
 
 BACKEND  := src/backend
 FRONTEND := src/frontend
-GO_MOD   := github.com/repremarca/seguros
-COMPOSE  := docker compose -f deploy/compose.dev.yml
+GO_MOD   := github.com/marvinrepremarca/seguros
+COMPOSE  := deploy/scripts/compose.sh
 
 .PHONY: help generate generate-sqlc generate-openapi fmt fmt-check lint arch test test-integration \
-        check vuln licenses migrate-up dev-env dev-up dev-down
+        check vuln licenses migrate-up dev-env dev-up dev-down dev-status dev-logs
 
 help: ## Lista los targets
 	@grep -hE '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -57,18 +57,24 @@ check: fmt-check lint arch test ## Verificación completa del backend
 vuln: ## govulncheck
 	cd $(BACKEND) && govulncheck ./...
 
-licenses: ## Falla si alguna dependencia enlazada tiene licencia fuera de ARCHITECTURE.md §9
+licenses: ## Falla si alguna dependencia enlazada tiene licencia fuera de ADR 0011
 	cd $(BACKEND) && go-licenses check ./... --ignore $(GO_MOD) \
-	  --allowed_licenses=MIT,BSD-2-Clause,BSD-3-Clause,Apache-2.0,MPL-2.0,ISC,PostgreSQL
+	  --allowed_licenses=MIT,MIT-0,BSD-2-Clause,BSD-3-Clause,0BSD,ISC,Apache-2.0,PostgreSQL,Zlib,BlueOak-1.0.0,Unlicense,CC0-1.0,Python-2.0,MPL-2.0
 
 migrate-up: ## Aplica migraciones (local) con el rol migrator
 	cd $(BACKEND) && go run ./cmd/migrate up
 
 dev-env: ## Crea/completa deploy/.env con secretos aleatorios locales
-	deploy/scripts/dev-env.sh
+	@deploy/scripts/dev-env.sh
 
-dev-up: ## Levanta dependencias de desarrollo
+dev-up: dev-env ## Levanta dependencias de desarrollo (crea deploy/.env si falta)
 	$(COMPOSE) up -d --wait
+
+dev-status: ## Estado de las dependencias de desarrollo
+	$(COMPOSE) ps
+
+dev-logs: ## Logs de las dependencias (make dev-logs s=keycloak)
+	$(COMPOSE) logs --tail 100 $(s)
 
 dev-down: ## Detiene dependencias de desarrollo (conserva volúmenes)
 	$(COMPOSE) down
