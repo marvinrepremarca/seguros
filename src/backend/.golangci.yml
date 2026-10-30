@@ -150,6 +150,10 @@ linters:
       - path-except: internal/modules/[^/]+/(domain|app)/
         linters: [forbidigo]
         text: panic
+      # goose solo funciona sobre database/sql: se permite únicamente en el runner de migraciones.
+      - path: internal/platform/db/migrate/
+        linters: [depguard]
+        text: database/sql
       # Pruebas: se permiten globals de tablas y reloj real en helpers.
       - path: _test\.go
         linters: [gochecknoglobals, forbidigo, gosec]

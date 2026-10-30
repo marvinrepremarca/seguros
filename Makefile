@@ -9,7 +9,7 @@ GO_MOD   := github.com/marvinrepremarca/seguros
 COMPOSE  := deploy/scripts/compose.sh
 
 .PHONY: help generate generate-sqlc generate-openapi fmt fmt-check lint arch test test-integration \
-        check vuln licenses migrate-up dev-env dev-up dev-down dev-status dev-logs
+        check vuln licenses migrate-up migrate-status run-api dev-env dev-up dev-down dev-status dev-logs
 
 help: ## Lista los targets
 	@grep -hE '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -61,8 +61,16 @@ licenses: ## Falla si alguna dependencia enlazada tiene licencia fuera de ADR 00
 	cd $(BACKEND) && go-licenses check ./... --ignore $(GO_MOD) \
 	  --allowed_licenses=MIT,MIT-0,BSD-2-Clause,BSD-3-Clause,0BSD,ISC,Apache-2.0,PostgreSQL,Zlib,BlueOak-1.0.0,Unlicense,CC0-1.0,Python-2.0,MPL-2.0
 
-migrate-up: ## Aplica migraciones (local) con el rol migrator
-	cd $(BACKEND) && go run ./cmd/migrate up
+DEV_DB_URL := $(CURDIR)/deploy/scripts/dev-db-url.sh
+
+migrate-up: ## Aplica migraciones al PostgreSQL de desarrollo con el rol migrator
+	cd $(BACKEND) && SEGUROS_MIGRATOR_DB_URL="$$($(DEV_DB_URL) migrator)" go run ./cmd/migrate up
+
+migrate-status: ## Versión y migraciones pendientes por módulo (desarrollo)
+	cd $(BACKEND) && SEGUROS_MIGRATOR_DB_URL="$$($(DEV_DB_URL) migrator)" go run ./cmd/migrate status
+
+run-api: ## Ejecuta la API local contra las dependencias de desarrollo
+	cd $(BACKEND) && SEGUROS_DB_URL="$$($(DEV_DB_URL) app)" go run ./cmd/api
 
 dev-env: ## Crea/completa deploy/.env con secretos aleatorios locales
 	@deploy/scripts/dev-env.sh

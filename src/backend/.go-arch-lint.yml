@@ -34,6 +34,7 @@ components:
   app: { in: internal/modules/*/app/** }
   adapters: { in: internal/modules/*/adapters/** }
   contracts: { in: internal/modules/*/contracts/** }
+  migrations: { in: migrations }
   cmd: { in: cmd/** }
   testsupport: { in: test/** }
 

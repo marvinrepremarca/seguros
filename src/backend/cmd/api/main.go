@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/marvinrepremarca/seguros/internal/platform/config"
+	"github.com/marvinrepremarca/seguros/internal/platform/db"
 	"github.com/marvinrepremarca/seguros/internal/platform/httpx"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 	"github.com/marvinrepremarca/seguros/internal/platform/obs"
@@ -66,10 +67,17 @@ func run() error {
 		}
 	}()
 
+	database, err := db.Open(ctx, cfg.DB, db.Options{ApplicationName: cfg.ServiceName})
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
 	router := httpx.NewRouter(httpx.RouterOptions{
 		Logger:       logger,
 		Clock:        kernel.SystemClock{},
 		MaxBodyBytes: cfg.HTTP.MaxBodyBytes,
+		Readiness:    []httpx.ReadinessCheck{{Name: "postgres", Check: database.Ping}},
 	})
 
 	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", cfg.HTTP.Addr)
