@@ -1,0 +1,256 @@
+# Pipeline de ARCHITECTURE.md §6.4 y .claude/rules/devops.md §CI/CD (orden fijo).
+# Acciones fijadas por SHA; permisos mínimos por job. Las etapas de despliegue están
+# deshabilitadas (`if: false`) hasta la Fase 6 del ROADMAP.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Mismas versiones que .devcontainer/Dockerfile.
+  GOLANGCI_LINT_VERSION: v2.15.0
+  GO_ARCH_LINT_VERSION: v1.19.1
+  GOSEC_VERSION: v2.30.0
+  GOVULNCHECK_VERSION: v1.9.0
+  GO_LICENSES_VERSION: v2.0.1
+  GOIMPORTS_VERSION: v0.52.0
+
+jobs:
+  lint:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with: { go-version-file: src/backend/go.mod, cache-dependency-path: src/backend/go.mod }
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with: { package_json_file: src/frontend/package.json }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: 22, cache: pnpm, cache-dependency-path: src/frontend/pnpm-lock.yaml }
+      - run: go install golang.org/x/tools/cmd/goimports@"${GOIMPORTS_VERSION}"
+      - run: make fmt-check
+      - uses: golangci/golangci-lint-action@ba0d7d2ec06a0ea1cb5fa41b2e4a3ab91d21278a # v9.3.0
+        with: { version: "${{ env.GOLANGCI_LINT_VERSION }}", working-directory: src/backend }
+      - run: pnpm -C src/frontend install --frozen-lockfile
+      - run: pnpm -C src/frontend format:check
+      - run: pnpm -C src/frontend lint
+
+  build:
+    needs: lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with: { go-version-file: src/backend/go.mod, cache-dependency-path: src/backend/go.mod }
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with: { package_json_file: src/frontend/package.json }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: 22, cache: pnpm, cache-dependency-path: src/frontend/pnpm-lock.yaml }
+      - working-directory: src/backend
+        run: CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" ./...
+      - run: pnpm -C src/frontend install --frozen-lockfile
+      - run: pnpm -C src/frontend build
+
+  unit:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with: { go-version-file: src/backend/go.mod, cache-dependency-path: src/backend/go.mod }
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with: { package_json_file: src/frontend/package.json }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: 22, cache: pnpm, cache-dependency-path: src/frontend/pnpm-lock.yaml }
+      - working-directory: src/backend
+        run: go test -race -count=1 -coverprofile=coverage.out ./...
+      - run: pnpm -C src/frontend install --frozen-lockfile
+      - run: pnpm -C src/frontend typecheck
+      - run: pnpm -C src/frontend coverage
+
+  architecture:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with: { go-version-file: src/backend/go.mod, cache-dependency-path: src/backend/go.mod }
+      - run: go install github.com/fe3dback/go-arch-lint@"${GO_ARCH_LINT_VERSION}"
+      - run: make arch
+
+  integration:
+    needs: [unit, architecture]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with: { go-version-file: src/backend/go.mod, cache-dependency-path: src/backend/go.mod }
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with: { package_json_file: src/frontend/package.json }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: 22, cache: pnpm, cache-dependency-path: src/frontend/pnpm-lock.yaml }
+      - name: Go (testcontainers)
+        run: make test-integration
+      - run: pnpm -C src/frontend install --frozen-lockfile
+      - run: pnpm -C src/frontend exec playwright install --with-deps chromium
+      - name: E2E de humo del SPA
+        run: pnpm -C src/frontend e2e
+      - if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with: { name: playwright-report, path: src/frontend/playwright-report, retention-days: 7 }
+
+  sast:
+    needs: integration
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with: { go-version-file: src/backend/go.mod, cache-dependency-path: src/backend/go.mod }
+      - run: go install github.com/securego/gosec/v2/cmd/gosec@"${GOSEC_VERSION}"
+      - working-directory: src/backend
+        run: gosec -quiet -exclude-generated ./...
+      - name: Semgrep CE
+        run: >
+          docker run --rm -v "$PWD:/src" -w /src
+          semgrep/semgrep:1.183.0@sha256:2e45517a85e13a9cca14a2a00df6bb48affd66b8ebfae1b0991cd57578362fb0
+          semgrep scan --error --metrics=off
+          --config p/golang --config p/typescript --config p/react --config p/secrets
+          --exclude '*.gen.go' --exclude '*.gen.ts' --exclude node_modules
+
+  sca:
+    needs: integration
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with: { go-version-file: src/backend/go.mod, cache-dependency-path: src/backend/go.mod }
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with: { package_json_file: src/frontend/package.json }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: 22, cache: pnpm, cache-dependency-path: src/frontend/pnpm-lock.yaml }
+      - run: go install golang.org/x/vuln/cmd/govulncheck@"${GOVULNCHECK_VERSION}"
+      - run: make vuln
+      - run: pnpm -C src/frontend audit --prod --audit-level high
+
+  licenses:
+    needs: integration
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with: { go-version-file: src/backend/go.mod, cache-dependency-path: src/backend/go.mod }
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+        with: { package_json_file: src/frontend/package.json }
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with: { node-version: 22, cache: pnpm, cache-dependency-path: src/frontend/pnpm-lock.yaml }
+      - run: go install github.com/google/go-licenses/v2@"${GO_LICENSES_VERSION}"
+      - run: make licenses
+      - run: pnpm -C src/frontend install --frozen-lockfile
+      - run: pnpm -C src/frontend licenses:check
+
+  secrets:
+    needs: integration
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false, fetch-depth: 0 }
+      - name: gitleaks (historial completo)
+        run: >
+          docker run --rm -v "$PWD:/repo"
+          zricethezav/gitleaks:v8.30.1@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f
+          git /repo --redact --no-banner
+
+  image-gate:
+    # La etapa de imagen se activa cuando exista el Dockerfile de la API (ROADMAP 1.3+).
+    needs: [sast, sca, licenses, secrets]
+    runs-on: ubuntu-24.04
+    outputs:
+      dockerfile: ${{ steps.detect.outputs.dockerfile }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false, sparse-checkout: src/backend }
+      - id: detect
+        run: echo "dockerfile=$([ -f src/backend/Dockerfile ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+  image:
+    needs: image-gate
+    if: needs.image-gate.outputs.dockerfile == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      id-token: write # firma keyless con cosign (OIDC)
+    env:
+      IMAGE: ghcr.io/${{ github.repository }}/api
+      PUSH: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with: { persist-credentials: false }
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - if: env.PUSH == 'true'
+        uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with: { registry: ghcr.io, username: "${{ github.actor }}", password: "${{ secrets.GITHUB_TOKEN }}" }
+      - id: build
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: src/backend/Dockerfile
+          load: ${{ env.PUSH != 'true' }}
+          push: ${{ env.PUSH == 'true' }}
+          tags: ${{ env.IMAGE }}:${{ github.sha }}
+          provenance: true
+      - name: Trivy (falla en HIGH/CRITICAL con fix)
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}:${{ github.sha }}
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+      - uses: anchore/sbom-action@66cbf4bc1f1c0d2edc94016e65bc221b6bb0ad6c # v0.24.3
+        with: { image: "${{ env.IMAGE }}:${{ github.sha }}", format: spdx-json, output-file: sbom.spdx.json }
+      - if: env.PUSH == 'true'
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - if: env.PUSH == 'true'
+        run: |
+          cosign sign --yes "${IMAGE}@${{ steps.build.outputs.digest }}"
+          cosign attest --yes --type spdxjson --predicate sbom.spdx.json "${IMAGE}@${{ steps.build.outputs.digest }}"
+
+  # ---- Fase 6: despliegue (deshabilitado) ----
+  deploy-staging:
+    if: false
+    needs: image
+    runs-on: ubuntu-24.04
+    environment: staging
+    steps:
+      - run: echo "migraciones (job separado, backup previo) + despliegue a staging"
+
+  e2e-zap:
+    if: false
+    needs: deploy-staging
+    runs-on: ubuntu-24.04
+    steps:
+      - run: echo "Playwright E2E contra staging + ZAP baseline"
+
+  deploy-prod:
+    if: false
+    needs: e2e-zap
+    runs-on: ubuntu-24.04
+    environment: production # aprobación manual por reglas de protección del entorno
+    steps:
+      - run: echo "rolling deploy a producción + smoke tests"

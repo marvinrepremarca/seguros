@@ -1,0 +1,165 @@
+# golangci-lint v2. Reglas de .claude/rules/architecture.md §Estilo y security.md.
+version: "2"
+
+run:
+  timeout: 5m
+  tests: true
+  build-tags: [integration]
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
+    - gosec
+    - revive
+    - depguard
+    - exhaustive
+    - forbidigo
+    - errorlint
+    - nilerr
+    - bodyclose
+    - noctx
+    - rowserrcheck
+    - sqlclosecheck
+    - contextcheck
+    - gocritic
+    - unconvert
+    - usestdlibvars
+    - gochecknoinits
+    - gochecknoglobals
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+      check-blank: true # `_ = f()` prohibido salvo //nolint:errcheck con justificación (CLAUDE.md regla 8)
+
+    govet:
+      enable-all: true
+      disable: [fieldalignment, shadow]
+
+    exhaustive:
+      default-signifies-exhaustive: false # todo switch de estados enumera cada caso
+
+    revive:
+      rules:
+        - name: exported
+        - name: package-comments
+        - name: var-naming
+        - name: error-return
+        - name: error-strings
+        - name: error-naming
+        - name: errorf
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: unused-parameter
+        - name: unreachable-code
+        - name: redefines-builtin-id
+        - name: deep-exit
+        - name: unhandled-error
+          arguments: ["fmt.Fprint.*", "bytes.Buffer.Write.*", "strings.Builder.Write.*"]
+
+    forbidigo:
+      analyze-types: true
+      forbid:
+        - pattern: ^time\.Now$
+          msg: "inyecta kernel.Clock (CLAUDE.md regla 5)"
+        - pattern: ^fmt\.Print.*$
+          msg: "usa log/slog"
+        - pattern: ^print(ln)?$
+          msg: "usa log/slog"
+        - pattern: ^float(32|64)$
+          msg: "dinero solo con kernel.Money (CLAUDE.md regla 4)"
+        - pattern: ^panic$
+          msg: "nada de panic en código de negocio: devuelve error (CLAUDE.md regla 8)"
+
+    depguard:
+      rules:
+        global:
+          list-mode: lax
+          deny:
+            - pkg: math/rand
+              desc: "usa crypto/rand (security.md §Criptografía)"
+            - pkg: crypto/md5
+              desc: "algoritmo prohibido"
+            - pkg: crypto/sha1
+              desc: "algoritmo prohibido"
+            - pkg: crypto/des
+              desc: "algoritmo prohibido"
+            - pkg: text/template
+              desc: "usa html/template"
+            - pkg: github.com/lib/pq
+              desc: "usa jackc/pgx v5"
+            - pkg: database/sql
+              desc: "usa pgx v5 + sqlc"
+            - pkg: gorm.io
+              desc: "sin ORM (ARCHITECTURE.md §3)"
+            - pkg: github.com/pkg/errors
+              desc: "usa errors + fmt.Errorf %w"
+            - pkg: github.com/sirupsen/logrus
+              desc: "usa log/slog"
+            - pkg: go.uber.org/zap
+              desc: "usa log/slog"
+            - pkg: github.com/redis/go-redis
+              desc: "usa valkey-io/valkey-go"
+            - pkg: github.com/hashicorp/vault
+              desc: "licencia BSL: usa OpenBao"
+            - pkg: github.com/riverqueue/riverpro
+              desc: "River Pro prohibido (ARCHITECTURE.md §9)"
+        domain:
+          files:
+            - "**/internal/modules/*/domain/**"
+          deny:
+            - pkg: net/http
+              desc: "domain solo usa stdlib y platform/kernel"
+            - pkg: database/sql
+              desc: "domain no conoce persistencia"
+            - pkg: encoding/json
+              desc: "domain sin tags/serialización"
+            - pkg: github.com/jackc/pgx
+              desc: "domain no conoce persistencia"
+            - pkg: github.com/ThreeDotsLabs/watermill
+              desc: "domain no conoce mensajería"
+            - pkg: github.com/go-chi
+              desc: "domain no conoce HTTP"
+        app:
+          files:
+            - "**/internal/modules/*/app/**"
+          deny:
+            - pkg: net/http
+              desc: "app no conoce HTTP"
+            - pkg: github.com/go-chi
+              desc: "app no conoce HTTP"
+
+  exclusions:
+    generated: strict
+    presets: [comments, std-error-handling]
+    rules:
+      # El reloj real vive solo en el kernel.
+      - path: internal/platform/kernel/
+        linters: [forbidigo]
+        text: time\.Now
+      # float prohibido solo donde hay dinero: kernel y módulos de negocio.
+      - path-except: (internal/platform/kernel/|internal/modules/)
+        linters: [forbidigo]
+        text: float
+      # panic prohibido en domain/app; en otros paquetes lo revisa la revisión de código.
+      - path-except: internal/modules/[^/]+/(domain|app)/
+        linters: [forbidigo]
+        text: panic
+      # Pruebas: se permiten globals de tablas y reloj real en helpers.
+      - path: _test\.go
+        linters: [gochecknoglobals, forbidigo, gosec]
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+formatters:
+  enable: [gofmt, goimports]
+  settings:
+    goimports:
+      local-prefixes: [github.com/marvinrepremarca/seguros]

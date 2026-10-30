@@ -61,7 +61,7 @@ docs/                                      arquitectura, dominio, ADRs
 ## Comandos
 | Acción | Comando |
 |---|---|
-| Levantar dependencias | `docker compose -f deploy/compose.dev.yml up -d` (dentro o fuera del Dev Container; motor: Docker Desktop) |
+| Levantar dependencias | `make dev-up` (estado: `make dev-status`, logs: `make dev-logs s=<servicio>`; detiene: `make dev-down`) |
 | Generar código | `make generate` (sqlc + oapi-codegen + constantes de flags) |
 | Verificación completa backend | `make check` |
 | Pruebas | `go test -race ./...` · integración: `go test -race -tags=integration ./...` |

@@ -74,7 +74,7 @@ Pruebas k6 (objetivos en testing.md), ZAP, restauración de backup probada, runb
 
 | Ítem | Estado | Fecha | Notas |
 |---|---|---|---|
-| Fase 0 | ⬜ Pendiente | | |
+| Fase 0 | ✅ Hecho | 2026-10-30 | DoD verificada: make check, pnpm check, compose sano y CI en verde (PR #1) |
 | Fase 1 | ⬜ Pendiente | | |
 | Fase 2 | ⬜ Pendiente | | |
 | Fase 3 | ⬜ Pendiente | | |

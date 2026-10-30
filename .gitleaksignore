@@ -1,0 +1,3 @@
+# Falsos positivos revisados (texto "consumidores/jobs" en skills, no son secretos).
+0e8cd350cb4e7cdc15c38621991822238c8c83a9:.claude/skills/security-check/SKILL.md:generic-api-key:14
+0e8cd350cb4e7cdc15c38621991822238c8c83a9:.claude/skills/new-module/SKILL.md:generic-api-key:44

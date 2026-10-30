@@ -4,12 +4,13 @@
   "features": {
     "ghcr.io/devcontainers/features/node:1": { "version": "22" },
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
+    "ghcr.io/devcontainers/features/github-cli:1": {},
     "ghcr.io/anthropics/devcontainer-features/claude-code:1": {}
   },
   "remoteEnv": {
     "TESTCONTAINERS_HOST_OVERRIDE": "host.docker.internal"
   },
-  "postCreateCommand": "corepack enable && corepack prepare pnpm@9.15.0 --activate",
+  "postCreateCommand": "corepack enable && corepack prepare pnpm@9.15.0 --activate && pnpm -C src/frontend install --frozen-lockfile && pnpm -C src/frontend exec playwright install --with-deps chromium",
   "forwardPorts": [5173, 8080],
   "customizations": {
     "vscode": {

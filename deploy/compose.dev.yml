@@ -1,0 +1,149 @@
+# Dependencias de desarrollo local. Uso: `make dev-up` (usa deploy/scripts/compose.sh).
+# Variables en deploy/.env (ver .env.example). Ningún valor secreto vive en este archivo.
+#
+# Excepción de desarrollo a .claude/rules/devops.md: los servicios publican puertos SOLO en
+# 127.0.0.1 para que la app corriendo en el Dev Container los alcance vía host.docker.internal.
+# En staging/prod (deploy/compose.yml, Fase 6) los servicios de `data` no publican puertos.
+#
+# Bind mounts: con docker-outside-of-docker el daemon resuelve rutas en el HOST, así que se usa
+# LOCAL_WORKSPACE_FOLDER (lo detecta deploy/scripts/compose.sh); fuera del contenedor, la raíz del repo.
+name: seguros-dev
+
+x-hardening: &hardening
+  restart: unless-stopped
+  security_opt: [no-new-privileges:true]
+  cap_drop: [ALL]
+
+networks:
+  app: {}
+  data: {}
+
+volumes:
+  postgres-data: {}
+  valkey-data: {}
+  seaweedfs-data: {}
+
+services:
+  postgres:
+    <<: *hardening
+    image: postgres:17.11-bookworm@sha256:839fbb5a4942a7758dd93e18b42ea5649807491a0545b5eeeb8f0b8bb11857a5
+    user: "999:999" # postgres; el volumen nombrado hereda la propiedad del directorio de la imagen
+    read_only: true
+    tmpfs: [/tmp, /var/run/postgresql]
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?ejecuta make dev-env}
+      SEGUROS_MIGRATOR_PASSWORD: ${SEGUROS_MIGRATOR_PASSWORD:?ejecuta make dev-env}
+      SEGUROS_APP_PASSWORD: ${SEGUROS_APP_PASSWORD:?ejecuta make dev-env}
+      KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?ejecuta make dev-env}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ${LOCAL_WORKSPACE_FOLDER:-..}/deploy/postgres/init:/docker-entrypoint-initdb.d:ro
+    networks: [data]
+    ports: ["127.0.0.1:5432:5432"]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d seguros"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits: { cpus: "2", memory: 1g }
+
+  valkey:
+    <<: *hardening
+    image: valkey/valkey:9.0.7-alpine@sha256:2d04268dfa26ab31cfa3fdc538866e76438b2d00e41db41b8cb86d780ac5a416
+    user: "999:1000" # valkey
+    read_only: true
+    tmpfs: [/tmp]
+    environment:
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD:?ejecuta make dev-env}
+      REDISCLI_AUTH: ${VALKEY_PASSWORD}
+    command: ["sh", "-c", "exec valkey-server --appendonly yes --requirepass \"$$VALKEY_PASSWORD\""]
+    volumes: [valkey-data:/data]
+    networks: [data]
+    ports: ["127.0.0.1:6379:6379"]
+    healthcheck:
+      test: ["CMD-SHELL", "valkey-cli ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 256m }
+
+  keycloak:
+    <<: *hardening
+    image: quay.io/keycloak/keycloak:26.8.1@sha256:a78d6b79572168cb25886b80a8b5b8d4ed4390743e3eecb810538683e209dd6b
+    # read_only no aplica: `start-dev` recompila Quarkus dentro de /opt/keycloak al arrancar.
+    command: ["start-dev", "--import-realm", "--http-port=8081"]
+    environment:
+      KC_DB: postgres
+      KC_DB_URL: jdbc:postgresql://postgres:5432/keycloak
+      KC_DB_USERNAME: keycloak
+      KC_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?ejecuta make dev-env}
+      KC_BOOTSTRAP_ADMIN_USERNAME: admin
+      KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?ejecuta make dev-env}
+      KC_HEALTH_ENABLED: "true"
+      KC_HOSTNAME: http://localhost:8081
+      # Placeholders de realm-dev.json:
+      KC_BFF_CLIENT_SECRET: ${KC_BFF_CLIENT_SECRET:?ejecuta make dev-env}
+      KC_TEST_USER_PASSWORD: ${KC_TEST_USER_PASSWORD:?ejecuta make dev-env}
+    volumes:
+      - ${LOCAL_WORKSPACE_FOLDER:-..}/deploy/keycloak/realm-dev.json:/opt/keycloak/data/import/realm-dev.json:ro
+    networks: [app, data]
+    ports: ["127.0.0.1:8081:8081"]
+    depends_on:
+      postgres: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD-SHELL", "exec 3<>/dev/tcp/127.0.0.1/9000 && printf 'GET /health/ready HTTP/1.0\\r\\n\\r\\n' >&3 && grep -q '\"UP\"' <&3"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+      start_period: 30s
+    deploy:
+      resources:
+        limits: { cpus: "2", memory: 1g }
+
+  seaweedfs:
+    <<: *hardening
+    image: chrislusf/seaweedfs:4.50@sha256:c2658820e763294a9e9de7b36c81e59b879e3459148351aee4e31a126ca64860
+    user: "1000:1000" # seaweed (la imagen arranca como root)
+    read_only: true
+    tmpfs: [/tmp]
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:?ejecuta make dev-env}
+      S3_SECRET_KEY: ${S3_SECRET_KEY:?ejecuta make dev-env}
+    # La configuración de identidades S3 se genera en tmpfs a partir del entorno.
+    entrypoint:
+      - sh
+      - -c
+      - |
+        printf '{"identities":[{"name":"seguros","credentials":[{"accessKey":"%s","secretKey":"%s"}],"actions":["Admin","Read","Write","List","Tagging"]}]}' \
+          "$$S3_ACCESS_KEY" "$$S3_SECRET_KEY" > /tmp/s3.json
+        exec weed server -dir=/data -ip=seaweedfs -ip.bind=0.0.0.0 -s3 -s3.config=/tmp/s3.json -volume.max=10
+    volumes: [seaweedfs-data:/data]
+    networks: [data]
+    ports: ["127.0.0.1:8333:8333"]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9333/cluster/healthz"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    deploy:
+      resources:
+        limits: { cpus: "1", memory: 512m }
+
+  otel-collector:
+    <<: *hardening
+    image: otel/opentelemetry-collector-contrib:0.164.0@sha256:340c9ca6a36617084c6661bdc4f0fe92b7cda5a805d61673ec8db375fddc522b
+    read_only: true
+    command: ["--config=/etc/otelcol/config.yaml"]
+    volumes:
+      - ${LOCAL_WORKSPACE_FOLDER:-..}/deploy/otel/collector-dev.yaml:/etc/otelcol/config.yaml:ro
+    networks: [app]
+    ports: ["127.0.0.1:4317:4317", "127.0.0.1:4318:4318"]
+    # Imagen sin shell: no admite healthcheck por comando; el endpoint :13133 lo usa CI/monitoreo.
+    deploy:
+      resources:
+        limits: { cpus: "0.5", memory: 256m }

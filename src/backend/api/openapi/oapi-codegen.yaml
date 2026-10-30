@@ -1,0 +1,26 @@
+# Configuración compartida de oapi-codegen para todos los módulos (`make generate-openapi`).
+# El paquete (-package) y la salida (-o) los fija el Makefile por módulo.
+generate:
+  chi-server: true
+  strict-server: true
+  models: true
+  embedded-spec: true # validación de requests contra el contrato (kin-openapi)
+# oapi-codegen v2.8.1 aplica el tipo de `type-mapping` pero ignora su `import`; por eso los
+# paquetes van en additional-imports (el formateador de oapi-codegen elimina los que no se usen).
+additional-imports:
+  - package: github.com/shopspring/decimal
+  - package: github.com/google/uuid
+  - package: github.com/marvinrepremarca/seguros/internal/platform/kernel
+output-options:
+  skip-prune: false
+  nullable-type: true
+  type-mapping:
+    # Nunca floats en el wire (CLAUDE.md regla 4): los montos son `type: string, format: decimal`
+    # y cualquier `number` se decodifica como decimal.
+    number:
+      default: { type: decimal.Decimal, import: github.com/shopspring/decimal }
+    string:
+      formats:
+        decimal: { type: decimal.Decimal, import: github.com/shopspring/decimal }
+        uuid: { type: uuid.UUID, import: github.com/google/uuid }
+        date: { type: kernel.Date, import: github.com/marvinrepremarca/seguros/internal/platform/kernel }

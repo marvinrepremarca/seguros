@@ -1,0 +1,53 @@
+# sqlc v2. Un bloque `sql` por módulo (lo añade /new-module); los overrides son globales.
+# Salida: internal/modules/<modulo>/adapters/postgres/sqlc (código generado, no editar).
+version: "2"
+
+overrides:
+  go:
+    rename:
+      id: ID
+    overrides:
+      # Dinero y porcentajes: numeric → decimal (nunca float; CLAUDE.md regla 4).
+      - db_type: pg_catalog.numeric
+        go_type: github.com/shopspring/decimal.Decimal
+      - db_type: pg_catalog.numeric
+        nullable: true
+        go_type: github.com/shopspring/decimal.NullDecimal
+      - db_type: uuid
+        go_type: github.com/google/uuid.UUID
+      - db_type: uuid
+        nullable: true
+        go_type: github.com/google/uuid.NullUUID
+      # Vigencias: date → kernel.Date (solo fecha, sin zona; CLAUDE.md regla 5).
+      - db_type: date
+        go_type: github.com/marvinrepremarca/seguros/internal/platform/kernel.Date
+      - db_type: date
+        nullable: true
+        go_type:
+          import: github.com/marvinrepremarca/seguros/internal/platform/kernel
+          type: Date
+          pointer: true
+      - db_type: timestamptz
+        go_type: time.Time
+      - db_type: timestamptz
+        nullable: true
+        go_type:
+          type: time.Time
+          pointer: true
+
+sql: []
+# Plantilla por módulo:
+#  - name: policies
+#    engine: postgresql
+#    schema: migrations/policies
+#    queries: queries/policies
+#    strict_function_checks: true
+#    gen:
+#      go:
+#        package: policiessqlc
+#        out: internal/modules/policies/adapters/postgres/sqlc
+#        sql_package: pgx/v5
+#        emit_interface: true
+#        emit_empty_slices: true
+#        emit_result_struct_pointers: false
+#        emit_enum_valid_method: true

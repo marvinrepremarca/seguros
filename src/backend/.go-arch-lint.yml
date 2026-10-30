@@ -1,0 +1,65 @@
+# Capas hexagonales (ARCHITECTURE.md §1.3). Las fronteras ENTRE módulos (solo <otro>/contracts)
+# las verifica test/arch, porque un glob con * agrupa todos los módulos en un mismo componente.
+version: 3
+workdir: .
+
+allow:
+  depOnAnyVendor: false
+  ignoreNotFoundComponents: true # los módulos se crean a partir de la Fase 1
+
+excludeFiles:
+  - "^.*_test\\.go$"
+  - "^.*\\.gen\\.go$"
+
+vendors:
+  decimal: { in: github.com/shopspring/decimal }
+  uuid: { in: github.com/google/uuid }
+
+components:
+  kernel: { in: internal/platform/kernel/** }
+  platform:
+    in:
+      - internal/platform/config/**
+      - internal/platform/obs/**
+      - internal/platform/httpx/**
+      - internal/platform/db/**
+      - internal/platform/authz/**
+      - internal/platform/flags/**
+      - internal/platform/outbox/**
+      - internal/platform/jobs/**
+      - internal/platform/crypto/**
+  module: { in: internal/modules/* }
+  domain: { in: internal/modules/*/domain/** }
+  app: { in: internal/modules/*/app/** }
+  adapters: { in: internal/modules/*/adapters/** }
+  contracts: { in: internal/modules/*/contracts/** }
+  cmd: { in: cmd/** }
+  testsupport: { in: test/** }
+
+deps:
+  kernel:
+    canUse: [decimal, uuid]
+  contracts:
+    mayDependOn: [kernel]
+    canUse: [uuid]
+  domain:
+    mayDependOn: [kernel]
+    canUse: [uuid]
+  app:
+    mayDependOn: [kernel, domain, platform, contracts]
+    canUse: [uuid]
+  adapters:
+    mayDependOn: [kernel, domain, app, platform, contracts]
+    anyVendorDeps: true
+  module:
+    mayDependOn: [kernel, domain, app, adapters, platform, contracts]
+    anyVendorDeps: true
+  platform:
+    mayDependOn: [kernel, platform]
+    anyVendorDeps: true
+  cmd:
+    anyProjectDeps: true
+    anyVendorDeps: true
+  testsupport:
+    anyProjectDeps: true
+    anyVendorDeps: true

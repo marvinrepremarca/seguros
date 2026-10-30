@@ -1,0 +1,280 @@
+{
+  "realm": "seguros-dev",
+  "displayName": "Seguros (desarrollo)",
+  "enabled": true,
+  "sslRequired": "external",
+  "registrationAllowed": false,
+  "loginWithEmailAllowed": true,
+  "duplicateEmailsAllowed": false,
+  "resetPasswordAllowed": false,
+  "editUsernameAllowed": false,
+  "bruteForceProtected": true,
+  "permanentLockout": false,
+  "failureFactor": 5,
+  "maxFailureWaitSeconds": 900,
+  "passwordPolicy": "length(12) and notUsername and notEmail and passwordHistory(5)",
+  "accessTokenLifespan": 300,
+  "ssoSessionIdleTimeout": 1800,
+  "ssoSessionMaxLifespan": 28800,
+  "defaultSignatureAlgorithm": "RS256",
+  "internationalizationEnabled": true,
+  "supportedLocales": [
+    "es"
+  ],
+  "defaultLocale": "es",
+  "roles": {
+    "realm": [
+      {
+        "name": "TenantAdmin",
+        "description": "Configuración, usuarios y flags del tenant"
+      },
+      {
+        "name": "Manager",
+        "description": "Lectura total; aprobación de overrides; comisiones"
+      },
+      {
+        "name": "SalesAgent",
+        "description": "Leads y cotizaciones propias; pólizas propias (lectura)"
+      },
+      {
+        "name": "Operations",
+        "description": "Expedición, endosos, renovaciones, cancelaciones"
+      },
+      {
+        "name": "ClaimsAnalyst",
+        "description": "Siniestros (incluye datos de salud)"
+      },
+      {
+        "name": "Collections",
+        "description": "Cuotas, pagos, gestión de cobro"
+      },
+      {
+        "name": "Accounting",
+        "description": "Comisiones, conciliación, facturación"
+      },
+      {
+        "name": "ComplianceOfficer",
+        "description": "SARLAFT, PQR, auditoría, exportes de habeas data"
+      }
+    ]
+  },
+  "clients": [
+    {
+      "clientId": "seguros-bff",
+      "name": "Seguros BFF",
+      "description": "Cliente confidencial del BFF (cmd/api). Los tokens nunca llegan al navegador.",
+      "enabled": true,
+      "protocol": "openid-connect",
+      "publicClient": false,
+      "clientAuthenticatorType": "client-secret",
+      "secret": "${KC_BFF_CLIENT_SECRET}",
+      "standardFlowEnabled": true,
+      "implicitFlowEnabled": false,
+      "directAccessGrantsEnabled": false,
+      "serviceAccountsEnabled": false,
+      "frontchannelLogout": false,
+      "redirectUris": [
+        "http://localhost:8080/bff/auth/callback"
+      ],
+      "webOrigins": [],
+      "attributes": {
+        "pkce.code.challenge.method": "S256",
+        "post.logout.redirect.uris": "http://localhost:5173/",
+        "access.token.signed.response.alg": "RS256",
+        "id.token.signed.response.alg": "RS256"
+      },
+      "fullScopeAllowed": true,
+      "protocolMappers": [
+        {
+          "name": "realm-roles",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-usermodel-realm-role-mapper",
+          "config": {
+            "multivalued": "true",
+            "claim.name": "roles",
+            "jsonType.label": "String",
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "userinfo.token.claim": "true"
+          }
+        },
+        {
+          "name": "audience-bff",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-audience-mapper",
+          "config": {
+            "included.client.audience": "seguros-bff",
+            "id.token.claim": "false",
+            "access.token.claim": "true"
+          }
+        }
+      ]
+    }
+  ],
+  "users": [
+    {
+      "username": "admin.dev",
+      "email": "admin.dev@example.test",
+      "emailVerified": true,
+      "firstName": "Admin",
+      "lastName": "Dev",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_TEST_USER_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "TenantAdmin"
+      ]
+    },
+    {
+      "username": "manager.dev",
+      "email": "manager.dev@example.test",
+      "emailVerified": true,
+      "firstName": "Manager",
+      "lastName": "Dev",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_TEST_USER_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "Manager"
+      ]
+    },
+    {
+      "username": "sales.dev",
+      "email": "sales.dev@example.test",
+      "emailVerified": true,
+      "firstName": "Sales",
+      "lastName": "Dev",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_TEST_USER_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "SalesAgent"
+      ]
+    },
+    {
+      "username": "ops.dev",
+      "email": "ops.dev@example.test",
+      "emailVerified": true,
+      "firstName": "Ops",
+      "lastName": "Dev",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_TEST_USER_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "Operations"
+      ]
+    },
+    {
+      "username": "claims.dev",
+      "email": "claims.dev@example.test",
+      "emailVerified": true,
+      "firstName": "Claims",
+      "lastName": "Dev",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_TEST_USER_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ClaimsAnalyst"
+      ]
+    },
+    {
+      "username": "collections.dev",
+      "email": "collections.dev@example.test",
+      "emailVerified": true,
+      "firstName": "Collections",
+      "lastName": "Dev",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_TEST_USER_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "Collections"
+      ]
+    },
+    {
+      "username": "accounting.dev",
+      "email": "accounting.dev@example.test",
+      "emailVerified": true,
+      "firstName": "Accounting",
+      "lastName": "Dev",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_TEST_USER_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "Accounting"
+      ]
+    },
+    {
+      "username": "compliance.dev",
+      "email": "compliance.dev@example.test",
+      "emailVerified": true,
+      "firstName": "Compliance",
+      "lastName": "Dev",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_TEST_USER_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "ComplianceOfficer"
+      ]
+    },
+    {
+      "username": "multi.dev",
+      "email": "multi.dev@example.test",
+      "emailVerified": true,
+      "firstName": "Multi",
+      "lastName": "Dev",
+      "enabled": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "${KC_TEST_USER_PASSWORD}",
+          "temporary": false
+        }
+      ],
+      "realmRoles": [
+        "Operations",
+        "Collections",
+        "SalesAgent"
+      ]
+    }
+  ]
+}
