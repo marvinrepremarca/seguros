@@ -30,11 +30,23 @@ func TestValkeyCacheAndCrossInstanceInvalidation(t *testing.T) {
 	_, ok, err := cache.Get(ctx, "t:x")
 	require.NoError(t, err)
 	assert.False(t, ok)
-	require.NoError(t, cache.Set(ctx, "t:x", map[flags.Key]bool{flags.ClaimsModule: true}))
+	gen, err := cache.Generation(ctx, "t:x")
+	require.NoError(t, err)
+	require.NoError(t, cache.Set(ctx, "t:x", gen, map[flags.Key]bool{flags.ClaimsModule: true}))
 	v, ok, err := cache.Get(ctx, "t:x")
 	require.NoError(t, err)
 	require.True(t, ok)
 	assert.True(t, v[flags.ClaimsModule])
+
+	// Carrera: un lector toma la generación, se invalida (cambio confirmado) y luego guarda el
+	// valor viejo → ese valor se ignora en vez de envenenar la caché.
+	stale, err := cache.Generation(ctx, "t:x")
+	require.NoError(t, err)
+	require.NoError(t, cache.Invalidate(ctx, "t:x"))
+	require.NoError(t, cache.Set(ctx, "t:x", stale, map[flags.Key]bool{flags.ClaimsModule: true}))
+	_, ok, err = cache.Get(ctx, "t:x")
+	require.NoError(t, err)
+	assert.False(t, ok, "valor con generación vieja descartado")
 
 	// Dos "instancias" comparten L2 y se invalidan por pub/sub.
 	store := &fakeStore{overrides: map[kernel.TenantID]map[flags.Key]bool{}}

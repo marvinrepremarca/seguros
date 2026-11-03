@@ -189,7 +189,7 @@ func (d *Dispatcher) deadLetter(c Consumer) message.HandlerMiddleware {
 				return nil, nil
 			}
 			ctx := reqctx.WithTenantID(context.WithoutCancel(msg.Context()), e.TenantID)
-			d.opts.Logger.ErrorContext(ctx, "evento enviado a dead letters", "consumer", c.Name, "event_id", e.ID.String(), "error", err)
+			d.opts.Logger.ErrorContext(ctx, "evento enviado a dead letters", "consumer", c.Name, "event_id", e.ID.String(), "error", err) // el log no persiste en BD; trace_id correlaciona
 			if derr := d.recordDeadLetter(ctx, c, e, err); derr != nil {
 				// Sin poder guardarlo, se devuelve el error: Watermill lo reentrega.
 				return nil, errors.Join(err, derr)
@@ -204,9 +204,10 @@ func (d *Dispatcher) recordDeadLetter(ctx context.Context, c Consumer, e Event, 
 	if err != nil {
 		return err
 	}
-	msg := cause.Error()
-	if len(msg) > 500 {
-		msg = msg[:500]
+	// Solo un código estable: el texto de un error puede contener datos (valores de SQL, PII).
+	msg := "outbox.consumer_failed"
+	if de, ok := kernel.AsDomainError(cause); ok {
+		msg = de.Code()
 	}
 	return d.opts.DB.WithTenantTx(ctx, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `

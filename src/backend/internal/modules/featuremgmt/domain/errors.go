@@ -19,6 +19,7 @@ var (
 	ErrDependencyDisabled   = kernel.NewError(kernel.KindConflict, "featuremgmt.flag.dependency_disabled", "una dependencia del flag está apagada")
 	ErrHasEnabledDependents = kernel.NewError(kernel.KindConflict, "featuremgmt.flag.has_enabled_dependents", "hay flags encendidos que dependen de este")
 	ErrInvalidReason        = kernel.NewError(kernel.KindValidation, "featuremgmt.flag.invalid_reason", "el motivo debe tener entre 3 y 500 caracteres")
+	ErrInvalidOperator      = kernel.NewError(kernel.KindValidation, "featuremgmt.switch.invalid_operator", "el operador es obligatorio (máx. 120 caracteres)")
 )
 
 // Reason es el motivo obligatorio de un cambio de flag (queda en la auditoría).

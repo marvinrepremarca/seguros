@@ -35,6 +35,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?ejecuta make dev-env}
       SEGUROS_MIGRATOR_PASSWORD: ${SEGUROS_MIGRATOR_PASSWORD:?ejecuta make dev-env}
       SEGUROS_APP_PASSWORD: ${SEGUROS_APP_PASSWORD:?ejecuta make dev-env}
+      SEGUROS_WORKER_PASSWORD: ${SEGUROS_WORKER_PASSWORD:?ejecuta make dev-env}
+      SEGUROS_PLATFORM_PASSWORD: ${SEGUROS_PLATFORM_PASSWORD:?ejecuta make dev-env}
       KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?ejecuta make dev-env}
     volumes:
       - postgres-data:/var/lib/postgresql/data

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type FeaturemgmtGlobalSwitch struct {
@@ -15,6 +16,17 @@ type FeaturemgmtGlobalSwitch struct {
 	Enabled   bool
 	Reason    string
 	UpdatedAt time.Time
+	UpdatedBy pgtype.Text
+}
+
+type FeaturemgmtGlobalSwitchHistory struct {
+	ID        uuid.UUID
+	FlagKey   string
+	Previous  pgtype.Bool
+	New       pgtype.Bool
+	Reason    string
+	Operator  string
+	ChangedAt time.Time
 }
 
 type FeaturemgmtTenantOverride struct {

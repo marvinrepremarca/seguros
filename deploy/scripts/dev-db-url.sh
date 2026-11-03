@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Imprime la URL de conexión del PostgreSQL de desarrollo para un rol (app | migrator), leyendo la
+# Imprime la URL de conexión del PostgreSQL de desarrollo para un rol (app | migrator | worker | platform), leyendo la
 # contraseña de deploy/.env. Solo desarrollo; úsala dentro de una sustitución de comando para no
 # mostrar la contraseña: SEGUROS_DB_URL="$(deploy/scripts/dev-db-url.sh app)" ...
 set -euo pipefail
@@ -9,7 +9,9 @@ role="${1:-}"
 case "$role" in
   app)      user=seguros_app;      key=SEGUROS_APP_PASSWORD ;;
   migrator) user=seguros_migrator; key=SEGUROS_MIGRATOR_PASSWORD ;;
-  *) echo "uso: $0 app|migrator" >&2; exit 2 ;;
+  worker)   user=seguros_worker;   key=SEGUROS_WORKER_PASSWORD ;;
+  platform) user=seguros_platform; key=SEGUROS_PLATFORM_PASSWORD ;;
+  *) echo "uso: $0 app|migrator|worker|platform" >&2; exit 2 ;;
 esac
 
 [[ -f "$dir/.env" ]] || { echo "falta deploy/.env: ejecuta make dev-up" >&2; exit 1; }

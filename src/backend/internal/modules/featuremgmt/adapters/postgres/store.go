@@ -4,11 +4,13 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	featuremgmtsqlc "github.com/marvinrepremarca/seguros/internal/modules/featuremgmt/adapters/postgres/sqlc"
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt/app"
@@ -77,20 +79,41 @@ func (s *Store) GlobalSwitches(ctx context.Context) (map[flags.Key]bool, error) 
 	return out, err
 }
 
-// SetGlobalSwitch implementa app.Store.
-func (s *Store) SetGlobalSwitch(ctx context.Context, key flags.Key, enabled *bool, reason string, now time.Time) error {
+// SetGlobalSwitch implementa app.Store. Requiere el rol seguros_platform (cmd/platformctl): la
+// API y el worker no tienen permiso de escritura sobre los switches globales.
+func (s *Store) SetGlobalSwitch(ctx context.Context, key flags.Key, enabled *bool, reason, operator string, now time.Time) error {
 	return s.db.WithoutTenantTx(ctx, func(tx pgx.Tx) error {
 		q := featuremgmtsqlc.New(tx)
+		previous := pgtype.Bool{}
+		prev, err := q.GetGlobalSwitchForUpdate(ctx, string(key))
+		switch {
+		case err == nil:
+			previous = pgtype.Bool{Bool: prev, Valid: true}
+		case !errors.Is(err, pgx.ErrNoRows):
+			return fmt.Errorf("featuremgmt: leyendo switch global: %w", err)
+		}
+		next := pgtype.Bool{}
 		if enabled == nil {
 			if _, err := q.DeleteGlobalSwitch(ctx, string(key)); err != nil {
 				return fmt.Errorf("featuremgmt: borrando switch global: %w", err)
 			}
-			return nil
+		} else {
+			next = pgtype.Bool{Bool: *enabled, Valid: true}
+			if err := q.UpsertGlobalSwitch(ctx, featuremgmtsqlc.UpsertGlobalSwitchParams{
+				FlagKey: string(key), Enabled: *enabled, Reason: reason, Now: now,
+				Operator: pgtype.Text{String: operator, Valid: true},
+			}); err != nil {
+				return fmt.Errorf("featuremgmt: guardando switch global: %w", err)
+			}
 		}
-		if err := q.UpsertGlobalSwitch(ctx, featuremgmtsqlc.UpsertGlobalSwitchParams{
-			FlagKey: string(key), Enabled: *enabled, Reason: reason, Now: now,
+		id, err := uuid.NewV7()
+		if err != nil {
+			return fmt.Errorf("featuremgmt: id de historial: %w", err)
+		}
+		if err := q.InsertGlobalSwitchHistory(ctx, featuremgmtsqlc.InsertGlobalSwitchHistoryParams{
+			ID: id, FlagKey: string(key), Previous: previous, New: next, Reason: reason, Operator: operator, Now: now,
 		}); err != nil {
-			return fmt.Errorf("featuremgmt: guardando switch global: %w", err)
+			return fmt.Errorf("featuremgmt: historial de switch global: %w", err)
 		}
 		return nil
 	})

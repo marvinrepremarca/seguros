@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 const deleteGlobalSwitch = `-- name: DeleteGlobalSwitch :execrows
@@ -40,6 +41,45 @@ func (q *Queries) DeleteTenantOverride(ctx context.Context, arg DeleteTenantOver
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const getGlobalSwitchForUpdate = `-- name: GetGlobalSwitchForUpdate :one
+SELECT enabled FROM featuremgmt.global_switches WHERE flag_key = $1 FOR UPDATE
+`
+
+func (q *Queries) GetGlobalSwitchForUpdate(ctx context.Context, flagKey string) (bool, error) {
+	row := q.db.QueryRow(ctx, getGlobalSwitchForUpdate, flagKey)
+	var enabled bool
+	err := row.Scan(&enabled)
+	return enabled, err
+}
+
+const insertGlobalSwitchHistory = `-- name: InsertGlobalSwitchHistory :exec
+INSERT INTO featuremgmt.global_switch_history (id, flag_key, previous, new, reason, operator, changed_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7)
+`
+
+type InsertGlobalSwitchHistoryParams struct {
+	ID       uuid.UUID
+	FlagKey  string
+	Previous pgtype.Bool
+	New      pgtype.Bool
+	Reason   string
+	Operator string
+	Now      time.Time
+}
+
+func (q *Queries) InsertGlobalSwitchHistory(ctx context.Context, arg InsertGlobalSwitchHistoryParams) error {
+	_, err := q.db.Exec(ctx, insertGlobalSwitchHistory,
+		arg.ID,
+		arg.FlagKey,
+		arg.Previous,
+		arg.New,
+		arg.Reason,
+		arg.Operator,
+		arg.Now,
+	)
+	return err
 }
 
 const listGlobalSwitches = `-- name: ListGlobalSwitches :many
@@ -113,17 +153,19 @@ func (q *Queries) ListTenantOverrides(ctx context.Context, tenantID uuid.UUID) (
 }
 
 const upsertGlobalSwitch = `-- name: UpsertGlobalSwitch :exec
-INSERT INTO featuremgmt.global_switches (flag_key, enabled, reason, updated_at)
-VALUES ($1, $2, $3, $4)
+INSERT INTO featuremgmt.global_switches (flag_key, enabled, reason, updated_at, updated_by)
+VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (flag_key) DO UPDATE
-SET enabled = EXCLUDED.enabled, reason = EXCLUDED.reason, updated_at = EXCLUDED.updated_at
+SET enabled = EXCLUDED.enabled, reason = EXCLUDED.reason, updated_at = EXCLUDED.updated_at,
+    updated_by = EXCLUDED.updated_by
 `
 
 type UpsertGlobalSwitchParams struct {
-	FlagKey string
-	Enabled bool
-	Reason  string
-	Now     time.Time
+	FlagKey  string
+	Enabled  bool
+	Reason   string
+	Now      time.Time
+	Operator pgtype.Text
 }
 
 func (q *Queries) UpsertGlobalSwitch(ctx context.Context, arg UpsertGlobalSwitchParams) error {
@@ -132,6 +174,7 @@ func (q *Queries) UpsertGlobalSwitch(ctx context.Context, arg UpsertGlobalSwitch
 		arg.Enabled,
 		arg.Reason,
 		arg.Now,
+		arg.Operator,
 	)
 	return err
 }

@@ -1,6 +1,8 @@
 // Package jobs envuelve River (edición OSS, MPL-2.0) para los trabajos programados y en segundo
-// plano (ARCHITECTURE.md §5): cliente del worker con jobs periódicos, cliente de solo inserción
-// para la API y InsertTx para encolar dentro de la misma transacción del cambio.
+// plano (ARCHITECTURE.md §5): cliente del worker con jobs periódicos e InsertTx para encolar dentro
+// de una transacción. Solo el rol seguros_worker accede a las tablas de River (no tienen RLS): un
+// módulo que necesita un job desde la API publica un evento (outbox, atado por RLS a su tenant) y
+// su consumidor en el worker lo encola con el tenant del evento.
 //
 // Los argumentos de un job llevan IDs y el tenant (nunca datos Restringidos); el worker abre
 // db.WithTenantTx con ese tenant y verifica el flag del módulo antes de actuar
@@ -38,15 +40,6 @@ func (i inserter) InsertTx(ctx context.Context, tx pgx.Tx, args river.JobArgs, o
 		return fmt.Errorf("jobs: encolando %s: %w", args.Kind(), err)
 	}
 	return nil
-}
-
-// NewInsertOnlyClient crea un cliente que solo encola (cmd/api: no ejecuta jobs).
-func NewInsertOnlyClient(pool *pgxpool.Pool, logger *slog.Logger) (Inserter, error) {
-	c, err := river.NewClient(riverpgxv5.New(pool), &river.Config{Schema: migrate.RiverSchema, Logger: logger})
-	if err != nil {
-		return nil, fmt.Errorf("jobs: cliente de inserción: %w", err)
-	}
-	return inserter{client: c}, nil
 }
 
 // WorkerOptions configura el cliente del worker.

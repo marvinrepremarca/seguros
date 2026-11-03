@@ -23,7 +23,11 @@ import (
 	"github.com/marvinrepremarca/seguros/test/pgtest"
 )
 
-var database *db.DB //nolint:gochecknoglobals // compartido por la suite (TestMain)
+//nolint:gochecknoglobals // compartidos por la suite (TestMain)
+var (
+	database *db.DB // rol seguros_worker
+	appDB    *db.DB // rol seguros_app
+)
 
 func TestMain(m *testing.M) { os.Exit(runMain(m)) }
 
@@ -39,12 +43,18 @@ func runMain(m *testing.M) int {
 		slog.Error("migrando", "error", err)
 		return 1
 	}
-	database, err = env.OpenApp(ctx)
+	database, err = env.OpenWorker(ctx)
 	if err != nil {
 		slog.Error("abriendo BD", "error", err)
 		return 1
 	}
 	defer database.Close()
+	appDB, err = env.OpenApp(ctx)
+	if err != nil {
+		slog.Error("abriendo BD", "error", err)
+		return 1
+	}
+	defer appDB.Close()
 	return m.Run()
 }
 
@@ -119,4 +129,17 @@ func TestInsertTxIsTransactionalAndJobsRun(t *testing.T) {
 		})
 		return err == nil && n == 2
 	}, 15*time.Second, 100*time.Millisecond)
+}
+
+func TestAPIRoleHasNoRiverAccess(t *testing.T) {
+	for _, q := range []string{
+		`SELECT count(*) FROM river.river_job`,
+		`INSERT INTO river.river_job (args, kind, max_attempts, queue, state) VALUES ('{}', 'test.x', 1, 'default', 'available')`,
+	} {
+		err := appDB.WithoutTenantTx(context.Background(), func(tx pgx.Tx) error {
+			_, err := tx.Exec(context.Background(), q)
+			return err
+		})
+		require.Error(t, err, "la API no toca River (los jobs los encola el worker): %s", q)
+	}
 }

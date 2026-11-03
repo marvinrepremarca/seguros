@@ -48,11 +48,17 @@ type Store interface {
 	GlobalSwitches(ctx context.Context) (map[Key]bool, error)
 }
 
-// SharedCache es la caché L2 compartida entre instancias (Valkey).
+// SharedCache es la caché L2 compartida entre instancias (Valkey). Cada scope tiene una
+// generación que Invalidate incrementa: un valor leído de la BD antes de un cambio y guardado
+// después lleva la generación vieja y se ignora (evita repoblar la caché con un valor obsoleto).
 type SharedCache interface {
+	// Generation devuelve la generación vigente del scope (se lee ANTES de consultar la BD).
+	Generation(ctx context.Context, scope string) (int64, error)
+	// Get devuelve el valor solo si fue guardado con la generación vigente.
 	Get(ctx context.Context, scope string) (map[Key]bool, bool, error)
-	Set(ctx context.Context, scope string, v map[Key]bool) error
-	Delete(ctx context.Context, scope string) error
+	Set(ctx context.Context, scope string, gen int64, v map[Key]bool) error
+	// Invalidate incrementa la generación y borra el valor.
+	Invalidate(ctx context.Context, scope string) error
 }
 
 // Checker responde si un flag está encendido para la petición del contexto. Fail-closed: ante
@@ -179,7 +185,7 @@ func (e *Evaluator) Invalidate(ctx context.Context, tenant kernel.TenantID) erro
 	if e.shared == nil {
 		return nil
 	}
-	if err := e.shared.Delete(ctx, scope); err != nil {
+	if err := e.shared.Invalidate(ctx, scope); err != nil {
 		return fmt.Errorf("flags: invalidando caché compartida: %w", err)
 	}
 	return nil
@@ -236,14 +242,20 @@ func (e *Evaluator) load(ctx context.Context, scope string, fetch func(context.C
 	if cached && now.Before(entry.expires) {
 		return entry.value, nil
 	}
+	gen, sharedOK := int64(0), false
 	if e.shared != nil {
 		v, ok, err := e.shared.Get(ctx, scope)
-		if err != nil {
-			e.logger.WarnContext(ctx, "caché compartida de flags no disponible", "error", err)
-		} else if ok {
+		if err == nil && ok {
 			e.put(scope, v, now)
 			return v, nil
 		}
+		if err == nil {
+			gen, err = e.shared.Generation(ctx, scope)
+		}
+		if err != nil {
+			e.logger.WarnContext(ctx, "caché compartida de flags no disponible", "error", err)
+		}
+		sharedOK = err == nil
 	}
 	v, err := fetch(ctx)
 	if err != nil {
@@ -256,8 +268,8 @@ func (e *Evaluator) load(ctx context.Context, scope string, fetch func(context.C
 	if v == nil {
 		v = map[Key]bool{}
 	}
-	if e.shared != nil {
-		if err := e.shared.Set(ctx, scope, v); err != nil {
+	if sharedOK {
+		if err := e.shared.Set(ctx, scope, gen, v); err != nil {
 			e.logger.WarnContext(ctx, "guardando flags en caché compartida", "error", err)
 		}
 	}

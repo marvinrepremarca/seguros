@@ -39,6 +39,11 @@ const (
 	headerLen       = 1 + 4
 	dekSize         = 32
 	dekCacheTT      = time.Hour
+	// activeTTL acota cuánto tarda una réplica en enterarse de una rotación de DEK (deja de cifrar
+	// con la retirada).
+	activeTTL = time.Minute
+	// minReload limita las recargas forzadas por versión desconocida (ciphertext forjado).
+	minReload = 5 * time.Second
 )
 
 // Errores del cifrado. ErrDecrypt no distingue la causa (llave, manipulación, campo o tenant
@@ -194,7 +199,7 @@ func aad(header []byte, tenant kernel.TenantID, field string) []byte {
 }
 
 func (s *Service) activeKey(ctx context.Context, tenant kernel.TenantID) (uint32, []byte, error) {
-	tk, err := s.load(ctx, tenant, true)
+	tk, err := s.load(ctx, tenant, true, false)
 	if err != nil {
 		return 0, nil, err
 	}
@@ -210,7 +215,9 @@ func (s *Service) keyVersion(ctx context.Context, tenant kernel.TenantID, versio
 			return k.key, nil
 		}
 	}
-	tk, err := s.load(ctx, tenant, false)
+	// Versión desconocida en caché (p. ej. otra réplica rotó la DEK): recarga ignorando el TTL.
+	force := ok && s.clock.Now().Sub(tk.loadedT) >= minReload
+	tk, err := s.load(ctx, tenant, false, force)
 	if err != nil {
 		return nil, err
 	}
@@ -221,14 +228,14 @@ func (s *Service) keyVersion(ctx context.Context, tenant kernel.TenantID, versio
 	return k.key, nil
 }
 
-// load lee y desenvuelve las DEKs del tenant (con caché de 1 h). Con create, si el tenant no
+// load lee y desenvuelve las DEKs del tenant (caché: la DEK activa se revalida cada minuto). Con create, si el tenant no
 // tiene DEK activa la crea (carrera entre instancias resuelta por el índice único).
-func (s *Service) load(ctx context.Context, tenant kernel.TenantID, create bool) (*tenantKeys, error) {
+func (s *Service) load(ctx context.Context, tenant kernel.TenantID, create, force bool) (*tenantKeys, error) {
 	now := s.clock.Now()
 	s.mu.Lock()
 	tk, ok := s.cache[tenant]
 	s.mu.Unlock()
-	if ok && tk.active != 0 && now.Sub(tk.loadedT) < dekCacheTT {
+	if ok && !force && tk.active != 0 && now.Sub(tk.loadedT) < activeTTL {
 		return tk, nil
 	}
 

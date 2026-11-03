@@ -34,7 +34,11 @@ import (
 	"github.com/marvinrepremarca/seguros/test/pgtest"
 )
 
-var database *db.DB //nolint:gochecknoglobals // compartido por la suite (TestMain)
+//nolint:gochecknoglobals // compartidos por la suite (TestMain)
+var (
+	database   *db.DB // rol seguros_app (API)
+	platformDB *db.DB // rol seguros_platform (platformctl)
+)
 
 func TestMain(m *testing.M) { os.Exit(runMain(m)) }
 
@@ -56,6 +60,12 @@ func runMain(m *testing.M) int {
 		return 1
 	}
 	defer database.Close()
+	platformDB, err = env.OpenPlatform(ctx)
+	if err != nil {
+		slog.Error("abriendo BD", "error", err)
+		return 1
+	}
+	defer platformDB.Close()
 	return m.Run()
 }
 
@@ -89,7 +99,9 @@ type env struct {
 // principalKey lleva el principal de prueba en la petición (sustituye a la sesión del BFF).
 type principalKey struct{}
 
-func newEnv(t *testing.T) *env {
+func newEnv(t *testing.T) *env { return newEnvWith(t, database) }
+
+func newEnvWith(t *testing.T, database *db.DB) *env {
 	t.Helper()
 	logger := slog.New(slog.DiscardHandler)
 	clock := kernel.NewFakeClock(time.Now().UTC()) //nolint:forbidigo // partición de auditoría del mes actual
@@ -270,8 +282,29 @@ func TestGlobalKillSwitch(t *testing.T) {
 	ctx := reqctx.WithTenantPlan(reqctx.WithTenantID(context.Background(), a), "profesional")
 	require.True(t, e.eval.IsEnabled(ctx, flags.ClaimsModule))
 
-	require.NoError(t, e.mod.SetGlobalSwitch.Handle(context.Background(), app.SetGlobalSwitchCommand{Key: flags.ClaimsModule, Enabled: boolPtr(false), Reason: "incidente"}))
+	kill := app.SetGlobalSwitchCommand{Key: flags.ClaimsModule, Enabled: boolPtr(false), Reason: "incidente", Operator: "ana.ops"}
+	require.Error(t, e.mod.SetGlobalSwitch.Handle(context.Background(), kill), "con el rol de la API no se escriben switches globales")
+
+	platform := newEnvWith(t, platformDB)
+	require.NoError(t, platform.mod.SetGlobalSwitch.Handle(context.Background(), kill))
+	require.NoError(t, e.eval.Invalidate(context.Background(), kernel.TenantID{}))
 	assert.False(t, e.eval.IsEnabled(ctx, flags.ClaimsModule), "kill switch gana al plan")
-	require.NoError(t, e.mod.SetGlobalSwitch.Handle(context.Background(), app.SetGlobalSwitchCommand{Key: flags.ClaimsModule, Reason: "resuelto"}))
+	require.NoError(t, platform.mod.SetGlobalSwitch.Handle(context.Background(),
+		app.SetGlobalSwitchCommand{Key: flags.ClaimsModule, Reason: "resuelto", Operator: "ana.ops"}))
+	require.NoError(t, e.eval.Invalidate(context.Background(), kernel.TenantID{}))
 	assert.True(t, e.eval.IsEnabled(ctx, flags.ClaimsModule))
+
+	var rows int
+	var ops string
+	require.NoError(t, platformDB.WithoutTenantTx(context.Background(), func(tx pgx.Tx) error {
+		return tx.QueryRow(context.Background(), `SELECT count(*), string_agg(DISTINCT operator, ',') FROM featuremgmt.global_switch_history
+			WHERE flag_key = 'module.claims' AND reason IN ('incidente', 'resuelto')`).Scan(&rows, &ops)
+	}))
+	assert.Equal(t, 2, rows, "historial con valor anterior/nuevo")
+	assert.Equal(t, "ana.ops", ops)
+	err := platformDB.WithoutTenantTx(context.Background(), func(tx pgx.Tx) error {
+		_, err := tx.Exec(context.Background(), `DELETE FROM featuremgmt.global_switch_history`)
+		return err
+	})
+	require.Error(t, err, "historial append-only")
 }

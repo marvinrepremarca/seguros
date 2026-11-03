@@ -209,3 +209,55 @@ func TestConcurrentFirstUseCreatesASingleKey(t *testing.T) {
 		assert.Equal(t, []byte("v"), got)
 	}
 }
+
+func TestRotationIsSeenByOtherReplicas(t *testing.T) {
+	t.Parallel()
+	kek, idx := material(), material()
+	clock := kernel.NewFakeClock(time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC))
+	mk := func() *crypto.Service {
+		k, err := crypto.NewLocalKEK(map[string]string{"v1": kek}, "v1")
+		require.NoError(t, err)
+		s, err := crypto.NewService(database, k, idx, clock)
+		require.NoError(t, err)
+		return s
+	}
+	a, b := mk(), mk()
+	ctx := tenant()
+	_, err := b.Encrypt(ctx, field, []byte("calienta la caché de B"))
+	require.NoError(t, err)
+
+	_, err = a.RotateDataKey(ctx)
+	require.NoError(t, err)
+	fresh, err := a.Encrypt(ctx, field, []byte("v2"))
+	require.NoError(t, err)
+
+	clock.Advance(10 * time.Second)
+	got, err := b.Decrypt(ctx, field, fresh)
+	require.NoError(t, err, "B recarga al ver una versión que no conoce")
+	assert.Equal(t, []byte("v2"), got)
+
+	clock.Advance(2 * time.Minute)
+	c, err := b.Encrypt(ctx, field, []byte("x"))
+	require.NoError(t, err)
+	assert.Equal(t, []byte{0x01, 0, 0, 0, 2}, c[:5], "B deja de cifrar con la DEK retirada")
+}
+
+func TestAppCannotOverwriteWrappedKeys(t *testing.T) {
+	t.Parallel()
+	s := newService(t, material(), material())
+	ctx := tenant()
+	_, err := s.Encrypt(ctx, field, []byte("x"))
+	require.NoError(t, err)
+	err = database.WithTenantTx(ctx, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `UPDATE crypto.data_keys SET wrapped = decode('00112233445566778899aabbccddeeff', 'hex')`)
+		return err
+	})
+	require.Error(t, err, "la app no sobrescribe la DEK envuelta")
+	_, err = s.RotateDataKey(ctx)
+	require.NoError(t, err, "retirar (active → retired) sí está permitido")
+	err = database.WithTenantTx(ctx, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `UPDATE crypto.data_keys SET status = 'active' WHERE status = 'retired'`)
+		return err
+	})
+	require.Error(t, err, "no se reactiva una DEK retirada")
+}

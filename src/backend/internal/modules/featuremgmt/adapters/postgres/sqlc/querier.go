@@ -13,6 +13,8 @@ import (
 type Querier interface {
 	DeleteGlobalSwitch(ctx context.Context, flagKey string) (int64, error)
 	DeleteTenantOverride(ctx context.Context, arg DeleteTenantOverrideParams) (int64, error)
+	GetGlobalSwitchForUpdate(ctx context.Context, flagKey string) (bool, error)
+	InsertGlobalSwitchHistory(ctx context.Context, arg InsertGlobalSwitchHistoryParams) error
 	ListGlobalSwitches(ctx context.Context) ([]ListGlobalSwitchesRow, error)
 	ListTenantOverrides(ctx context.Context, tenantID uuid.UUID) ([]ListTenantOverridesRow, error)
 	UpsertGlobalSwitch(ctx context.Context, arg UpsertGlobalSwitchParams) error

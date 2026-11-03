@@ -35,6 +35,10 @@ type Env struct {
 	AppURL string
 	// MigratorURL conecta como seguros_migrator (dueño de los esquemas).
 	MigratorURL string
+	// WorkerURL conecta como seguros_worker (relay del outbox y River).
+	WorkerURL string
+	// PlatformURL conecta como seguros_platform (cmd/platformctl).
+	PlatformURL string
 	// SuperuserURL conecta como postgres; solo para preparar escenarios de prueba.
 	SuperuserURL string
 
@@ -60,7 +64,7 @@ func Start(ctx context.Context) (*Env, error) {
 		return nil, err
 	}
 	pw := map[string]string{}
-	for _, k := range []string{"POSTGRES_PASSWORD", "SEGUROS_MIGRATOR_PASSWORD", "SEGUROS_APP_PASSWORD", "KEYCLOAK_DB_PASSWORD"} {
+	for _, k := range []string{"POSTGRES_PASSWORD", "SEGUROS_MIGRATOR_PASSWORD", "SEGUROS_APP_PASSWORD", "SEGUROS_WORKER_PASSWORD", "SEGUROS_PLATFORM_PASSWORD", "KEYCLOAK_DB_PASSWORD"} {
 		if pw[k], err = randomHex(16); err != nil {
 			return nil, err
 		}
@@ -74,6 +78,8 @@ func Start(ctx context.Context) (*Env, error) {
 		testcontainers.WithEnv(map[string]string{
 			"SEGUROS_MIGRATOR_PASSWORD": pw["SEGUROS_MIGRATOR_PASSWORD"],
 			"SEGUROS_APP_PASSWORD":      pw["SEGUROS_APP_PASSWORD"],
+			"SEGUROS_WORKER_PASSWORD":   pw["SEGUROS_WORKER_PASSWORD"],
+			"SEGUROS_PLATFORM_PASSWORD": pw["SEGUROS_PLATFORM_PASSWORD"],
 			"KEYCLOAK_DB_PASSWORD":      pw["KEYCLOAK_DB_PASSWORD"],
 		}),
 		postgres.BasicWaitStrategies(),
@@ -97,6 +103,8 @@ func Start(ctx context.Context) (*Env, error) {
 	return &Env{
 		AppURL:       mk("seguros_app", pw["SEGUROS_APP_PASSWORD"], "seguros"),
 		MigratorURL:  mk("seguros_migrator", pw["SEGUROS_MIGRATOR_PASSWORD"], "seguros"),
+		WorkerURL:    mk("seguros_worker", pw["SEGUROS_WORKER_PASSWORD"], "seguros"),
+		PlatformURL:  mk("seguros_platform", pw["SEGUROS_PLATFORM_PASSWORD"], "seguros"),
 		SuperuserURL: mk("postgres", pw["POSTGRES_PASSWORD"], "seguros"),
 		container:    c,
 	}, nil
@@ -152,9 +160,17 @@ func (e *Env) MigrateAll(ctx context.Context) error {
 }
 
 // OpenApp abre el pool de la aplicación (rol seguros_app, sujeto a RLS).
-func (e *Env) OpenApp(ctx context.Context) (*db.DB, error) {
+func (e *Env) OpenApp(ctx context.Context) (*db.DB, error) { return e.open(ctx, e.AppURL) }
+
+// OpenWorker abre el pool del worker (rol seguros_worker).
+func (e *Env) OpenWorker(ctx context.Context) (*db.DB, error) { return e.open(ctx, e.WorkerURL) }
+
+// OpenPlatform abre el pool de platformctl (rol seguros_platform).
+func (e *Env) OpenPlatform(ctx context.Context) (*db.DB, error) { return e.open(ctx, e.PlatformURL) }
+
+func (e *Env) open(ctx context.Context, url string) (*db.DB, error) {
 	d, err := db.Open(ctx, config.Database{
-		URL: config.NewSecret(e.AppURL), MaxConns: 8, MinConns: 0,
+		URL: config.NewSecret(url), MaxConns: 8, MinConns: 0,
 		MaxConnLifetime: time.Hour, StatementTimeout: 10 * time.Second,
 	}, db.Options{ApplicationName: "pgtest"})
 	if err != nil {

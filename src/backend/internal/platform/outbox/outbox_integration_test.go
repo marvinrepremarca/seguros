@@ -25,7 +25,11 @@ import (
 	"github.com/marvinrepremarca/seguros/test/pgtest"
 )
 
-var database *db.DB //nolint:gochecknoglobals // compartido por la suite (TestMain)
+//nolint:gochecknoglobals // compartidos por la suite (TestMain)
+var (
+	database *db.DB // rol seguros_worker (relay y consumidores)
+	appDB    *db.DB // rol seguros_app (API)
+)
 
 func TestMain(m *testing.M) { os.Exit(runMain(m)) }
 
@@ -41,12 +45,18 @@ func runMain(m *testing.M) int {
 		slog.Error("migrando", "error", err)
 		return 1
 	}
-	database, err = env.OpenApp(ctx)
+	database, err = env.OpenWorker(ctx)
 	if err != nil {
 		slog.Error("abriendo BD", "error", err)
 		return 1
 	}
 	defer database.Close()
+	appDB, err = env.OpenApp(ctx)
+	if err != nil {
+		slog.Error("abriendo BD", "error", err)
+		return 1
+	}
+	defer appDB.Close()
 	return m.Run()
 }
 
@@ -245,15 +255,29 @@ func TestFailingConsumerGoesToDeadLetters(t *testing.T) {
 	assert.Zero(t, n2, "el evento quedó publicado: el relay no se bloquea")
 }
 
+func TestAPIRoleCannotRelay(t *testing.T) {
+	for _, q := range []string{
+		`SELECT * FROM messaging.claim_outbox(10)`,
+		`SELECT messaging.mark_published(ARRAY[gen_random_uuid()], now())`,
+		`SELECT messaging.purge_published(now())`,
+	} {
+		err := appDB.WithoutTenantTx(context.Background(), func(tx pgx.Tx) error {
+			_, err := tx.Exec(context.Background(), q)
+			return err
+		})
+		require.Error(t, err, "la API no cruza tenants: %s", q)
+	}
+}
+
 func TestOutboxRLS(t *testing.T) {
 	ctx := newTenant()
-	err := database.WithTenantTx(ctx, func(tx pgx.Tx) error {
+	err := appDB.WithTenantTx(ctx, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `SELECT count(*) FROM messaging.outbox`)
 		return err
 	})
 	require.Error(t, err, "el rol de la app no lee el outbox directamente")
 
-	err = database.WithTenantTx(ctx, func(tx pgx.Tx) error {
+	err = appDB.WithTenantTx(ctx, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `INSERT INTO messaging.outbox (id, tenant_id, topic, payload, occurred_at) VALUES ($1, $2, 'test.x', '{}', now())`,
 			uuid.Must(uuid.NewV7()), uuid.Must(uuid.NewV7()))
 		return err

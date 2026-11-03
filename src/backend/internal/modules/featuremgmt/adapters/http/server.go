@@ -70,11 +70,15 @@ func (s *Server) Mount(r chi.Router) error {
 	return nil
 }
 
-// GetFeatures implementa StrictServerInterface: evalúa cada flag registrado vía el Checker
-// (OpenFeature) con el contexto autenticado.
+// GetFeatures implementa StrictServerInterface: evalúa vía el Checker (OpenFeature), con el contexto
+// autenticado, los flags que la SPA necesita (módulos, funcionalidades y releases). Los flags ops
+// son operativos del backend y no se exponen.
 func (s *Server) GetFeatures(ctx context.Context, _ GetFeaturesRequestObject) (GetFeaturesResponseObject, error) {
 	out := map[string]bool{}
 	for _, k := range s.opts.Reg.Keys() {
+		if def, _ := s.opts.Reg.Get(k); def.Kind == flags.KindOps {
+			continue
+		}
 		out[string(k)] = s.opts.Checker.IsEnabled(ctx, k)
 	}
 	return GetFeatures200JSONResponse{Flags: out}, nil

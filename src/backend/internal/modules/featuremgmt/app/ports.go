@@ -38,8 +38,9 @@ type UnitOfWork interface {
 type Store interface {
 	WithinTenant(ctx context.Context, fn func(ctx context.Context, uow UnitOfWork) error) error
 	GlobalSwitches(ctx context.Context) (map[flags.Key]bool, error)
-	// SetGlobalSwitch fija (enabled != nil) o elimina (nil) un switch global.
-	SetGlobalSwitch(ctx context.Context, key flags.Key, enabled *bool, reason string, now time.Time) error
+	// SetGlobalSwitch fija (enabled != nil) o elimina (nil) un switch global y registra el cambio
+	// (operador, valor anterior y nuevo, motivo) en su historial, en la misma transacción.
+	SetGlobalSwitch(ctx context.Context, key flags.Key, enabled *bool, reason, operator string, now time.Time) error
 }
 
 // Invalidator descarta las cachés de flags de un tenant (tenant nulo = globales) en todas las

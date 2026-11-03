@@ -75,7 +75,7 @@ func (s *fakeStore) GlobalSwitches(context.Context) (map[flags.Key]bool, error) 
 	return out, nil
 }
 
-func (s *fakeStore) SetGlobalSwitch(_ context.Context, key flags.Key, enabled *bool, _ string, _ time.Time) error {
+func (s *fakeStore) SetGlobalSwitch(_ context.Context, key flags.Key, enabled *bool, _, _ string, _ time.Time) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if enabled == nil {
@@ -302,7 +302,7 @@ func TestKillSwitchedDependencyBlocksEnable(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 	tenant := e.tenant("profesional")
-	require.NoError(t, app.NewSetGlobalSwitchHandler(e.deps).Handle(context.Background(), app.SetGlobalSwitchCommand{Key: "module.billing", Enabled: off(), Reason: "incidente"}))
+	require.NoError(t, app.NewSetGlobalSwitchHandler(e.deps).Handle(context.Background(), app.SetGlobalSwitchCommand{Key: "module.billing", Enabled: off(), Reason: "incidente", Operator: "ana.ops"}))
 	assert.Equal(t, []kernel.TenantID{{}}, e.inv.tenants, "invalida la caché global")
 	_, err := app.NewSetTenantFlagHandler(e.deps, app.ActorPlatform).Handle(platform(tenant), app.SetTenantFlagCommand{Key: "module.commissions", Enabled: on(), Reason: "add-on"})
 	require.ErrorIs(t, err, domain.ErrDependencyDisabled)
@@ -312,9 +312,10 @@ func TestSetGlobalSwitchValidates(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 	h := app.NewSetGlobalSwitchHandler(e.deps)
-	require.ErrorIs(t, h.Handle(context.Background(), app.SetGlobalSwitchCommand{Key: "module.nada", Enabled: off(), Reason: "motivo"}), domain.ErrUnknownFlag)
-	require.ErrorIs(t, h.Handle(context.Background(), app.SetGlobalSwitchCommand{Key: "module.billing", Enabled: off(), Reason: ""}), domain.ErrInvalidReason)
-	require.NoError(t, h.Handle(context.Background(), app.SetGlobalSwitchCommand{Key: "module.billing", Reason: "restaurar"}))
+	require.ErrorIs(t, h.Handle(context.Background(), app.SetGlobalSwitchCommand{Key: "module.nada", Enabled: off(), Reason: "motivo", Operator: "ana.ops"}), domain.ErrUnknownFlag)
+	require.ErrorIs(t, h.Handle(context.Background(), app.SetGlobalSwitchCommand{Key: "module.billing", Enabled: off(), Reason: "", Operator: "ana.ops"}), domain.ErrInvalidReason)
+	require.ErrorIs(t, h.Handle(context.Background(), app.SetGlobalSwitchCommand{Key: "module.billing", Reason: "restaurar"}), domain.ErrInvalidOperator)
+	require.NoError(t, h.Handle(context.Background(), app.SetGlobalSwitchCommand{Key: "module.billing", Reason: "restaurar", Operator: "ana.ops"}))
 }
 
 func TestInvalidationFailureDoesNotFailTheChange(t *testing.T) {
