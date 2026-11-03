@@ -152,7 +152,8 @@ func TestCreateMasksDocumentAndEncryptsIt(t *testing.T) {
 	created := e.do(t, ops, http.MethodPost, base, person(number))
 	require.Equal(t, http.StatusCreated, created.status, created.body)
 	assert.Equal(t, number[len(number)-4:], created.body["documentLast4"])
-	raw, _ := json.Marshal(created.body)
+	raw, err := json.Marshal(created.body)
+	require.NoError(t, err)
 	assert.NotContains(t, string(raw), number, "la respuesta nunca trae el número completo")
 
 	id := field(t, created, "id")

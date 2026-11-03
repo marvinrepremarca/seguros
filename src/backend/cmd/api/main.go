@@ -21,6 +21,7 @@ import (
 	"github.com/open-feature/go-sdk/openfeature"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/marvinrepremarca/seguros/internal/modules/catalog"
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/oidc"
@@ -150,6 +151,10 @@ func run() error {
 		return err
 	}
 	partiesMod := parties.New(parties.Deps{DB: database, Audit: recorder, Cipher: cipher, Policy: policy, Clock: clock, Logger: logger})
+	catalogMod, err := catalog.New(catalog.Deps{DB: database, Audit: recorder, Policy: policy, Clock: clock, Logger: logger})
+	if err != nil {
+		return err
+	}
 
 	var spa http.Handler
 	if cfg.HTTP.SPADir != "" {
@@ -170,6 +175,7 @@ func run() error {
 		Identity:    identityMod,
 		FeatureMgmt: featureMod,
 		Parties:     partiesMod,
+		Catalog:     catalogMod,
 		SPA:         spa,
 	})
 	if err != nil {

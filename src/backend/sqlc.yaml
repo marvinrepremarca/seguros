@@ -92,6 +92,20 @@ sql:
         emit_empty_slices: true
         emit_result_struct_pointers: false
         emit_enum_valid_method: true
+  - name: catalog
+    engine: postgresql
+    schema: migrations/catalog
+    queries: queries/catalog
+    strict_function_checks: true
+    gen:
+      go:
+        package: catalogsqlc
+        out: internal/modules/catalog/adapters/postgres/sqlc
+        sql_package: pgx/v5
+        emit_interface: true
+        emit_empty_slices: true
+        emit_result_struct_pointers: false
+        emit_enum_valid_method: true
 # Plantilla por módulo:
 #  - name: policies
 #    engine: postgresql

@@ -44,19 +44,24 @@ const (
 	DocumentReveal Permission = "parties.document.reveal"
 	ConsentRead    Permission = "parties.consent.read"
 	ConsentCreate  Permission = "parties.consent.create"
+
+	CatalogRead     Permission = "catalog.item.read"
+	CatalogManage   Permission = "catalog.item.manage"
+	AgreementRead   Permission = "catalog.commission-agreement.read"
+	AgreementManage Permission = "catalog.commission-agreement.manage"
 )
 
 // DefaultGrants es la asignación base rol → permisos (DOMAIN.md §4). Se devuelve una copia nueva
 // en cada llamada (sin estado global mutable).
 func DefaultGrants() map[Role][]Permission {
 	return map[Role][]Permission{
-		RoleTenantAdmin:       {FeatureFlagRead, FeatureFlagUpdate},
-		RoleManager:           {FeatureFlagRead, PartyRead, DocumentReveal, ConsentRead},
-		RoleSalesAgent:        {PartyRead, PartyCreate, PartyUpdate, ConsentRead, ConsentCreate},
-		RoleOperations:        {PartyRead, PartyCreate, PartyUpdate, DocumentReveal, ConsentRead, ConsentCreate},
-		RoleClaimsAnalyst:     {PartyRead},
-		RoleCollections:       {PartyRead},
-		RoleAccounting:        {PartyRead},
-		RoleComplianceOfficer: {PartyRead, DocumentReveal, ConsentRead, ConsentCreate},
+		RoleTenantAdmin:       {FeatureFlagRead, FeatureFlagUpdate, CatalogRead, CatalogManage, AgreementRead, AgreementManage},
+		RoleManager:           {FeatureFlagRead, PartyRead, DocumentReveal, ConsentRead, CatalogRead, AgreementRead, AgreementManage},
+		RoleSalesAgent:        {PartyRead, PartyCreate, PartyUpdate, ConsentRead, ConsentCreate, CatalogRead},
+		RoleOperations:        {PartyRead, PartyCreate, PartyUpdate, DocumentReveal, ConsentRead, ConsentCreate, CatalogRead},
+		RoleClaimsAnalyst:     {PartyRead, CatalogRead},
+		RoleCollections:       {PartyRead, CatalogRead},
+		RoleAccounting:        {PartyRead, CatalogRead, AgreementRead},
+		RoleComplianceOfficer: {PartyRead, DocumentReveal, ConsentRead, ConsentCreate, CatalogRead},
 	}
 }
