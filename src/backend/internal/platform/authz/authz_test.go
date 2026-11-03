@@ -49,7 +49,11 @@ func TestDefaultGrantsAreValid(t *testing.T) {
 
 func TestPermissionsForUnionsRoles(t *testing.T) {
 	t.Parallel()
-	p := policy(t)
+	p, err := authz.NewPolicy(map[authz.Role][]authz.Permission{
+		authz.RoleManager:     {authz.FeatureFlagRead},
+		authz.RoleTenantAdmin: {authz.FeatureFlagUpdate, authz.FeatureFlagRead},
+	})
+	require.NoError(t, err)
 	got := p.PermissionsFor([]authz.Role{authz.RoleManager, authz.RoleTenantAdmin})
 	assert.Equal(t, []authz.Permission{authz.FeatureFlagRead, authz.FeatureFlagUpdate}, got, "ordenados y sin duplicados")
 	assert.Empty(t, p.PermissionsFor([]authz.Role{authz.RoleSalesAgent}))

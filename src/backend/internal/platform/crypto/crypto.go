@@ -96,6 +96,12 @@ func NewService(database *db.DB, wrapper KeyWrapper, indexMaterial string, clock
 // Encrypt cifra plaintext para el campo dado con la DEK activa del tenant del contexto (la crea si
 // el tenant aún no tiene).
 func (s *Service) Encrypt(ctx context.Context, field string, plaintext []byte) ([]byte, error) {
+	return s.EncryptFor(ctx, field, "", plaintext)
+}
+
+// EncryptFor cifra como Encrypt y además liga el valor al registro dado (ej. el ID de la fila): un
+// ciphertext copiado a otra fila del mismo tenant y campo no se puede descifrar.
+func (s *Service) EncryptFor(ctx context.Context, field, record string, plaintext []byte) ([]byte, error) {
 	tenant, err := tenantAndField(ctx, field)
 	if err != nil {
 		return nil, err
@@ -107,7 +113,7 @@ func (s *Service) Encrypt(ctx context.Context, field string, plaintext []byte) (
 	header := make([]byte, headerLen)
 	header[0] = formatV1
 	binary.BigEndian.PutUint32(header[1:], version)
-	sealed, err := seal(key, plaintext, aad(header, tenant, field))
+	sealed, err := seal(key, plaintext, aad(header, tenant, field, record))
 	if err != nil {
 		return nil, err
 	}
@@ -116,6 +122,11 @@ func (s *Service) Encrypt(ctx context.Context, field string, plaintext []byte) (
 
 // Decrypt descifra un valor producido por Encrypt para el mismo tenant y campo.
 func (s *Service) Decrypt(ctx context.Context, field string, ciphertext []byte) ([]byte, error) {
+	return s.DecryptFor(ctx, field, "", ciphertext)
+}
+
+// DecryptFor descifra un valor producido por EncryptFor para el mismo tenant, campo y registro.
+func (s *Service) DecryptFor(ctx context.Context, field, record string, ciphertext []byte) ([]byte, error) {
 	tenant, err := tenantAndField(ctx, field)
 	if err != nil {
 		return nil, err
@@ -131,7 +142,7 @@ func (s *Service) Decrypt(ctx context.Context, field string, ciphertext []byte) 
 		}
 		return nil, err
 	}
-	return open(key, ciphertext[headerLen:], aad(ciphertext[:headerLen], tenant, field))
+	return open(key, ciphertext[headerLen:], aad(ciphertext[:headerLen], tenant, field, record))
 }
 
 // BlindIndex calcula el índice ciego de un valor YA NORMALIZADO por el llamador (ej. documento
@@ -189,13 +200,18 @@ func tenantAndField(ctx context.Context, field string) (kernel.TenantID, error) 
 	return tenant, nil
 }
 
-func aad(header []byte, tenant kernel.TenantID, field string) []byte {
-	out := make([]byte, 0, len(header)+16+len(field)+1)
+func aad(header []byte, tenant kernel.TenantID, field, record string) []byte {
+	out := make([]byte, 0, len(header)+16+len(field)+len(record)+2)
 	out = append(out, header...)
 	t := uuid.UUID(tenant)
 	out = append(out, t[:]...)
 	out = append(out, '|')
-	return append(out, field...)
+	out = append(out, field...)
+	if record != "" {
+		out = append(out, '|')
+		out = append(out, record...)
+	}
+	return out
 }
 
 func (s *Service) activeKey(ctx context.Context, tenant kernel.TenantID) (uint32, []byte, error) {

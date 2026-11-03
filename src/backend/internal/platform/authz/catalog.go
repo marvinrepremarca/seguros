@@ -37,13 +37,26 @@ type Permission string
 const (
 	FeatureFlagRead   Permission = "featuremgmt.flag.read"
 	FeatureFlagUpdate Permission = "featuremgmt.flag.update"
+
+	PartyRead      Permission = "parties.party.read"
+	PartyCreate    Permission = "parties.party.create"
+	PartyUpdate    Permission = "parties.party.update"
+	DocumentReveal Permission = "parties.document.reveal"
+	ConsentRead    Permission = "parties.consent.read"
+	ConsentCreate  Permission = "parties.consent.create"
 )
 
 // DefaultGrants es la asignación base rol → permisos (DOMAIN.md §4). Se devuelve una copia nueva
 // en cada llamada (sin estado global mutable).
 func DefaultGrants() map[Role][]Permission {
 	return map[Role][]Permission{
-		RoleTenantAdmin: {FeatureFlagRead, FeatureFlagUpdate},
-		RoleManager:     {FeatureFlagRead},
+		RoleTenantAdmin:       {FeatureFlagRead, FeatureFlagUpdate},
+		RoleManager:           {FeatureFlagRead, PartyRead, DocumentReveal, ConsentRead},
+		RoleSalesAgent:        {PartyRead, PartyCreate, PartyUpdate, ConsentRead, ConsentCreate},
+		RoleOperations:        {PartyRead, PartyCreate, PartyUpdate, DocumentReveal, ConsentRead, ConsentCreate},
+		RoleClaimsAnalyst:     {PartyRead},
+		RoleCollections:       {PartyRead},
+		RoleAccounting:        {PartyRead},
+		RoleComplianceOfficer: {PartyRead, DocumentReveal, ConsentRead, ConsentCreate},
 	}
 }

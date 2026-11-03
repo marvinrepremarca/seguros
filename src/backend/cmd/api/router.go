@@ -10,6 +10,7 @@ import (
 
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity"
+	"github.com/marvinrepremarca/seguros/internal/modules/parties"
 	"github.com/marvinrepremarca/seguros/internal/platform/httpx"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 )
@@ -23,6 +24,7 @@ type routerDeps struct {
 	ClientIPHdr  string
 	Identity     *identity.Module
 	FeatureMgmt  *featuremgmt.Module
+	Parties      *parties.Module
 	// SPA sirve la aplicación web con su CSP; nil en desarrollo con Vite.
 	SPA http.Handler
 }
@@ -40,8 +42,10 @@ func buildRouter(d routerDeps) (*chi.Mux, error) {
 		// cuesta un viaje al IdP); el callback admite reintentos legítimos.
 		r.Use(httpx.RateLimitByIP("/bff/auth/login", 20, time.Minute, d.ClientIPHdr))
 		r.Use(httpx.RateLimitByIP("/bff/auth/callback", 30, time.Minute, d.ClientIPHdr))
+		// Búsqueda de personas: más estricta (rules/security.md §Rate limiting).
+		r.Use(httpx.RateLimitByIP("/api/v1/parties/parties/search-by-document", 60, time.Minute, d.ClientIPHdr))
 		r.Use(d.Identity.Middlewares()...)
-		mountErr = errors.Join(d.Identity.Server.Mount(r), d.FeatureMgmt.Mount(r))
+		mountErr = errors.Join(d.Identity.Server.Mount(r), d.FeatureMgmt.Mount(r), d.Parties.Mount(r))
 	})
 	if mountErr != nil {
 		return nil, mountErr

@@ -24,10 +24,12 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/oidc"
+	"github.com/marvinrepremarca/seguros/internal/modules/parties"
 	"github.com/marvinrepremarca/seguros/internal/modules/tenancy"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/authz"
 	"github.com/marvinrepremarca/seguros/internal/platform/config"
+	"github.com/marvinrepremarca/seguros/internal/platform/crypto"
 	"github.com/marvinrepremarca/seguros/internal/platform/db"
 	"github.com/marvinrepremarca/seguros/internal/platform/flags"
 	"github.com/marvinrepremarca/seguros/internal/platform/httpx"
@@ -135,6 +137,20 @@ func run() error {
 		Policy:      policy, Clock: clock, Logger: logger,
 	})
 
+	cryptoCfg, err := config.LoadCrypto(os.LookupEnv, cfg.Env)
+	if err != nil {
+		return err
+	}
+	keyWrapper, err := crypto.NewWrapper(cryptoCfg)
+	if err != nil {
+		return err
+	}
+	cipher, err := crypto.NewService(database, keyWrapper, cryptoCfg.IndexKey.Reveal(), clock)
+	if err != nil {
+		return err
+	}
+	partiesMod := parties.New(parties.Deps{DB: database, Audit: recorder, Cipher: cipher, Policy: policy, Clock: clock, Logger: logger})
+
 	var spa http.Handler
 	if cfg.HTTP.SPADir != "" {
 		spa, err = httpx.NewSPAHandler(os.DirFS(cfg.HTTP.SPADir), logger)
@@ -153,6 +169,7 @@ func run() error {
 		},
 		Identity:    identityMod,
 		FeatureMgmt: featureMod,
+		Parties:     partiesMod,
 		SPA:         spa,
 	})
 	if err != nil {
