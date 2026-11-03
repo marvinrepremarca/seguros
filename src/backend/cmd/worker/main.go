@@ -12,7 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/open-feature/go-sdk/openfeature"
 	"github.com/riverqueue/river"
 	"golang.org/x/sync/errgroup"
 
@@ -81,6 +80,9 @@ func run() error {
 		return err
 	}
 	defer database.Close()
+	if err := database.RequireRole(ctx, "seguros_worker"); err != nil {
+		return err
+	}
 	valkeyClient, err := session.NewValkeyClient(cfg.Valkey.URL.Reveal())
 	if err != nil {
 		return err
@@ -97,15 +99,12 @@ func run() error {
 	}
 	flagStore := featuremgmt.NewStore(database, audit.NewRecorder(clock), outbox.NewWriter(clock))
 	evaluator := flags.NewEvaluator(registry, flagStore, flags.NewValkeyCache(valkeyClient), clock, logger)
-	if err := openfeature.SetNamedProviderAndWait(flags.ProviderName, flags.NewProvider(evaluator)); err != nil {
-		return fmt.Errorf("registrando proveedor de flags: %w", err)
-	}
 	invalidator := flags.NewInvalidator(evaluator, valkeyClient)
 
 	// Eventos de integración: outbox → relay → Watermill (en proceso) → consumidores.
 	pubsub := outbox.NewInProcessPubSub(logger)
 	dispatcher, err := outbox.NewDispatcher(outbox.DispatcherOptions{
-		DB: database, Subscriber: pubsub, Checker: flags.NewOpenFeatureChecker(openfeature.NewClient(flags.ProviderName)),
+		DB: database, Subscriber: pubsub, Flags: evaluator,
 		Plans: tenantPlans{dir: tenants.Directory}, Clock: clock, Logger: logger,
 	})
 	if err != nil {

@@ -78,6 +78,28 @@ func (d *DB) checkRole(ctx context.Context) error {
 // platform/jobs y cmd/worker). Prohibido en módulos: test/arch falla si internal/modules lo usa.
 func (d *DB) Pool() *pgxpool.Pool { return d.pool }
 
+// ErrUnexpectedRole indica que el binario se conectó con un rol que no le corresponde.
+var ErrUnexpectedRole = errors.New("db: el binario se conectó con un rol de BD que no le corresponde")
+
+// RequireRole falla si el rol conectado no es want o pertenece a alguno de forbidden (ej. la API
+// configurada por error con la credencial del worker, que puede cruzar tenants). Fail-closed.
+func (d *DB) RequireRole(ctx context.Context, want string, forbidden ...string) error {
+	var ok bool
+	err := d.pool.QueryRow(ctx, `
+		SELECT current_user = $1 AND NOT EXISTS (
+			SELECT 1 FROM unnest($2::text[]) AS f(role)
+			WHERE EXISTS (SELECT 1 FROM pg_catalog.pg_roles r WHERE r.rolname = f.role)
+			  AND pg_catalog.pg_has_role(current_user, f.role, 'MEMBER'))`,
+		want, forbidden).Scan(&ok)
+	if err != nil {
+		return fmt.Errorf("db: verificando rol: %w", err)
+	}
+	if !ok {
+		return ErrUnexpectedRole
+	}
+	return nil
+}
+
 // Close cierra el pool.
 func (d *DB) Close() { d.pool.Close() }
 

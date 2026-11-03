@@ -21,6 +21,9 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/platform/reqctx"
 )
 
+// errFlagUnavailable: el flag del consumidor no se pudo evaluar (se reintenta, no se descarta).
+var errFlagUnavailable = errors.New("flag no disponible")
+
 var consumerPattern = regexp.MustCompile(`^[a-z][a-z0-9]*\.[a-z][a-z0-9-]*$`) //nolint:gochecknoglobals // regexp inmutable
 
 // Handler procesa un evento dentro de la transacción (con RLS del tenant del evento) en la que
@@ -38,6 +41,11 @@ type Consumer struct {
 	Handle Handler
 }
 
+// FlagResolver evalúa un flag para un tenant (lo implementa flags.Evaluator).
+type FlagResolver interface {
+	Resolve(ctx context.Context, tenant kernel.TenantID, plan string, key flags.Key) (flags.Resolution, error)
+}
+
 // TenantPlans resuelve el plan vigente de un tenant (para evaluar flags). Lo implementa cmd/worker
 // sobre el directorio de tenancy.
 type TenantPlans interface {
@@ -48,10 +56,12 @@ type TenantPlans interface {
 type DispatcherOptions struct {
 	DB         *db.DB
 	Subscriber message.Subscriber
-	Checker    flags.Checker
-	Plans      TenantPlans
-	Clock      kernel.Clock
-	Logger     *slog.Logger
+	// Flags resuelve el flag del consumidor. Se usa Resolve (no un Checker fail-closed): si el flag
+	// no se puede evaluar, el evento se reintenta en vez de confirmarse como "apagado" y perderse.
+	Flags  FlagResolver
+	Plans  TenantPlans
+	Clock  kernel.Clock
+	Logger *slog.Logger
 	// MaxRetries antes de enviar el mensaje a messaging.dead_letters (default 5).
 	MaxRetries int
 	// InitialInterval del backoff exponencial entre reintentos (default 100 ms).
@@ -151,7 +161,11 @@ func (d *Dispatcher) process(c Consumer, msg *message.Message) error {
 		if err != nil {
 			return fmt.Errorf("outbox: plan del tenant: %w", err)
 		}
-		if !d.opts.Checker.IsEnabled(reqctx.WithTenantPlan(ctx, plan), c.Flag) {
+		res, err := d.opts.Flags.Resolve(ctx, e.TenantID, plan, c.Flag)
+		if err != nil || res.Source == flags.SourceError {
+			return fmt.Errorf("outbox: flag %s no evaluable: %w", c.Flag, errors.Join(err, errFlagUnavailable))
+		}
+		if !res.Enabled {
 			d.opts.Logger.DebugContext(ctx, "consumidor apagado por flag", "consumer", c.Name, "flag", string(c.Flag), "event_id", e.ID.String())
 			return nil
 		}

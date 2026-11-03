@@ -84,6 +84,9 @@ func run() error {
 		return err
 	}
 	defer database.Close()
+	if err := database.RequireRole(ctx, "seguros_app", "seguros_worker", "seguros_platform"); err != nil {
+		return err
+	}
 
 	valkeyClient, err := session.NewValkeyClient(cfg.Valkey.URL.Reveal())
 	if err != nil {

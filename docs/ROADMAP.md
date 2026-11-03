@@ -60,6 +60,13 @@ Auditoría de 1.7/1.8/1.10 (2026-11-03). El hallazgo Alto (roles: la API podía 
 - **B8 — Serializar cambios de flags por tenant** (`pg_advisory_xact_lock`) para que dos cambios concurrentes no dejen dependencias inconsistentes.
 - **B9 — Rate limit por usuario y tenant en la API** (hoy solo login/callback por IP).
 
+Revisiones finales de la Fase 1 (2026-11-03): `architecture-guardian` APROBADO y `security-auditor` sin Altos/Críticos. Corregidos al cierre: consumidores que confirmaban eventos con el flag no evaluable (ahora reintentan), escritura de `tenancy.tenants` solo para `seguros_platform`, `audit.ensure_partitions` solo para el worker, verificación del rol de BD al arrancar api/worker, `sslmode=verify-full` en producción y `go mod tidy`. Quedan abiertos:
+- **Antes de la Fase 2 (primer módulo con datos Confidenciales):** CSP con nonces, Trusted Types y headers de seguridad para la SPA servida fuera de Vite (hoy solo la API los tiene). Auditoría y eventos (`TenantPlanChanged`/`TenantStatusChanged`) de alta, plan y suspensión de tenants, con `--reason` en platformctl.
+- **Antes de la Fase 3:** envoltorio de jobs por tenant con guardia de flag (`jobs.TenantWorker`); purga de `messaging.inbox` y reproceso de `dead_letters` desde platformctl.
+- **Mejoras de arquitectura:** ADR "outbox propio + transporte en proceso (RabbitMQ en fase 2)" (desvía de watermill-sql en ARCHITECTURE.md §3/§5); componente de arch-lint que impida a `app` importar `httpx`/`db`/`session`; mover la selección de `/bff/features` a un caso de uso; caché corta del tenant en el autenticador; SQL de `internal/platform` a sqlc o excepción documentada; generar los permisos TS desde `authz/catalog.go`; `go mod tidy -diff` en CI.
+- **Bajos de seguridad:** identidad real del operador en el historial de kill switches (no solo `--operator`); traces de Playwright sin el valor de la contraseña cuando apunten a entornos persistentes; `ListFlags` sin flags `ops`; errores del publisher normalizados por código.
+- **Fase 6:** aprovisionar los roles `seguros_worker` y `seguros_platform` en staging/producción (en desarrollo los crea `deploy/postgres/init/01-roles.sh`).
+
 ---
 
 ## Fase 2 — Núcleo de negocio (módulos no apagables)
@@ -89,7 +96,7 @@ Pruebas k6 (objetivos en testing.md), ZAP, restauración de backup probada, runb
 | Ítem | Estado | Fecha | Notas |
 |---|---|---|---|
 | Fase 0 | ✅ Hecho | 2026-10-30 | DoD verificada: make check, pnpm check, compose sano y CI en verde (PR #1) |
-| Fase 1 | 🟨 En curso | 2026-11-03 | 1.1 ✅ · 1.2 ✅ · 1.3 ✅ · 1.4 ✅ (sesión A, PR #2) · 1.5 ✅ · 1.6 ✅ · 1.7 ✅ · 1.8 ✅ · 1.9 ✅ (adelantada: la usan login y flags; `platform/audit` + `migrations/audit`) · 1.10 ✅ (`platform/crypto`; se cablea en api/worker con el primer módulo con datos Restringidos, Fase 2) · 1.11 ✅ · 1.12 ✅ (`make e2e-full`) · pendiente: revisión final architecture-guardian + security-auditor |
+| Fase 1 | ✅ Hecho | 2026-11-03 | 1.1 ✅ · 1.2 ✅ · 1.3 ✅ · 1.4 ✅ (sesión A, PR #2) · 1.5 ✅ · 1.6 ✅ · 1.7 ✅ · 1.8 ✅ · 1.9 ✅ (adelantada: la usan login y flags; `platform/audit` + `migrations/audit`) · 1.10 ✅ (`platform/crypto`; se cablea en api/worker con el primer módulo con datos Restringidos, Fase 2) · 1.11 ✅ · 1.12 ✅ (`make e2e-full`). DoD verificada: make check, integración, pnpm check, E2E 3/3; architecture-guardian y security-auditor sin Altos/Críticos (hallazgos Medios/Bajos abiertos arriba) |
 | Fase 2 | ⬜ Pendiente | | |
 | Fase 3 | ⬜ Pendiente | | |
 | Fase 4 | ⬜ Pendiente | | |

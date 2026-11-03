@@ -3,6 +3,7 @@ module github.com/marvinrepremarca/seguros
 go 1.26.10
 
 require (
+	github.com/ThreeDotsLabs/watermill v1.5.3
 	github.com/alexedwards/scs/v2 v2.9.0
 	github.com/coreos/go-oidc/v3 v3.21.0
 	github.com/getkin/kin-openapi v0.152.0
@@ -14,6 +15,9 @@ require (
 	github.com/oapi-codegen/runtime v1.8.0
 	github.com/open-feature/go-sdk v1.20.0
 	github.com/pressly/goose/v3 v3.29.0
+	github.com/riverqueue/river v0.51.0
+	github.com/riverqueue/river/riverdriver/riverdatabasesql v0.51.0
+	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.51.0
 	github.com/shopspring/decimal v1.6.0
 	github.com/stretchr/testify v1.12.1
 	github.com/testcontainers/testcontainers-go v0.44.0
@@ -35,7 +39,6 @@ require (
 	dario.cat/mergo v1.0.2 // indirect
 	github.com/Azure/go-ansiterm v0.0.0-20261006220739-8c912ac31dd4 // indirect
 	github.com/Microsoft/go-winio v0.6.3 // indirect
-	github.com/ThreeDotsLabs/watermill v1.5.3 // indirect
 	github.com/apapsch/go-jsonmerge/v2 v2.0.0 // indirect
 	github.com/cenkalti/backoff/v4 v4.3.0 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
@@ -82,10 +85,7 @@ require (
 	github.com/opencontainers/image-spec v1.1.1 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/power-devops/perfstat v0.0.0-20240221224432-82ca36839d55 // indirect
-	github.com/riverqueue/river v0.51.0 // indirect
 	github.com/riverqueue/river/riverdriver v0.51.0 // indirect
-	github.com/riverqueue/river/riverdriver/riverdatabasesql v0.51.0 // indirect
-	github.com/riverqueue/river/riverdriver/riverpgxv5 v0.51.0 // indirect
 	github.com/riverqueue/river/rivershared v0.51.0 // indirect
 	github.com/riverqueue/river/rivertype v0.51.0 // indirect
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.3 // indirect

@@ -21,7 +21,11 @@ import (
 	"github.com/marvinrepremarca/seguros/test/pgtest"
 )
 
-var database *db.DB //nolint:gochecknoglobals // compartido por la suite (TestMain)
+//nolint:gochecknoglobals // compartidos por la suite (TestMain)
+var (
+	database *db.DB // rol seguros_app
+	workerDB *db.DB // rol seguros_worker (job de particiones)
+)
 
 func TestMain(m *testing.M) { os.Exit(runMain(m)) }
 
@@ -43,6 +47,12 @@ func runMain(m *testing.M) int {
 		return 1
 	}
 	defer database.Close()
+	workerDB, err = env.OpenWorker(ctx)
+	if err != nil {
+		slog.Error("abriendo BD", "error", err)
+		return 1
+	}
+	defer workerDB.Close()
 	return m.Run()
 }
 
@@ -144,16 +154,18 @@ func TestRecordWithoutTenantFails(t *testing.T) {
 
 func TestEnsurePartitionsIsIdempotent(t *testing.T) {
 	t.Parallel()
-	ctx := tenantCtx()
+	ctx := context.Background()
 	var first, second int
 	from, err := kernel.NewDate(2030, time.March, 1)
 	require.NoError(t, err)
-	require.NoError(t, database.WithTenantTx(ctx, func(tx pgx.Tx) error {
-		return tx.QueryRow(ctx, `SELECT audit.ensure_partitions($1, 2)`, from).Scan(&first)
-	}))
-	require.NoError(t, database.WithTenantTx(ctx, func(tx pgx.Tx) error {
-		return tx.QueryRow(ctx, `SELECT audit.ensure_partitions($1, 2)`, from).Scan(&second)
-	}))
+	call := func(d *db.DB, out *int) error {
+		return d.WithoutTenantTx(ctx, func(tx pgx.Tx) error {
+			return tx.QueryRow(ctx, `SELECT audit.ensure_partitions($1, 2)`, from).Scan(out)
+		})
+	}
+	require.NoError(t, call(workerDB, &first))
+	require.NoError(t, call(workerDB, &second))
 	assert.Equal(t, 3, first)
 	assert.Equal(t, 0, second)
+	require.Error(t, call(database, &first), "la API no crea particiones (solo el job del worker)")
 }

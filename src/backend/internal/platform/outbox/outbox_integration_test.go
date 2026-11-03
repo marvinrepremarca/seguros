@@ -64,17 +64,20 @@ type payload struct {
 	PolicyID string `json:"policyId"`
 }
 
-// flagChecker enciende el flag solo para los tenants indicados.
-type flagChecker struct {
-	mu sync.Mutex
-	on map[kernel.TenantID]bool
+// flagResolver enciende el flag solo para los tenants indicados; con fail, no puede evaluarlo.
+type flagResolver struct {
+	mu   sync.Mutex
+	on   map[kernel.TenantID]bool
+	fail bool
 }
 
-func (f *flagChecker) IsEnabled(ctx context.Context, _ flags.Key) bool {
+func (f *flagResolver) Resolve(_ context.Context, t kernel.TenantID, _ string, _ flags.Key) (flags.Resolution, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	t, _ := reqctx.TenantID(ctx)
-	return f.on[t]
+	if f.fail {
+		return flags.Resolution{Source: flags.SourceError}, errors.New("store caído")
+	}
+	return flags.Resolution{Enabled: f.on[t], Source: flags.SourceOverride}, nil
 }
 
 type plans struct{}
@@ -128,7 +131,7 @@ func start(t *testing.T, consumers ...outbox.Consumer) *harness {
 	clock := kernel.SystemClock{}
 	ps := outbox.NewInProcessPubSub(logger)
 	d, err := outbox.NewDispatcher(outbox.DispatcherOptions{
-		DB: database, Subscriber: ps, Checker: checker, Plans: plans{}, Clock: clock, Logger: logger,
+		DB: database, Subscriber: ps, Flags: checker, Plans: plans{}, Clock: clock, Logger: logger,
 		MaxRetries: 2, InitialInterval: time.Millisecond,
 	})
 	require.NoError(t, err)
@@ -148,7 +151,7 @@ func start(t *testing.T, consumers ...outbox.Consumer) *harness {
 	return h
 }
 
-var checker = &flagChecker{on: map[kernel.TenantID]bool{}} //nolint:gochecknoglobals // flags de la suite
+var checker = &flagResolver{on: map[kernel.TenantID]bool{}} //nolint:gochecknoglobals // flags de la suite
 
 // La suite comparte el outbox: las pruebas no son paralelas para que cada relay publique solo lo suyo.
 
@@ -303,4 +306,29 @@ func TestWriterValidates(t *testing.T) {
 		return err
 	})
 	require.ErrorIs(t, err, outbox.ErrNoTenant)
+}
+
+func TestUnavailableFlagIsRetriedNotDropped(t *testing.T) {
+	rec := &recorder{}
+	h := start(t, outbox.Consumer{Name: "test.flag-down", Topic: "test.flag_down", Flag: flags.ClaimsModule, Handle: rec.handle})
+	ctx := newTenant()
+	tid, _ := reqctx.TenantID(ctx)
+	checker.mu.Lock()
+	checker.on[tid] = true
+	checker.fail = true
+	checker.mu.Unlock()
+	t.Cleanup(func() {
+		checker.mu.Lock()
+		checker.fail = false
+		checker.mu.Unlock()
+	})
+
+	id := write(ctx, t, h, "test.flag_down", true)
+	drain(t, h)
+	assert.Zero(t, rec.count(), "sin flag evaluable no hay efectos")
+	var n int
+	require.NoError(t, database.WithTenantTx(ctx, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT count(*) FROM messaging.dead_letters WHERE event_id = $1`, id).Scan(&n)
+	}))
+	assert.Equal(t, 1, n, "queda en dead letters para reproceso: no se confirma como apagado")
 }

@@ -24,7 +24,11 @@ import (
 	"github.com/marvinrepremarca/seguros/test/pgtest"
 )
 
-var database *db.DB //nolint:gochecknoglobals // compartido por la suite (TestMain)
+//nolint:gochecknoglobals // compartidos por la suite (TestMain)
+var (
+	database *db.DB // rol seguros_platform
+	appDB    *db.DB // rol seguros_app (API)
+)
 
 func TestMain(m *testing.M) { os.Exit(runMain(m)) }
 
@@ -40,12 +44,18 @@ func runMain(m *testing.M) int {
 		slog.Error("migrando", "error", err)
 		return 1
 	}
-	database, err = env.OpenApp(ctx)
+	database, err = env.OpenPlatform(ctx) // alta/plan/suspensión: solo platformctl
 	if err != nil {
 		slog.Error("abriendo BD", "error", err)
 		return 1
 	}
 	defer database.Close()
+	appDB, err = env.OpenApp(ctx)
+	if err != nil {
+		slog.Error("abriendo BD", "error", err)
+		return 1
+	}
+	defer appDB.Close()
 	return m.Run()
 }
 
@@ -132,4 +142,20 @@ func TestAppRoleLimits(t *testing.T) {
 		return tx.QueryRow(ctx, `SELECT count(*) FROM tenancy.tenants`).Scan(&n)
 	})
 	require.Error(t, err, "sin tenant no hay lectura directa")
+}
+
+func TestAPIRoleCannotChangeTenants(t *testing.T) {
+	t.Parallel()
+	id, err := newModule().Provision.Handle(context.Background(), app.ProvisionTenantCommand{Name: "Agencia", Plan: "basico", OrgAlias: uniqueAlias()})
+	require.NoError(t, err)
+	ctx := reqctx.WithTenantID(context.Background(), id)
+	err = appDB.WithTenantTx(ctx, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `UPDATE tenancy.tenants SET plan = 'empresarial'`)
+		return err
+	})
+	require.Error(t, err, "la API no se cambia el plan a sí misma")
+
+	info, err := tenancy.New(appDB, kernel.SystemClock{}).Directory.Get(context.Background(), id)
+	require.NoError(t, err, "la API sí lee su propio tenant")
+	assert.Equal(t, "basico", info.Plan)
 }

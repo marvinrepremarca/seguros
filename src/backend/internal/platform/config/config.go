@@ -436,12 +436,12 @@ func (r *reader) postgresURL(key string, s Secret, env Env) {
 		r.fail(key, "debe ser una URL postgres://usuario:clave@host:puerto/bd")
 		return
 	}
-	if env.IsProductionLike() {
-		switch u.Query().Get("sslmode") {
-		case "require", "verify-ca", "verify-full":
-		default:
-			r.fail(key, "staging/producción exige sslmode=require|verify-ca|verify-full")
-		}
+	mode := u.Query().Get("sslmode")
+	switch {
+	case env == EnvProduction && mode != "verify-full":
+		r.fail(key, "producción exige sslmode=verify-full (valida el certificado del servidor)")
+	case env == EnvStaging && mode != "require" && mode != "verify-ca" && mode != "verify-full":
+		r.fail(key, "staging exige sslmode=require|verify-ca|verify-full")
 	}
 }
 
