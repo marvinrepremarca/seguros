@@ -83,7 +83,7 @@ e2e-full: ## E2E de punta a punta: migra, crea el tenant de prueba, levanta la A
 
 dev-seed: ## Crea el tenant de desarrollo vinculado a la organización agencia-demo de Keycloak
 	@cd $(BACKEND) && SEGUROS_DB_URL="$$($(DEV_DB_URL) platform)" go run ./cmd/platformctl tenant create \
-	  --name "Agencia Demo" --plan profesional --org agencia-demo || echo "(el tenant ya existía)"
+	  --name "Agencia Demo" --plan profesional --org agencia-demo --reason "semilla de desarrollo" --operator dev-seed || echo "(el tenant ya existía)"
 
 dev-env: ## Crea/completa deploy/.env con secretos aleatorios locales
 	@deploy/scripts/dev-env.sh

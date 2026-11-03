@@ -7,6 +7,7 @@ import (
 	"context"
 
 	"github.com/marvinrepremarca/seguros/internal/modules/tenancy/domain"
+	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 )
 
@@ -19,10 +20,18 @@ type TenantRepository interface {
 	Update(ctx context.Context, t *domain.Tenant) error
 }
 
+// UnitOfWork agrupa repositorio, auditoría y outbox en una transacción con RLS del tenant.
+type UnitOfWork interface {
+	Tenants() TenantRepository
+	Audit(ctx context.Context, e audit.Entry) error
+	// Publish escribe un evento de integración en el outbox de la misma transacción.
+	Publish(ctx context.Context, topic string, payload any) error
+}
+
 // Store abre unidades de trabajo y resuelve organizaciones.
 type Store interface {
 	// WithinTenant ejecuta fn en una transacción con RLS para el tenant del contexto.
-	WithinTenant(ctx context.Context, fn func(ctx context.Context, repo TenantRepository) error) error
+	WithinTenant(ctx context.Context, fn func(ctx context.Context, uow UnitOfWork) error) error
 	// ResolveOrgAlias devuelve el tenant vinculado a la organización (domain.ErrNotFound si no hay).
 	ResolveOrgAlias(ctx context.Context, orgAlias string) (kernel.TenantID, error)
 }

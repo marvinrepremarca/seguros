@@ -4,10 +4,10 @@
 //
 // Uso:
 //
-//	platformctl tenant create --name "Agencia X" --plan basico --org agencia-x
-//	platformctl tenant suspend --org agencia-x
-//	platformctl tenant reactivate --org agencia-x
-//	platformctl tenant set-plan --org agencia-x --plan profesional
+//	platformctl tenant create --name "Agencia X" --plan basico --org agencia-x --reason "contrato" --operator ana.ops
+//	platformctl tenant suspend --org agencia-x --reason "impago" --operator ana.ops
+//	platformctl tenant reactivate --org agencia-x --reason "pagó" --operator ana.ops
+//	platformctl tenant set-plan --org agencia-x --plan profesional --reason "upgrade" --operator ana.ops
 //	platformctl flag set --org agencia-x --key module.claims --value on|off|clear --reason "add-on"
 //	platformctl flag kill --key module.claims --reason "incidente" --operator ana.ops   (kill switch global)
 //	platformctl flag restore --key module.claims --reason "resuelto" --operator ana.ops
@@ -44,10 +44,10 @@ import (
 )
 
 const usage = `uso:
-  platformctl tenant create --name <nombre> --plan <basico|profesional|empresarial> --org <alias>
-  platformctl tenant suspend --org <alias>
-  platformctl tenant reactivate --org <alias>
-  platformctl tenant set-plan --org <alias> --plan <plan>
+  platformctl tenant create --name <nombre> --plan <basico|profesional|empresarial> --org <alias> --reason <motivo> --operator <persona>
+  platformctl tenant suspend --org <alias> --reason <motivo> --operator <persona>
+  platformctl tenant reactivate --org <alias> --reason <motivo> --operator <persona>
+  platformctl tenant set-plan --org <alias> --plan <plan> --reason <motivo> --operator <persona>
   platformctl flag set --org <alias> --key <flag> --value on|off|clear --reason <motivo>
   platformctl flag kill --key <flag> --reason <motivo> --operator <persona>
   platformctl flag restore --key <flag> --reason <motivo> --operator <persona>`
@@ -164,23 +164,25 @@ func runTenant(ctx context.Context, logger *slog.Logger, mod *tenancy.Module, su
 	name := fs.String("name", "", "nombre comercial de la agencia")
 	plan := fs.String("plan", "", "plan comercial")
 	org := fs.String("org", "", "alias de la Organization de Keycloak")
+	reason := fs.String("reason", "", "motivo (queda auditado; sin datos personales)")
+	operator := fs.String("operator", "", "persona que ejecuta el cambio (queda auditada)")
 	if err := fs.Parse(args); err != nil {
 		return errors.New(usage)
 	}
 	switch sub {
 	case "create":
-		id, err := mod.Provision.Handle(ctx, app.ProvisionTenantCommand{Name: *name, Plan: *plan, OrgAlias: *org})
+		id, err := mod.Provision.Handle(ctx, app.ProvisionTenantCommand{Name: *name, Plan: *plan, OrgAlias: *org, Reason: *reason, Operator: *operator})
 		if err != nil {
 			return err
 		}
 		logger.Info("tenant creado", "tenant_id", id.String(), "org", *org, "plan", *plan)
 	case "suspend", "reactivate":
-		if err := mod.ChangeStatus.Handle(ctx, app.ChangeTenantStatusCommand{OrgAlias: *org, Suspend: sub == "suspend"}); err != nil {
+		if err := mod.ChangeStatus.Handle(ctx, app.ChangeTenantStatusCommand{OrgAlias: *org, Suspend: sub == "suspend", Reason: *reason, Operator: *operator}); err != nil {
 			return err
 		}
 		logger.Info("estado del tenant actualizado", "org", *org, "operation", sub)
 	case "set-plan":
-		if err := mod.ChangePlan.Handle(ctx, app.ChangeTenantPlanCommand{OrgAlias: *org, Plan: *plan}); err != nil {
+		if err := mod.ChangePlan.Handle(ctx, app.ChangeTenantPlanCommand{OrgAlias: *org, Plan: *plan, Reason: *reason, Operator: *operator}); err != nil {
 			return err
 		}
 		logger.Info("plan del tenant actualizado", "org", *org, "plan", *plan)

@@ -36,8 +36,8 @@ func (d *Directory) Get(ctx context.Context, id kernel.TenantID) (contracts.Tena
 	}
 	var info contracts.TenantInfo
 	ctx = reqctx.WithTenantID(ctx, id)
-	err := d.store.WithinTenant(ctx, func(ctx context.Context, repo TenantRepository) error {
-		t, err := repo.Get(ctx, id)
+	err := d.store.WithinTenant(ctx, func(ctx context.Context, uow UnitOfWork) error {
+		t, err := uow.Tenants().Get(ctx, id)
 		if err != nil {
 			return err
 		}
