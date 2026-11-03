@@ -3,6 +3,7 @@ package identityhttp_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -231,10 +232,21 @@ func TestLoginSessionAndLogout(t *testing.T) {
 	}
 	require.NoError(t, json.NewDecoder(res.Body).Decode(&out))
 	assert.True(t, strings.HasPrefix(out.LogoutURL, e.op.URL+"/logout?"))
-	assert.Contains(t, out.LogoutURL, "id_token_hint=")
+	assert.NotContains(t, out.LogoutURL, "id_token_hint", "el ID token nunca llega al navegador")
 
 	res = b.do(t, e.router, http.MethodGet, "/bff/me", nil)
 	assert.Equal(t, http.StatusUnauthorized, res.Code, "la sesión se destruyó")
+}
+
+func TestOldSessionDataIsNotInheritedOnLogin(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	b := newBrowser()
+	e.loginFlow(t, b, "/", claims())
+	before := b.cookies[identityhttp.SessionCookie].Value
+	res := e.loginFlow(t, b, "/", claims()) // segundo login sobre una sesión existente
+	assert.NotEqual(t, before, cookie(t, res, identityhttp.SessionCookie).Value)
+	require.Equal(t, http.StatusOK, b.do(t, e.router, http.MethodGet, "/bff/me", nil).Code)
 }
 
 func TestSessionTokenIsRenewedOnLogin(t *testing.T) {
@@ -289,9 +301,32 @@ func TestCallbackFailuresRedirectToLoginWithCode(t *testing.T) {
 		t.Parallel()
 		e := newEnv(t)
 		b := newBrowser()
+		res := b.do(t, e.router, http.MethodGet, "/bff/auth/login", nil)
+		u, err := url.Parse(res.Header().Get("Location"))
+		require.NoError(t, err)
+		res = b.do(t, e.router, http.MethodGet, "/bff/auth/callback?error=access_denied&state="+u.Query().Get("state"), nil)
+		assert.Equal(t, "/login?error="+identityhttp.CodeLoginIDPError, redirectTarget(t, res))
+	})
+	t.Run("error forjado sin state válido", func(t *testing.T) {
+		t.Parallel()
+		e := newEnv(t)
+		b := newBrowser()
 		b.do(t, e.router, http.MethodGet, "/bff/auth/login", nil)
 		res := b.do(t, e.router, http.MethodGet, "/bff/auth/callback?error=access_denied&state=x", nil)
-		assert.Equal(t, "/login?error="+identityhttp.CodeLoginIDPError, redirectTarget(t, res))
+		assert.Equal(t, "/login?error="+identityhttp.CodeLoginInvalidState, redirectTarget(t, res))
+	})
+	t.Run("error interno vuelve a /login", func(t *testing.T) {
+		t.Parallel()
+		e := newEnv(t)
+		e.login.err = errors.New("bd caída")
+		res := e.loginFlow(t, newBrowser(), "/", claims())
+		assert.Equal(t, "/login?error="+identityhttp.CodeLoginFailed, redirectTarget(t, res))
+	})
+	t.Run("parámetro fuera de contrato", func(t *testing.T) {
+		t.Parallel()
+		e := newEnv(t)
+		res := newBrowser().do(t, e.router, http.MethodGet, "/bff/auth/callback?state="+strings.Repeat("s", 300), nil)
+		assert.Equal(t, http.StatusBadRequest, res.Code, "maxLength del contrato")
 	})
 	t.Run("token rechazado", func(t *testing.T) {
 		t.Parallel()

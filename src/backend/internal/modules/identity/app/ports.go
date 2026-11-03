@@ -40,6 +40,4 @@ type VerifiedIdentity struct {
 	Roles         []string
 	Organizations []string
 	AuthMethods   []string
-	// RawIDToken se guarda server-side solo como id_token_hint del logout.
-	RawIDToken string
 }

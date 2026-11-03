@@ -127,7 +127,7 @@ func (p *Provider) Exchange(ctx context.Context, code, verifier, nonce string) (
 	}
 	return Identity{
 		Subject: idt.Subject, Email: c.Email, Name: name, Roles: c.Roles,
-		Organizations: orgs, AuthMethods: c.AMR, RawIDToken: raw,
+		Organizations: orgs, AuthMethods: c.AMR,
 	}, nil
 }
 

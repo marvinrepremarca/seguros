@@ -33,8 +33,11 @@ func buildRouter(d routerDeps) (*chi.Mux, error) {
 	})
 	var mountErr error
 	root.Group(func(r chi.Router) {
+		// Rate limit antes de cargar sesión o consultar la BD. Login más estricto (cada intento
+		// cuesta un viaje al IdP); el callback admite reintentos legítimos.
+		r.Use(httpx.RateLimitByIP("/bff/auth/login", 20, time.Minute, d.ClientIPHdr))
+		r.Use(httpx.RateLimitByIP("/bff/auth/callback", 30, time.Minute, d.ClientIPHdr))
 		r.Use(d.Identity.Middlewares()...)
-		r.Use(httpx.RateLimitByIP("/bff/auth/", 30, time.Minute, d.ClientIPHdr))
 		mountErr = errors.Join(d.Identity.Server.Mount(r), d.FeatureMgmt.Mount(r))
 	})
 	if mountErr != nil {

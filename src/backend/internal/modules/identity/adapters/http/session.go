@@ -33,7 +33,6 @@ const (
 // Claves dentro de la sesión.
 const (
 	keyPrincipal = "principal"
-	keyIDToken   = "idToken"
 	keyCSRF      = "csrf"
 	keyState     = "state"
 	keyNonce     = "nonce"

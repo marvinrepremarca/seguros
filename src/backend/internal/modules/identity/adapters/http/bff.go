@@ -150,11 +150,17 @@ func (s *Server) LoginCallback(ctx context.Context, req LoginCallbackRequestObje
 		return nil, err
 	}
 
+	// El state se valida antes que cualquier otro parámetro (también en las respuestas de error,
+	// RFC 6749 §4.1.2.1): un enlace forjado no puede cancelar ni contaminar el login de otro.
+	if state == "" || !constantTimeEqual(state, deref(req.Params.State)) {
+		s.opts.Logger.InfoContext(ctx, "callback de login con state inválido")
+		return redirectPage(loginErrorURL(CodeLoginInvalidState))
+	}
 	if req.Params.Error != nil {
 		s.opts.Logger.InfoContext(ctx, "login rechazado por el proveedor", "idp_error", truncate(*req.Params.Error, 64))
 		return redirectPage(loginErrorURL(CodeLoginIDPError))
 	}
-	if state == "" || !constantTimeEqual(state, deref(req.Params.State)) || deref(req.Params.Code) == "" {
+	if deref(req.Params.Code) == "" {
 		return redirectPage(loginErrorURL(CodeLoginInvalidState))
 	}
 	id, err := s.opts.Provider.Exchange(ctx, deref(req.Params.Code), verifier, nonce)
@@ -171,10 +177,16 @@ func (s *Server) LoginCallback(ctx context.Context, req LoginCallbackRequestObje
 			s.opts.Logger.InfoContext(ctx, "login denegado", "code", de.Code())
 			return redirectPage(loginErrorURL(de.Code()))
 		}
-		return nil, err
+		// El callback es una navegación del navegador: cualquier otro error también vuelve a /login.
+		s.opts.Logger.ErrorContext(ctx, "completando login", "error", err)
+		return redirectPage(loginErrorURL(CodeLoginFailed))
 	}
 
-	// Nuevo token de sesión al autenticarse (previene fijación de sesión).
+	// Sesión nueva y vacía al autenticarse: sin datos heredados de una sesión previa y con token
+	// nuevo (previene fijación de sesión).
+	if err := s.opts.Sessions.Clear(ctx); err != nil {
+		return nil, err
+	}
 	if err := s.opts.Sessions.RenewToken(ctx); err != nil {
 		return nil, err
 	}
@@ -193,18 +205,18 @@ func (s *Server) LoginCallback(ctx context.Context, req LoginCallbackRequestObje
 		return nil, err
 	}
 	s.opts.Sessions.Put(ctx, keyPrincipal, string(raw))
-	s.opts.Sessions.Put(ctx, keyIDToken, id.RawIDToken)
 	s.opts.Sessions.Put(ctx, keyCSRF, csrf)
 	return redirectPage(returnTo)
 }
 
-// Logout implementa StrictServerInterface.
+// Logout implementa StrictServerInterface. El ID token nunca se guarda ni viaja al navegador: el
+// cierre en el proveedor se hace con client_id + post_logout_redirect_uri (Keycloak pide
+// confirmación al usuario).
 func (s *Server) Logout(ctx context.Context, _ LogoutRequestObject) (LogoutResponseObject, error) {
-	idToken := s.opts.Sessions.GetString(ctx, keyIDToken)
 	if err := s.opts.Sessions.Destroy(ctx); err != nil {
 		return nil, err
 	}
-	return logoutResponse{LogoutResult{LogoutUrl: s.opts.Provider.LogoutURL(idToken)}}, nil
+	return logoutResponse{LogoutResult{LogoutUrl: s.opts.Provider.LogoutURL("")}}, nil
 }
 
 // logoutResponse añade el borrado de la cookie anti-CSRF a la respuesta generada.

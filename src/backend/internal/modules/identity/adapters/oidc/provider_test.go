@@ -105,7 +105,6 @@ func TestExchange(t *testing.T) {
 			assert.Equal(t, []string{"TenantAdmin"}, id.Roles)
 			assert.Equal(t, []string{"pwd", "otp"}, id.AuthMethods)
 			assert.Equal(t, tt.wantOrgs, id.Organizations)
-			assert.NotEmpty(t, id.RawIDToken)
 		})
 	}
 }

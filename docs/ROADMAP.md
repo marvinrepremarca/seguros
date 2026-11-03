@@ -46,6 +46,12 @@ Objetivo: todo lo transversal que los módulos dan por hecho.
 
 **DoD:** todo lo anterior con pruebas; `security-auditor` y `architecture-guardian` sin hallazgos Altos/Críticos.
 
+**Hallazgos de seguridad abiertos (Medios/Bajos, auditoría de 1.6 del 2026-11-03).** No bloquean la Fase 1; deben cerrarse antes de la Fase 6 (salida a producción):
+- **M1 — Revocación de sesiones:** roles, bajas o salida de la organización en Keycloak no se reflejan hasta el fin de la sesión (máx. 8 h). Implementar OIDC Back-Channel Logout (`sid`/`sub` → sesiones en Valkey) y revalidación periódica (refresh token) o vida más corta para roles financieros/admin.
+- **M2 (resto) — Rate limit distribuido:** el contador de `httprate` es por réplica; moverlo a Valkey cuando haya >1 réplica de `api`. (Hecho: cabecera de IP de confianza obligatoria en staging/prod y límites separados antes de la sesión.)
+- **M3 — MFA por `acr`/step-up:** hoy se verifica el claim `amr`, que depende de la configuración de cada autenticador en Keycloak. Migrar a Level of Authentication (`acr_values` + verificación de `acr`) con ADR y prueba E2E contra Keycloak con y sin OTP.
+- **B7 — Organización por id:** vincular el tenant al id de la Organization de Keycloak (no solo al alias) para que recrear una organización con el mismo alias no herede el tenant.
+
 ---
 
 ## Fase 2 — Núcleo de negocio (módulos no apagables)

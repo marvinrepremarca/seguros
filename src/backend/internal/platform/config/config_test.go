@@ -56,6 +56,9 @@ func prodAuth(kv map[string]string) map[string]string {
 	kv["SEGUROS_OIDC_ISSUER"] = "https://id.seguros.example/realms/seguros"
 	kv["SEGUROS_PUBLIC_URL"] = "https://app.seguros.example"
 	kv["SEGUROS_VALKEY_URL"] = "rediss://:" + sentinel + "@valkey:6379/0"
+	if _, ok := kv["SEGUROS_HTTP_CLIENT_IP_HEADER"]; !ok {
+		kv["SEGUROS_HTTP_CLIENT_IP_HEADER"] = "X-Real-IP"
+	}
 	return kv
 }
 
@@ -216,6 +219,8 @@ func TestLoadAPIAuthInvalid(t *testing.T) {
 		{"prod con discovery", prodAuth(map[string]string{"SEGUROS_ENV": "production", "SEGUROS_DB_URL": prodDB, "SEGUROS_OIDC_DISCOVERY_URL": "https://kc:8443/realms/x"}), "SEGUROS_OIDC_DISCOVERY_URL"},
 		{"prod issuer http", map[string]string{"SEGUROS_ENV": "staging", "SEGUROS_DB_URL": prodDB}, "SEGUROS_OIDC_ISSUER: debe usar https"},
 		{"prod valkey sin tls", map[string]string{"SEGUROS_ENV": "staging", "SEGUROS_DB_URL": prodDB}, "rediss"},
+		{"prod sin cabecera de IP", prodAuth(map[string]string{"SEGUROS_ENV": "production", "SEGUROS_DB_URL": prodDB, "SEGUROS_HTTP_CLIENT_IP_HEADER": ""}), "SEGUROS_HTTP_CLIENT_IP_HEADER: obligatoria"},
+		{"cabecera de IP falsificable", map[string]string{"SEGUROS_DB_URL": db, "SEGUROS_HTTP_CLIENT_IP_HEADER": "X-Forwarded-For"}, "SEGUROS_HTTP_CLIENT_IP_HEADER"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {

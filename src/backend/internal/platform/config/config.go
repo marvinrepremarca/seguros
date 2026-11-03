@@ -153,6 +153,14 @@ func LoadAPI(lookup LookupFunc) (API, error) {
 	if cfg.HTTP.MaxBodyBytes <= 0 {
 		r.fail("SEGUROS_HTTP_MAX_BODY_BYTES", "debe ser > 0")
 	}
+	switch cfg.HTTP.ClientIPHeader {
+	case "", "X-Real-IP", "CF-Connecting-IP":
+	default:
+		r.fail("SEGUROS_HTTP_CLIENT_IP_HEADER", "solo X-Real-IP o CF-Connecting-IP (cabeceras que el proxy sobrescribe)")
+	}
+	if cfg.Env.IsProductionLike() && cfg.HTTP.ClientIPHeader == "" {
+		r.fail("SEGUROS_HTTP_CLIENT_IP_HEADER", "obligatoria en staging/producción (detrás de Traefik RemoteAddr es el proxy)")
+	}
 	r.postgresURL("SEGUROS_DB_URL", cfg.DB.URL, cfg.Env)
 	r.validateAuth(cfg.Auth, cfg.Env)
 	r.valkeyURL("SEGUROS_VALKEY_URL", cfg.Valkey.URL, cfg.Env)
