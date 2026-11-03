@@ -60,6 +60,15 @@ func TestGeneratedFilesAreUpToDate(t *testing.T) {
 	assert.Equal(t, string(flags.RenderTS(reg)), string(gotTS), "ejecuta make generate")
 }
 
+func TestComplianceIsAControlFlag(t *testing.T) {
+	t.Parallel()
+	reg, err := flags.LoadRegistry()
+	require.NoError(t, err)
+	def, ok := reg.Get(flags.ComplianceModule)
+	require.True(t, ok)
+	assert.True(t, def.Control, "ADR 0012: module.compliance activa un control regulatorio")
+}
+
 func TestParseRegistryRejects(t *testing.T) {
 	t.Parallel()
 	tests := map[string]string{

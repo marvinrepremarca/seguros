@@ -10,6 +10,7 @@
 //	platformctl tenant set-plan --org agencia-x --plan profesional --reason "upgrade" --operator ana.ops
 //	platformctl flag set --org agencia-x --key module.claims --value on|off|clear --reason "add-on"
 //	platformctl flag kill --key module.claims --reason "incidente" --operator ana.ops   (kill switch global)
+//	platformctl flag kill --key module.compliance --confirm-control module.compliance --reason "..." --operator ana.ops
 //	platformctl flag restore --key module.claims --reason "resuelto" --operator ana.ops
 //
 // Se ejecuta con el rol seguros_platform (SEGUROS_DB_URL), el único que escribe switches globales.
@@ -49,7 +50,7 @@ const usage = `uso:
   platformctl tenant reactivate --org <alias> --reason <motivo> --operator <persona>
   platformctl tenant set-plan --org <alias> --plan <plan> --reason <motivo> --operator <persona>
   platformctl flag set --org <alias> --key <flag> --value on|off|clear --reason <motivo>
-  platformctl flag kill --key <flag> --reason <motivo> --operator <persona>
+  platformctl flag kill --key <flag> --reason <motivo> --operator <persona> [--confirm-control <flag>]
   platformctl flag restore --key <flag> --reason <motivo> --operator <persona>`
 
 func main() {
@@ -109,6 +110,7 @@ func runFlag(ctx context.Context, d flagDeps, sub string, args []string) error {
 	value := fs.String("value", "", "on | off | clear (vuelve al plan)")
 	reason := fs.String("reason", "", "motivo (queda auditado)")
 	operator := fs.String("operator", "", "persona que ejecuta el cambio (obligatorio en kill/restore)")
+	confirm := fs.String("confirm-control", "", "repite la clave para apagar un flag de control regulatorio (ADR 0012)")
 	if err := fs.Parse(args); err != nil {
 		return errors.New(usage)
 	}
@@ -150,7 +152,7 @@ func runFlag(ctx context.Context, d flagDeps, sub string, args []string) error {
 			v := false
 			enabled = &v
 		}
-		if err := mod.SetGlobalSwitch.Handle(ctx, fmapp.SetGlobalSwitchCommand{Key: flags.Key(*key), Enabled: enabled, Reason: *reason, Operator: *operator}); err != nil {
+		if err := mod.SetGlobalSwitch.Handle(ctx, fmapp.SetGlobalSwitchCommand{Key: flags.Key(*key), Enabled: enabled, Reason: *reason, Operator: *operator, ConfirmControl: *confirm}); err != nil {
 			return err
 		}
 	default:

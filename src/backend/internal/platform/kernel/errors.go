@@ -18,6 +18,7 @@ const (
 	KindConflict                          // estado o versión incompatible → 409
 	KindForbidden                         // sin permiso para la operación → 403
 	KindUnauthorized                      // sin sesión válida → 401
+	KindUnavailable                       // no se puede decidir ahora; se puede reintentar → 503
 )
 
 // DomainError es un error de negocio con código estable (ej. "policies.endorsement.outside_coverage_period").

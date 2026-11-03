@@ -53,7 +53,7 @@ Objetivo: todo lo transversal que los módulos dan por hecho.
 - **B7 — Organización por id:** vincular el tenant al id de la Organization de Keycloak (no solo al alias) para que recrear una organización con el mismo alias no herede el tenant.
 
 Auditoría de 1.7/1.8/1.10 (2026-11-03). El hallazgo Alto (roles: la API podía ejecutar el relay, tocar River y escribir switches globales) y M2–M4, B1, B4–B6 quedaron corregidos. Siguen abiertos:
-- **M1 — Flags que activan controles:** con fail-closed, `module.compliance` "apagado por error" dejaría emitir pólizas sin KYC. Cuando Policies implemente el gate (Fase 2), debe usar `Evaluator.Resolve` y bloquear la emisión con `SourceError`; y `kill` sobre flags de control debe exigir confirmación adicional. Requiere ADR.
+- ~~**M1 — Flags que activan controles:**~~ Definido en [ADR 0012](adr/0012-flags-que-activan-controles.md): la emisión se bloquea si el flag no se puede evaluar y `kill` exige `--confirm-control`.
 - **B2 — Bindings criptográficos:** incluir tenant y versión en el AAD del envoltorio de la DEK, y permitir que el llamador incluya el ID del registro en el AAD del campo (Parties, Fase 2).
 - **B3 — Llaves:** versión de la llave de blind index con ruta de reindexado; token de OpenBao con AppRole/renovación; rechazar versiones duplicadas en `SEGUROS_CRYPTO_LOCAL_KEKS`; un fallo al desenvolver una DEK retirada no debe bloquear al tenant entero.
 - **B7 — Override de plataforma vs. tenant:** distinguir quién fijó un override para que un TenantAdmin no revierta un `off` de la plataforma (relevante cuando existan flags `tenantEditable`).

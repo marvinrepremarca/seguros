@@ -52,6 +52,7 @@ type Definition struct {
 	Plans          []string    `yaml:"plans"`
 	Requires       []Key       `yaml:"requires"`
 	TenantEditable bool        `yaml:"tenantEditable"`
+	Control        bool        `yaml:"control"`
 	RemoveBy       kernel.Date `yaml:"removeBy"`
 }
 

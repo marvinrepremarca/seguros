@@ -14,6 +14,9 @@
 | N4 | SARLAFT al expedir | **Bloquear** el paso a `Vigente` si el `KycCheck` del tomador no está aprobado (cuando `module.compliance` está ON). | ✅ | Invariante en `Policy.Issue`. Error `policies.issue.kyc_not_approved`. Sin excepciones manuales. |
 | N5 | Comisión interna de asesores | **Porcentaje por asesor y ramo**, sobre la comisión **conciliada** de la agencia. | ✅ editable | Tabla `AgentCommissionRate(agent, lineOfBusiness, pct, vigencia)`; si no hay tasa para el ramo, usa la tasa general del asesor; si no hay ninguna, 0 % y alerta. |
 | N6 | Aplicación de pagos | **A la cuota vencida más antigua primero (FIFO)**; el sobrante pasa a la siguiente; sobrante final queda como saldo a favor. | ✅ | Sin reasignación manual en v1. Un error se corrige con reverso + nuevo pago (pagos inmutables). |
+| N7 | Fin de vigencia | **`EffectiveTo` es el último día cubierto.** Vigencia = `[EffectiveFrom, EffectiveTo]`, ambos inclusive. | ✅ 2026-11-03 | Endosos y cancelaciones valen hasta `EffectiveTo` inclusive. El job diario marca `Vencida` a partir de `EffectiveTo + 1` (zona `America/Bogota`). |
+| N8 | Valores de prima | **Prima neta e impuestos/gastos por separado**, tal como los informa la aseguradora; el sistema no los calcula. Total = neta + impuestos. | ✅ 2026-11-03 | `Policy.netPremium` y `Policy.taxes`. Los eventos llevan ambos. La base de cuotas y de comisión se decide en la Fase 3. |
+| N9 | Servicio postventa (Flujo 5) | **Endoso con estados:** `Solicitado → Emitido \| Rechazado`. Prima, sumas aseguradas, partes y bienes cambian solo al emitirse. | ✅ 2026-11-03 | Certificados y duplicados quedan fuera hasta `Documents` (Fase 5). |
 
 ## 2. Decisiones de producto (SaaS)
 

@@ -71,7 +71,7 @@ func WriteError(w http.ResponseWriter, r *http.Request, logger *slog.Logger, err
 	}
 	if de, ok := kernel.AsDomainError(err); ok {
 		status := statusForKind(de.Kind())
-		if status >= http.StatusInternalServerError {
+		if status == http.StatusInternalServerError {
 			logger.ErrorContext(r.Context(), "error de dominio sin clase HTTP", "code", de.Code(), "error", err)
 		}
 		WriteProblem(w, r, status, de.Code(), titleForStatus(status))
@@ -93,6 +93,8 @@ func statusForKind(k kernel.ErrorKind) int {
 		return http.StatusForbidden
 	case kernel.KindUnauthorized:
 		return http.StatusUnauthorized
+	case kernel.KindUnavailable:
+		return http.StatusServiceUnavailable
 	default:
 		return http.StatusInternalServerError
 	}
@@ -111,6 +113,8 @@ func titleForStatus(status int) string {
 		return "No tiene permiso para esta operación"
 	case http.StatusUnauthorized:
 		return "Se requiere autenticación"
+	case http.StatusServiceUnavailable:
+		return "Servicio no disponible; intente de nuevo"
 	default:
 		return "Error interno"
 	}

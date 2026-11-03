@@ -370,3 +370,29 @@ func TestListTenantFlags(t *testing.T) {
 		assert.Nil(t, v.Override, "el otro tenant no ve overrides ajenos")
 	}
 }
+
+// ADR 0012: apagar globalmente un flag de control exige repetir su clave; restaurarlo no.
+func TestKillOfControlFlagRequiresConfirmation(t *testing.T) {
+	t.Parallel()
+	reg, err := flags.ParseRegistry([]byte("flags:\n  - {key: module.compliance, kind: module, description: d, owner: x, control: true}\n"))
+	require.NoError(t, err)
+	store := &fakeStore{overrides: map[kernel.TenantID]map[flags.Key]app.Override{}, global: map[flags.Key]bool{}}
+	clock := kernel.NewFakeClock(time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC))
+	deps := app.NewDeps(reg, store, fakeTenants{plans: map[kernel.TenantID]string{}}, &fakeInvalidator{}, clock, slog.New(slog.DiscardHandler))
+	h := app.NewSetGlobalSwitchHandler(deps)
+	ctx := context.Background()
+
+	cmd := app.SetGlobalSwitchCommand{Key: "module.compliance", Enabled: off(), Reason: "incidente", Operator: "ana.ops"}
+	require.ErrorIs(t, h.Handle(ctx, cmd), domain.ErrControlConfirmationRequired)
+	_, killed := store.global["module.compliance"]
+	assert.False(t, killed, "sin confirmación no cambia nada")
+
+	cmd.ConfirmControl = "module.otro"
+	require.ErrorIs(t, h.Handle(ctx, cmd), domain.ErrControlConfirmationRequired, "la clave debe coincidir")
+
+	cmd.ConfirmControl = "module.compliance"
+	require.NoError(t, h.Handle(ctx, cmd))
+	assert.False(t, store.global["module.compliance"])
+
+	require.NoError(t, h.Handle(ctx, app.SetGlobalSwitchCommand{Key: "module.compliance", Reason: "resuelto", Operator: "ana.ops"}), "restaurar enciende el control: no pide confirmación")
+}
