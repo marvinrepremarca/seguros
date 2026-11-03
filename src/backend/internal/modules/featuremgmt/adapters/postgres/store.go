@@ -16,6 +16,7 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/platform/db"
 	"github.com/marvinrepremarca/seguros/internal/platform/flags"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
+	"github.com/marvinrepremarca/seguros/internal/platform/outbox"
 	"github.com/marvinrepremarca/seguros/internal/platform/reqctx"
 )
 
@@ -23,6 +24,7 @@ import (
 type Store struct {
 	db       *db.DB
 	recorder *audit.Recorder
+	outbox   *outbox.Writer
 }
 
 var (
@@ -31,14 +33,14 @@ var (
 )
 
 // NewStore construye el Store.
-func NewStore(database *db.DB, recorder *audit.Recorder) *Store {
-	return &Store{db: database, recorder: recorder}
+func NewStore(database *db.DB, recorder *audit.Recorder, writer *outbox.Writer) *Store {
+	return &Store{db: database, recorder: recorder, outbox: writer}
 }
 
 // WithinTenant implementa app.Store.
 func (s *Store) WithinTenant(ctx context.Context, fn func(ctx context.Context, uow app.UnitOfWork) error) error {
 	return s.db.WithTenantTx(ctx, func(tx pgx.Tx) error {
-		return fn(ctx, &unitOfWork{tx: tx, q: featuremgmtsqlc.New(tx), recorder: s.recorder})
+		return fn(ctx, &unitOfWork{tx: tx, q: featuremgmtsqlc.New(tx), recorder: s.recorder, outbox: s.outbox})
 	})
 }
 
@@ -98,6 +100,12 @@ type unitOfWork struct {
 	tx       pgx.Tx
 	q        *featuremgmtsqlc.Queries
 	recorder *audit.Recorder
+	outbox   *outbox.Writer
+}
+
+func (u *unitOfWork) Publish(ctx context.Context, topic string, payload any) error {
+	_, err := u.outbox.Add(ctx, u.tx, topic, payload)
+	return err
 }
 
 func (u *unitOfWork) Overrides() app.OverrideRepository { return &overrides{q: u.q} }

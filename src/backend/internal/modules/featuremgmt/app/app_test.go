@@ -13,6 +13,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt/app"
+	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt/contracts"
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt/domain"
 	tenancy "github.com/marvinrepremarca/seguros/internal/modules/tenancy/contracts"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
@@ -36,6 +37,7 @@ type fakeStore struct {
 	overrides map[kernel.TenantID]map[flags.Key]app.Override
 	global    map[flags.Key]bool
 	audits    []audit.Entry
+	events    []event
 	failWrite error
 }
 
@@ -53,10 +55,11 @@ func (s *fakeStore) WithinTenant(ctx context.Context, fn func(context.Context, a
 			snapshot[t][k] = v
 		}
 	}
-	n := len(s.audits)
+	n, m := len(s.audits), len(s.events)
 	if err := fn(ctx, &uow{s: s}); err != nil {
 		s.overrides = snapshot
 		s.audits = s.audits[:n]
+		s.events = s.events[:m]
 		return err
 	}
 	return nil
@@ -90,6 +93,16 @@ func (u *uow) Overrides() app.OverrideRepository { return u }
 func (u *uow) Audit(_ context.Context, e audit.Entry) error {
 	u.s.audits = append(u.s.audits, e)
 	return nil
+}
+
+func (u *uow) Publish(_ context.Context, topic string, payload any) error {
+	u.s.events = append(u.s.events, event{topic: topic, payload: payload})
+	return nil
+}
+
+type event struct {
+	topic   string
+	payload any
 }
 
 func (u *uow) List(_ context.Context, t kernel.TenantID) (map[flags.Key]app.Override, error) {
@@ -206,6 +219,9 @@ func TestTenantAdminTogglesEditableFeature(t *testing.T) {
 		"reason": "No queremos recordatorios", "actor": "tenant_admin",
 	}, a.Details)
 	assert.Equal(t, []kernel.TenantID{tenant}, e.inv.tenants, "invalida la caché del tenant")
+	require.Len(t, e.store.events, 1, "publica FeatureToggled en la misma transacción")
+	assert.Equal(t, contracts.TopicFeatureToggled, e.store.events[0].topic)
+	assert.Equal(t, contracts.FeatureToggled{FlagKey: "billing.reminders", Enabled: false}, e.store.events[0].payload)
 
 	v, err = h.Handle(as(t, tenant, authz.RoleTenantAdmin), app.SetTenantFlagCommand{Key: "billing.reminders", Reason: "Volver al valor por defecto"})
 	require.NoError(t, err)
@@ -318,6 +334,7 @@ func TestWriteFailureRollsBackAudit(t *testing.T) {
 	_, err := app.NewSetTenantFlagHandler(e.deps, app.ActorPlatform).Handle(platform(tenant), app.SetTenantFlagCommand{Key: "module.claims", Enabled: on(), Reason: "add-on"})
 	require.Error(t, err)
 	assert.Empty(t, e.store.audits)
+	assert.Empty(t, e.store.events)
 	assert.Empty(t, e.inv.tenants)
 }
 

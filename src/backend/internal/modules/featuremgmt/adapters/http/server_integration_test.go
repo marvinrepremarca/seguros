@@ -29,6 +29,7 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/platform/flags"
 	"github.com/marvinrepremarca/seguros/internal/platform/httpx"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
+	"github.com/marvinrepremarca/seguros/internal/platform/outbox"
 	"github.com/marvinrepremarca/seguros/internal/platform/reqctx"
 	"github.com/marvinrepremarca/seguros/test/pgtest"
 )
@@ -97,7 +98,7 @@ func newEnv(t *testing.T) *env {
 	policy, err := authz.DefaultPolicy()
 	require.NoError(t, err)
 	dir := &directory{plans: map[kernel.TenantID]string{}}
-	store := featuremgmt.NewStore(database, audit.NewRecorder(clock))
+	store := featuremgmt.NewStore(database, audit.NewRecorder(clock), outbox.NewWriter(clock))
 	eval := flags.NewEvaluator(reg, store, nil, clock, logger)
 	mod := featuremgmt.New(featuremgmt.Deps{
 		Store: store, Tenants: dir, Registry: reg, Invalidator: flags.NewInvalidator(eval, nil),

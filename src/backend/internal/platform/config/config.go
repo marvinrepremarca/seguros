@@ -189,6 +189,26 @@ func LoadPlatformCtl(lookup LookupFunc) (PlatformCtl, error) {
 	return cfg, r.err()
 }
 
+// Worker es la configuración de cmd/worker (relay del outbox, consumidores y jobs River).
+type Worker struct {
+	Common
+	DB     Database
+	Valkey Valkey
+}
+
+// LoadWorker carga y valida la configuración de cmd/worker.
+func LoadWorker(lookup LookupFunc) (Worker, error) {
+	r := reader{lookup: lookup}
+	cfg := Worker{
+		Common: r.common("seguros-worker"),
+		DB:     r.database("SEGUROS_DB_URL"),
+		Valkey: r.valkey(),
+	}
+	r.postgresURL("SEGUROS_DB_URL", cfg.DB.URL, cfg.Env)
+	r.valkeyURL("SEGUROS_VALKEY_URL", cfg.Valkey.URL, cfg.Env)
+	return cfg, r.err()
+}
+
 // LoadMigrator carga y valida la configuración de cmd/migrate.
 func LoadMigrator(lookup LookupFunc) (Migrator, error) {
 	r := reader{lookup: lookup}

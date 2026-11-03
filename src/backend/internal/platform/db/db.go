@@ -74,6 +74,10 @@ func (d *DB) checkRole(ctx context.Context) error {
 	return nil
 }
 
+// Pool expone el pool solo a la plataforma que lo exige por API de terceros (River en
+// platform/jobs y cmd/worker). Prohibido en módulos: test/arch falla si internal/modules lo usa.
+func (d *DB) Pool() *pgxpool.Pool { return d.pool }
+
 // Close cierra el pool.
 func (d *DB) Close() { d.pool.Close() }
 

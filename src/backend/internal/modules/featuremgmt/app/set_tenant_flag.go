@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt/contracts"
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt/domain"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/authz"
@@ -112,6 +113,11 @@ func (s *SetTenantFlagHandler) Handle(ctx context.Context, cmd SetTenantFlagComm
 				"override": override, "source": string(next.Source), "reason": truncate(string(reason), 200),
 				"actor": actorName(actor),
 			},
+		}); err != nil {
+			return err
+		}
+		if err := uow.Publish(ctx, contracts.TopicFeatureToggled, contracts.FeatureToggled{
+			FlagKey: string(cmd.Key), Enabled: next.Enabled,
 		}); err != nil {
 			return err
 		}

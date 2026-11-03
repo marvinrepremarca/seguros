@@ -26,10 +26,12 @@ type OverrideRepository interface {
 	Delete(ctx context.Context, tenant kernel.TenantID, key flags.Key) error
 }
 
-// UnitOfWork agrupa repositorio y auditoría en una transacción con RLS.
+// UnitOfWork agrupa repositorio, auditoría y outbox en una transacción con RLS.
 type UnitOfWork interface {
 	Overrides() OverrideRepository
 	Audit(ctx context.Context, e audit.Entry) error
+	// Publish escribe un evento de integración en el outbox de la misma transacción.
+	Publish(ctx context.Context, topic string, payload any) error
 }
 
 // Store abre unidades de trabajo y gestiona los switches globales.

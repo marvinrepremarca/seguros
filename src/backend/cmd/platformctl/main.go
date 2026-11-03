@@ -36,6 +36,7 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/platform/flags"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 	"github.com/marvinrepremarca/seguros/internal/platform/obs"
+	"github.com/marvinrepremarca/seguros/internal/platform/outbox"
 	"github.com/marvinrepremarca/seguros/internal/platform/reqctx"
 	"github.com/marvinrepremarca/seguros/internal/platform/session"
 )
@@ -113,7 +114,7 @@ func runFlag(ctx context.Context, d flagDeps, sub string, args []string) error {
 	if err != nil {
 		return err
 	}
-	store := featuremgmt.NewStore(d.db, audit.NewRecorder(clock))
+	store := featuremgmt.NewStore(d.db, audit.NewRecorder(clock), outbox.NewWriter(clock))
 	eval := flags.NewEvaluator(reg, store, flags.NewValkeyCache(d.valkey), clock, d.logger)
 	mod := featuremgmt.New(featuremgmt.Deps{
 		Store: store, Tenants: d.tenants.Directory, Registry: reg,

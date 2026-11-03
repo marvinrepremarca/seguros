@@ -8,6 +8,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	featuremgmtevents "github.com/marvinrepremarca/seguros/internal/modules/featuremgmt/adapters/events"
 	featuremgmthttp "github.com/marvinrepremarca/seguros/internal/modules/featuremgmt/adapters/http"
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt/adapters/postgres"
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt/app"
@@ -17,14 +18,21 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/platform/db"
 	"github.com/marvinrepremarca/seguros/internal/platform/flags"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
+	"github.com/marvinrepremarca/seguros/internal/platform/outbox"
 )
 
 // Store es la persistencia del módulo; también es el flags.Store del evaluador de plataforma.
 type Store = postgres.Store
 
 // NewStore construye la persistencia (se crea antes que el evaluador, que la necesita).
-func NewStore(database *db.DB, recorder *audit.Recorder) *Store {
-	return postgres.NewStore(database, recorder)
+func NewStore(database *db.DB, recorder *audit.Recorder, writer *outbox.Writer) *Store {
+	return postgres.NewStore(database, recorder, writer)
+}
+
+// Consumers devuelve los consumidores de eventos del módulo (los registra cmd/worker).
+// cache-invalidation reintenta de forma confiable la invalidación de cachés de flags.
+func Consumers(inv app.Invalidator) []outbox.Consumer {
+	return []outbox.Consumer{featuremgmtevents.CacheInvalidation(inv)}
 }
 
 // Deps son las dependencias del módulo.

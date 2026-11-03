@@ -118,6 +118,9 @@ func (r *Runner) Up(ctx context.Context) error {
 			r.logger.InfoContext(ctx, "migración aplicada", "module", m, "file", res.Source.Path, "duration", res.Duration)
 		}
 	}
+	if slices.Contains(mods, RiverSchema) {
+		return r.upRiver(ctx)
+	}
 	return nil
 }
 

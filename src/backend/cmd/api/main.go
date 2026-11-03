@@ -33,6 +33,7 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/platform/httpx"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 	"github.com/marvinrepremarca/seguros/internal/platform/obs"
+	"github.com/marvinrepremarca/seguros/internal/platform/outbox"
 	"github.com/marvinrepremarca/seguros/internal/platform/session"
 )
 
@@ -119,7 +120,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	flagStore := featuremgmt.NewStore(database, recorder)
+	flagStore := featuremgmt.NewStore(database, recorder, outbox.NewWriter(clock))
 	evaluator := flags.NewEvaluator(registry, flagStore, flags.NewValkeyCache(valkeyClient), clock, logger)
 	if err := openfeature.SetNamedProviderAndWait(flags.ProviderName, flags.NewProvider(evaluator)); err != nil {
 		return fmt.Errorf("registrando proveedor de flags: %w", err)

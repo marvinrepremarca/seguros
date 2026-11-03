@@ -232,3 +232,14 @@ func TestLoadAPIAuthInvalid(t *testing.T) {
 		})
 	}
 }
+
+func TestLoadWorker(t *testing.T) {
+	t.Parallel()
+	cfg, err := config.LoadWorker(env(map[string]string{
+		"SEGUROS_DB_URL": dsn(""), "SEGUROS_VALKEY_URL": "redis://:" + sentinel + "@localhost:6379/0",
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, "seguros-worker", cfg.ServiceName)
+	_, err = config.LoadWorker(env(map[string]string{"SEGUROS_DB_URL": dsn("")}))
+	require.ErrorContains(t, err, "SEGUROS_VALKEY_URL")
+}
