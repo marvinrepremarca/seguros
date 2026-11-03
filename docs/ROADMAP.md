@@ -89,7 +89,7 @@ Pruebas k6 (objetivos en testing.md), ZAP, restauración de backup probada, runb
 | Ítem | Estado | Fecha | Notas |
 |---|---|---|---|
 | Fase 0 | ✅ Hecho | 2026-10-30 | DoD verificada: make check, pnpm check, compose sano y CI en verde (PR #1) |
-| Fase 1 | 🟨 En curso | 2026-11-03 | 1.1 ✅ · 1.2 ✅ · 1.3 ✅ · 1.4 ✅ (sesión A, PR #2) · 1.5 ✅ · 1.6 ✅ · 1.7 ✅ · 1.8 ✅ · 1.9 ✅ (adelantada: la usan login y flags; `platform/audit` + `migrations/audit`) · 1.10 ✅ (`platform/crypto`; se cablea en api/worker con el primer módulo con datos Restringidos, Fase 2) · siguiente: 1.11 |
+| Fase 1 | 🟨 En curso | 2026-11-03 | 1.1 ✅ · 1.2 ✅ · 1.3 ✅ · 1.4 ✅ (sesión A, PR #2) · 1.5 ✅ · 1.6 ✅ · 1.7 ✅ · 1.8 ✅ · 1.9 ✅ (adelantada: la usan login y flags; `platform/audit` + `migrations/audit`) · 1.10 ✅ (`platform/crypto`; se cablea en api/worker con el primer módulo con datos Restringidos, Fase 2) · 1.11 ✅ · siguiente: 1.12 |
 | Fase 2 | ⬜ Pendiente | | |
 | Fase 3 | ⬜ Pendiente | | |
 | Fase 4 | ⬜ Pendiente | | |
