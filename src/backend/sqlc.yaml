@@ -35,7 +35,49 @@ overrides:
           type: time.Time
           pointer: true
 
-sql: []
+sql:
+  - name: tenancy
+    engine: postgresql
+    schema: migrations/tenancy
+    queries: queries/tenancy
+    strict_function_checks: true
+    gen:
+      go:
+        package: tenancysqlc
+        out: internal/modules/tenancy/adapters/postgres/sqlc
+        sql_package: pgx/v5
+        emit_interface: true
+        emit_empty_slices: true
+        emit_result_struct_pointers: false
+        emit_enum_valid_method: true
+  - name: identity
+    engine: postgresql
+    schema: migrations/identity
+    queries: queries/identity
+    strict_function_checks: true
+    gen:
+      go:
+        package: identitysqlc
+        out: internal/modules/identity/adapters/postgres/sqlc
+        sql_package: pgx/v5
+        emit_interface: true
+        emit_empty_slices: true
+        emit_result_struct_pointers: false
+        emit_enum_valid_method: true
+  - name: featuremgmt
+    engine: postgresql
+    schema: migrations/featuremgmt
+    queries: queries/featuremgmt
+    strict_function_checks: true
+    gen:
+      go:
+        package: featuremgmtsqlc
+        out: internal/modules/featuremgmt/adapters/postgres/sqlc
+        sql_package: pgx/v5
+        emit_interface: true
+        emit_empty_slices: true
+        emit_result_struct_pointers: false
+        emit_enum_valid_method: true
 # Plantilla por módulo:
 #  - name: policies
 #    engine: postgresql

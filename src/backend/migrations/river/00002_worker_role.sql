@@ -1,0 +1,36 @@
+-- Auditoría de seguridad 1.8 (A1): las tablas de River no tienen RLS (los jobs llevan tenant en
+-- sus argumentos), así que solo las usa el rol del worker. La API no encola jobs directamente: un
+-- módulo que necesite un job lo pide con un evento de integración (outbox, atado por RLS al
+-- tenant de la transacción) y es el worker quien lo encola con ese tenant.
+-- +goose Up
+REVOKE ALL ON ALL TABLES IN SCHEMA river FROM seguros_app;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA river FROM seguros_app;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA river FROM seguros_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA river REVOKE ALL ON TABLES FROM seguros_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA river REVOKE ALL ON SEQUENCES FROM seguros_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA river REVOKE ALL ON FUNCTIONS FROM seguros_app;
+REVOKE USAGE ON SCHEMA river FROM seguros_app;
+
+GRANT USAGE ON SCHEMA river TO seguros_worker;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA river TO seguros_worker;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA river TO seguros_worker;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA river TO seguros_worker;
+ALTER DEFAULT PRIVILEGES IN SCHEMA river GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO seguros_worker;
+ALTER DEFAULT PRIVILEGES IN SCHEMA river GRANT USAGE, SELECT ON SEQUENCES TO seguros_worker;
+ALTER DEFAULT PRIVILEGES IN SCHEMA river GRANT EXECUTE ON FUNCTIONS TO seguros_worker;
+
+-- +goose Down
+ALTER DEFAULT PRIVILEGES IN SCHEMA river REVOKE ALL ON TABLES FROM seguros_worker;
+ALTER DEFAULT PRIVILEGES IN SCHEMA river REVOKE ALL ON SEQUENCES FROM seguros_worker;
+ALTER DEFAULT PRIVILEGES IN SCHEMA river REVOKE ALL ON FUNCTIONS FROM seguros_worker;
+REVOKE ALL ON ALL TABLES IN SCHEMA river FROM seguros_worker;
+REVOKE ALL ON ALL SEQUENCES IN SCHEMA river FROM seguros_worker;
+REVOKE ALL ON ALL FUNCTIONS IN SCHEMA river FROM seguros_worker;
+REVOKE USAGE ON SCHEMA river FROM seguros_worker;
+GRANT USAGE ON SCHEMA river TO seguros_app;
+GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA river TO seguros_app;
+GRANT USAGE, SELECT ON ALL SEQUENCES IN SCHEMA river TO seguros_app;
+GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA river TO seguros_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA river GRANT SELECT, INSERT, UPDATE, DELETE ON TABLES TO seguros_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA river GRANT USAGE, SELECT ON SEQUENCES TO seguros_app;
+ALTER DEFAULT PRIVILEGES IN SCHEMA river GRANT EXECUTE ON FUNCTIONS TO seguros_app;

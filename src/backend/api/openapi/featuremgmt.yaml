@@ -1,0 +1,132 @@
+openapi: 3.0.3
+info:
+  title: Seguros — Feature flags
+  version: 1.0.0
+  description: |
+    Estado de los feature flags del tenant autenticado (ARCHITECTURE.md §7). El backend es la
+    autoridad: la SPA solo usa estos datos para mostrar u ocultar menús y rutas.
+    Toda operación declara `x-permission` (ver identity.yaml).
+servers:
+  - url: /
+paths:
+  /bff/features:
+    get:
+      operationId: getFeatures
+      summary: Flags efectivos (encendido/apagado) del tenant para la SPA.
+      x-permission: authenticated
+      responses:
+        "200":
+          description: Mapa clave → encendido.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Features" }
+        "401": { $ref: "#/components/responses/Problem" }
+  /api/v1/featuremgmt/flags:
+    get:
+      operationId: listFlags
+      summary: Estado detallado de todos los flags del tenant (origen del valor, override, dependencias).
+      x-permission: featuremgmt.flag.read
+      responses:
+        "200":
+          description: Flags del tenant.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                additionalProperties: false
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Flag" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+  /api/v1/featuremgmt/flags/{key}:
+    put:
+      operationId: setFlag
+      summary: Cambia el override de una funcionalidad editable por el tenant (o lo elimina).
+      x-permission: featuremgmt.flag.update
+      parameters:
+        - name: key
+          in: path
+          required: true
+          schema: { type: string, maxLength: 120, pattern: '^[a-z][a-z0-9]*(\.[a-z][a-z0-9-]*){1,2}$' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SetFlagRequest" }
+      responses:
+        "200":
+          description: Estado resultante del flag.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Flag" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+components:
+  responses:
+    Problem:
+      description: Error (RFC 9457).
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        traceId: { type: string }
+        requestId: { type: string }
+    Features:
+      type: object
+      required: [flags]
+      additionalProperties: false
+      properties:
+        flags:
+          type: object
+          additionalProperties: { type: boolean }
+    Flag:
+      type: object
+      required: [key, kind, description, enabled, source, tenantEditable, requires]
+      additionalProperties: false
+      properties:
+        key: { type: string }
+        kind: { type: string, enum: [module, feature, release, ops] }
+        description: { type: string }
+        enabled: { type: boolean }
+        source:
+          type: string
+          enum: [kill-switch, global, override, plan, default, dependency, error]
+        tenantEditable: { type: boolean }
+        requires:
+          type: array
+          items: { type: string }
+        override: { $ref: "#/components/schemas/Override" }
+    Override:
+      type: object
+      required: [enabled, reason, updatedAt]
+      additionalProperties: false
+      properties:
+        enabled: { type: boolean }
+        reason: { type: string }
+        updatedAt: { type: string, format: date-time }
+    SetFlagRequest:
+      type: object
+      required: [action, reason]
+      additionalProperties: false
+      properties:
+        action:
+          type: string
+          enum: [enable, disable, clear]
+          description: "`clear` elimina el override y el flag vuelve a depender del plan."
+        reason: { type: string, minLength: 3, maxLength: 500 }

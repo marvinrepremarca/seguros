@@ -9,50 +9,135 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as IndexRouteImport } from './routes/index'
+import { Route as AppRouteImport } from './routes/_app'
+import { Route as LoginRouteImport } from './routes/login'
+import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppConfiguracionFuncionalidadesRouteImport } from './routes/_app/configuracion/funcionalidades'
+import { Route as AppModulosModuloRouteImport } from './routes/_app/modulos/$modulo'
 
-const IndexRoute = IndexRouteImport.update({
+const AppRoute = AppRouteImport.update({
+  id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppIndexRoute = AppIndexRouteImport.update({
   id: '/',
   path: '/',
-  getParentRoute: () => rootRouteImport,
+  getParentRoute: () => AppRoute,
+} as any)
+const AppConfiguracionFuncionalidadesRoute =
+  AppConfiguracionFuncionalidadesRouteImport.update({
+    id: '/configuracion/funcionalidades',
+    path: '/configuracion/funcionalidades',
+    getParentRoute: () => AppRoute,
+  } as any)
+const AppModulosModuloRoute = AppModulosModuloRouteImport.update({
+  id: '/modulos/$modulo',
+  path: '/modulos/$modulo',
+  getParentRoute: () => AppRoute,
 } as any)
 
 export interface FileRoutesByFullPath {
-  '/': typeof IndexRoute
+  '/': typeof AppIndexRoute
+  '/login': typeof LoginRoute
+  '/configuracion/funcionalidades': typeof AppConfiguracionFuncionalidadesRoute
+  '/modulos/$modulo': typeof AppModulosModuloRoute
 }
 export interface FileRoutesByTo {
-  '/': typeof IndexRoute
+  '/login': typeof LoginRoute
+  '/': typeof AppIndexRoute
+  '/configuracion/funcionalidades': typeof AppConfiguracionFuncionalidadesRoute
+  '/modulos/$modulo': typeof AppModulosModuloRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
-  '/': typeof IndexRoute
+  '/_app': typeof AppRouteWithChildren
+  '/login': typeof LoginRoute
+  '/_app/': typeof AppIndexRoute
+  '/_app/configuracion/funcionalidades': typeof AppConfiguracionFuncionalidadesRoute
+  '/_app/modulos/$modulo': typeof AppModulosModuloRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    '/' | '/login' | '/configuracion/funcionalidades' | '/modulos/$modulo'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to: '/login' | '/' | '/configuracion/funcionalidades' | '/modulos/$modulo'
+  id:
+    | '__root__'
+    | '/_app'
+    | '/login'
+    | '/_app/'
+    | '/_app/configuracion/funcionalidades'
+    | '/_app/modulos/$modulo'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
-  IndexRoute: typeof IndexRoute
+  AppRoute: typeof AppRouteWithChildren
+  LoginRoute: typeof LoginRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/': {
-      id: '/'
+    '/_app': {
+      id: '/_app'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/': {
+      id: '/_app/'
       path: '/'
       fullPath: '/'
-      preLoaderRoute: typeof IndexRouteImport
-      parentRoute: typeof rootRouteImport
+      preLoaderRoute: typeof AppIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/configuracion/funcionalidades': {
+      id: '/_app/configuracion/funcionalidades'
+      path: '/configuracion/funcionalidades'
+      fullPath: '/configuracion/funcionalidades'
+      preLoaderRoute: typeof AppConfiguracionFuncionalidadesRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/modulos/$modulo': {
+      id: '/_app/modulos/$modulo'
+      path: '/modulos/$modulo'
+      fullPath: '/modulos/$modulo'
+      preLoaderRoute: typeof AppModulosModuloRouteImport
+      parentRoute: typeof AppRoute
     }
   }
 }
 
+interface AppRouteChildren {
+  AppIndexRoute: typeof AppIndexRoute
+  AppConfiguracionFuncionalidadesRoute: typeof AppConfiguracionFuncionalidadesRoute
+  AppModulosModuloRoute: typeof AppModulosModuloRoute
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppIndexRoute: AppIndexRoute,
+  AppConfiguracionFuncionalidadesRoute: AppConfiguracionFuncionalidadesRoute,
+  AppModulosModuloRoute: AppModulosModuloRoute,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
-  IndexRoute: IndexRoute,
+  AppRoute: AppRouteWithChildren,
+  LoginRoute: LoginRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

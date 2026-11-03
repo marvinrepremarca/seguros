@@ -35,6 +35,8 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?ejecuta make dev-env}
       SEGUROS_MIGRATOR_PASSWORD: ${SEGUROS_MIGRATOR_PASSWORD:?ejecuta make dev-env}
       SEGUROS_APP_PASSWORD: ${SEGUROS_APP_PASSWORD:?ejecuta make dev-env}
+      SEGUROS_WORKER_PASSWORD: ${SEGUROS_WORKER_PASSWORD:?ejecuta make dev-env}
+      SEGUROS_PLATFORM_PASSWORD: ${SEGUROS_PLATFORM_PASSWORD:?ejecuta make dev-env}
       KEYCLOAK_DB_PASSWORD: ${KEYCLOAK_DB_PASSWORD:?ejecuta make dev-env}
     volumes:
       - postgres-data:/var/lib/postgresql/data
@@ -86,6 +88,9 @@ services:
       KC_BOOTSTRAP_ADMIN_PASSWORD: ${KC_BOOTSTRAP_ADMIN_PASSWORD:?ejecuta make dev-env}
       KC_HEALTH_ENABLED: "true"
       KC_HOSTNAME: http://localhost:8081
+      # El navegador usa localhost:8081; el BFF (en el Dev Container) descubre el realm por
+      # host.docker.internal:8081 y recibe endpoints de backchannel (token, JWKS) con ese host.
+      KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
       # Placeholders de realm-dev.json:
       KC_BFF_CLIENT_SECRET: ${KC_BFF_CLIENT_SECRET:?ejecuta make dev-env}
       KC_TEST_USER_PASSWORD: ${KC_TEST_USER_PASSWORD:?ejecuta make dev-env}

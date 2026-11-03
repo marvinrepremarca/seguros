@@ -71,6 +71,9 @@ type HTTP struct {
 	IdleTimeout       time.Duration
 	ShutdownTimeout   time.Duration
 	MaxBodyBytes      int64
+	// ClientIPHeader es la cabecera con la IP del cliente que fija el proxy de confianza (Traefik).
+	// Vacía = RemoteAddr (sin proxy, desarrollo).
+	ClientIPHeader string
 }
 
 // Database configura el pool de la aplicación (rol seguros_app, sujeto a RLS).
@@ -82,11 +85,53 @@ type Database struct {
 	StatementTimeout time.Duration
 }
 
+// Auth configura el BFF: login OIDC con Keycloak y sesión server-side.
+type Auth struct {
+	// Issuer es el `iss` esperado en los tokens (URL pública del realm).
+	Issuer string
+	// DiscoveryURL es la URL desde la que el backend descubre el proveedor cuando no puede
+	// alcanzar Issuer (solo desarrollo: Keycloak en otro contenedor). Vacía = Issuer.
+	DiscoveryURL string
+	ClientID     string
+	ClientSecret Secret
+	// PublicURL es la origin pública de la SPA y el BFF (ej. https://app.seguros.co). De ella
+	// salen la redirect URI (/bff/auth/callback) y el Origin aceptado en peticiones que modifican.
+	PublicURL string
+	// MFARequired exige MFA (claim amr) para los roles de authz.MFARoles. Siempre true en
+	// staging/producción.
+	MFARequired     bool
+	SessionIdle     time.Duration
+	SessionLifetime time.Duration
+}
+
+// Crypto configura el cifrado de campos (platform/crypto).
+type Crypto struct {
+	// Provider: "openbao" (obligatorio en staging/producción) o "local" (desarrollo/pruebas).
+	Provider string
+	// LocalKEKs: versión → material secreto (≥ 32 caracteres) de la KEK local; LocalActive es la
+	// versión con la que se envuelven DEKs nuevas.
+	LocalKEKs   map[string]Secret
+	LocalActive string
+	// OpenBao Transit.
+	OpenBaoAddr  string
+	OpenBaoToken Secret
+	OpenBaoKey   string
+	// IndexKey es el material de las llaves de blind index (≥ 32 caracteres).
+	IndexKey Secret
+}
+
+// Valkey configura la conexión a Valkey (sesiones, caché de flags, rate limiting).
+type Valkey struct {
+	URL Secret
+}
+
 // API es la configuración de cmd/api.
 type API struct {
 	Common
-	HTTP HTTP
-	DB   Database
+	HTTP   HTTP
+	DB     Database
+	Auth   Auth
+	Valkey Valkey
 }
 
 // Migrator es la configuración de cmd/migrate (rol seguros_migrator, dueño de los esquemas).
@@ -108,8 +153,11 @@ func LoadAPI(lookup LookupFunc) (API, error) {
 			IdleTimeout:       r.duration("SEGUROS_HTTP_IDLE_TIMEOUT", 120*time.Second),
 			ShutdownTimeout:   r.duration("SEGUROS_HTTP_SHUTDOWN_TIMEOUT", 20*time.Second),
 			MaxBodyBytes:      r.int64("SEGUROS_HTTP_MAX_BODY_BYTES", 1<<20),
+			ClientIPHeader:    r.str("SEGUROS_HTTP_CLIENT_IP_HEADER", ""),
 		},
-		DB: r.database("SEGUROS_DB_URL"),
+		DB:     r.database("SEGUROS_DB_URL"),
+		Auth:   r.auth(),
+		Valkey: r.valkey(),
 	}
 	r.positiveDurations(map[string]time.Duration{
 		"SEGUROS_HTTP_READ_HEADER_TIMEOUT": cfg.HTTP.ReadHeaderTimeout,
@@ -121,8 +169,114 @@ func LoadAPI(lookup LookupFunc) (API, error) {
 	if cfg.HTTP.MaxBodyBytes <= 0 {
 		r.fail("SEGUROS_HTTP_MAX_BODY_BYTES", "debe ser > 0")
 	}
+	switch cfg.HTTP.ClientIPHeader {
+	case "", "X-Real-IP", "CF-Connecting-IP":
+	default:
+		r.fail("SEGUROS_HTTP_CLIENT_IP_HEADER", "solo X-Real-IP o CF-Connecting-IP (cabeceras que el proxy sobrescribe)")
+	}
+	if cfg.Env.IsProductionLike() && cfg.HTTP.ClientIPHeader == "" {
+		r.fail("SEGUROS_HTTP_CLIENT_IP_HEADER", "obligatoria en staging/producción (detrás de Traefik RemoteAddr es el proxy)")
+	}
 	r.postgresURL("SEGUROS_DB_URL", cfg.DB.URL, cfg.Env)
+	r.validateAuth(cfg.Auth, cfg.Env)
+	r.valkeyURL("SEGUROS_VALKEY_URL", cfg.Valkey.URL, cfg.Env)
 	return cfg, r.err()
+}
+
+// PlatformCtl es la configuración de cmd/platformctl (operaciones de super-administrador).
+type PlatformCtl struct {
+	Common
+	DB Database
+	// Valkey es opcional: lo exigen solo los comandos de flags (invalidan las cachés de la API).
+	Valkey Valkey
+}
+
+// LoadPlatformCtl carga y valida la configuración de cmd/platformctl. Usa el rol de la app
+// (sujeto a RLS): cada operación fija el tenant sobre el que actúa.
+func LoadPlatformCtl(lookup LookupFunc) (PlatformCtl, error) {
+	r := reader{lookup: lookup}
+	cfg := PlatformCtl{
+		Common: r.common("seguros-platformctl"),
+		DB:     r.database("SEGUROS_DB_URL"),
+		Valkey: Valkey{URL: NewSecret(r.str("SEGUROS_VALKEY_URL", ""))},
+	}
+	r.postgresURL("SEGUROS_DB_URL", cfg.DB.URL, cfg.Env)
+	r.valkeyURL("SEGUROS_VALKEY_URL", cfg.Valkey.URL, cfg.Env)
+	return cfg, r.err()
+}
+
+// Worker es la configuración de cmd/worker (relay del outbox, consumidores y jobs River).
+type Worker struct {
+	Common
+	DB     Database
+	Valkey Valkey
+}
+
+// LoadWorker carga y valida la configuración de cmd/worker.
+func LoadWorker(lookup LookupFunc) (Worker, error) {
+	r := reader{lookup: lookup}
+	cfg := Worker{
+		Common: r.common("seguros-worker"),
+		DB:     r.database("SEGUROS_DB_URL"),
+		Valkey: r.valkey(),
+	}
+	r.postgresURL("SEGUROS_DB_URL", cfg.DB.URL, cfg.Env)
+	r.valkeyURL("SEGUROS_VALKEY_URL", cfg.Valkey.URL, cfg.Env)
+	return cfg, r.err()
+}
+
+// LoadCrypto carga y valida la configuración de cifrado de campos (la usan api y worker a partir de
+// los módulos con datos Restringidos).
+//
+//	SEGUROS_CRYPTO_PROVIDER=local|openbao
+//	SEGUROS_CRYPTO_LOCAL_KEKS=v1:<secreto>,v2:<secreto>   SEGUROS_CRYPTO_LOCAL_ACTIVE=v2
+//	SEGUROS_OPENBAO_ADDR=https://openbao:8200  SEGUROS_OPENBAO_TOKEN=...  SEGUROS_OPENBAO_TRANSIT_KEY=seguros
+//	SEGUROS_CRYPTO_INDEX_KEY=<secreto>
+func LoadCrypto(lookup LookupFunc, env Env) (Crypto, error) {
+	r := reader{lookup: lookup}
+	c := Crypto{
+		Provider:     r.str("SEGUROS_CRYPTO_PROVIDER", "local"),
+		LocalKEKs:    map[string]Secret{},
+		LocalActive:  r.str("SEGUROS_CRYPTO_LOCAL_ACTIVE", "v1"),
+		OpenBaoAddr:  r.str("SEGUROS_OPENBAO_ADDR", ""),
+		OpenBaoToken: NewSecret(r.str("SEGUROS_OPENBAO_TOKEN", "")),
+		OpenBaoKey:   r.str("SEGUROS_OPENBAO_TRANSIT_KEY", "seguros"),
+		IndexKey:     NewSecret(r.required("SEGUROS_CRYPTO_INDEX_KEY")),
+	}
+	if len(c.IndexKey.Reveal()) > 0 && len(c.IndexKey.Reveal()) < 32 {
+		r.fail("SEGUROS_CRYPTO_INDEX_KEY", "necesita ≥ 32 caracteres")
+	}
+	switch c.Provider {
+	case "local":
+		if env.IsProductionLike() {
+			r.fail("SEGUROS_CRYPTO_PROVIDER", "staging/producción exige openbao (la KEK no puede vivir en el entorno)")
+		}
+		for _, item := range strings.Split(r.required("SEGUROS_CRYPTO_LOCAL_KEKS"), ",") {
+			v, m, ok := strings.Cut(strings.TrimSpace(item), ":")
+			if item == "" {
+				continue
+			}
+			if !ok || v == "" || len(m) < 32 {
+				r.fail("SEGUROS_CRYPTO_LOCAL_KEKS", "formato versión:secreto (secreto ≥ 32 caracteres)")
+				continue
+			}
+			c.LocalKEKs[v] = NewSecret(m)
+		}
+		if _, ok := c.LocalKEKs[c.LocalActive]; !ok && len(c.LocalKEKs) > 0 {
+			r.fail("SEGUROS_CRYPTO_LOCAL_ACTIVE", "no corresponde a ninguna KEK de SEGUROS_CRYPTO_LOCAL_KEKS")
+		}
+	case "openbao":
+		r.httpURL("SEGUROS_OPENBAO_ADDR", c.OpenBaoAddr, env, false)
+		if c.OpenBaoAddr == "" {
+			r.fail("SEGUROS_OPENBAO_ADDR", "es obligatoria")
+		}
+		if c.OpenBaoToken.IsEmpty() {
+			r.fail("SEGUROS_OPENBAO_TOKEN", "es obligatoria")
+		}
+	default:
+		r.fail("SEGUROS_CRYPTO_PROVIDER", "debe ser local u openbao")
+	}
+	return c, r.err()
 }
 
 // LoadMigrator carga y valida la configuración de cmd/migrate.
@@ -282,11 +436,96 @@ func (r *reader) postgresURL(key string, s Secret, env Env) {
 		r.fail(key, "debe ser una URL postgres://usuario:clave@host:puerto/bd")
 		return
 	}
+	mode := u.Query().Get("sslmode")
+	switch {
+	case env == EnvProduction && mode != "verify-full":
+		r.fail(key, "producción exige sslmode=verify-full (valida el certificado del servidor)")
+	case env == EnvStaging && mode != "require" && mode != "verify-ca" && mode != "verify-full":
+		r.fail(key, "staging exige sslmode=require|verify-ca|verify-full")
+	}
+}
+
+func (r *reader) bool(key string, def bool) bool {
+	v := r.str(key, "")
+	if v == "" {
+		return def
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		r.fail(key, "debe ser true o false")
+		return def
+	}
+	return b
+}
+
+func (r *reader) auth() Auth {
+	return Auth{
+		Issuer:          r.required("SEGUROS_OIDC_ISSUER"),
+		DiscoveryURL:    r.str("SEGUROS_OIDC_DISCOVERY_URL", ""),
+		ClientID:        r.str("SEGUROS_OIDC_CLIENT_ID", "seguros-bff"),
+		ClientSecret:    NewSecret(r.required("SEGUROS_OIDC_CLIENT_SECRET")),
+		PublicURL:       strings.TrimRight(r.required("SEGUROS_PUBLIC_URL"), "/"),
+		MFARequired:     r.bool("SEGUROS_AUTH_MFA_REQUIRED", true),
+		SessionIdle:     r.duration("SEGUROS_SESSION_IDLE_TIMEOUT", 30*time.Minute),
+		SessionLifetime: r.duration("SEGUROS_SESSION_LIFETIME", 8*time.Hour),
+	}
+}
+
+func (r *reader) validateAuth(a Auth, env Env) {
+	r.httpURL("SEGUROS_OIDC_ISSUER", a.Issuer, env, true)
+	r.httpURL("SEGUROS_OIDC_DISCOVERY_URL", a.DiscoveryURL, env, true)
+	r.httpURL("SEGUROS_PUBLIC_URL", a.PublicURL, env, false)
 	if env.IsProductionLike() {
-		switch u.Query().Get("sslmode") {
-		case "require", "verify-ca", "verify-full":
-		default:
-			r.fail(key, "staging/producción exige sslmode=require|verify-ca|verify-full")
+		if a.DiscoveryURL != "" {
+			r.fail("SEGUROS_OIDC_DISCOVERY_URL", "solo se permite en development/test")
 		}
+		if !a.MFARequired {
+			r.fail("SEGUROS_AUTH_MFA_REQUIRED", "no se puede desactivar en staging/producción")
+		}
+	}
+	r.positiveDurations(map[string]time.Duration{
+		"SEGUROS_SESSION_IDLE_TIMEOUT": a.SessionIdle,
+		"SEGUROS_SESSION_LIFETIME":     a.SessionLifetime,
+	})
+	if a.SessionIdle > a.SessionLifetime {
+		r.fail("SEGUROS_SESSION_IDLE_TIMEOUT", "no puede superar SEGUROS_SESSION_LIFETIME")
+	}
+}
+
+// httpURL valida una URL http(s) (https obligatorio en staging/producción). allowPath permite ruta
+// (issuer de Keycloak: /realms/<realm>); sin ella debe ser una origin.
+func (r *reader) httpURL(key, v string, env Env, allowPath bool) {
+	if v == "" {
+		return
+	}
+	u, err := url.Parse(v)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+		r.fail(key, "URL http(s) inválida")
+		return
+	}
+	if !allowPath && u.Path != "" {
+		r.fail(key, "debe ser una origin (esquema://host[:puerto]) sin ruta")
+	}
+	if env.IsProductionLike() && u.Scheme != "https" {
+		r.fail(key, "debe usar https en staging/producción")
+	}
+}
+
+func (r *reader) valkey() Valkey {
+	return Valkey{URL: NewSecret(r.required("SEGUROS_VALKEY_URL"))}
+}
+
+// valkeyURL valida la URL sin incluirla en el error (contiene la contraseña).
+func (r *reader) valkeyURL(key string, s Secret, env Env) {
+	if s.IsEmpty() {
+		return
+	}
+	u, err := url.Parse(s.Reveal())
+	if err != nil || (u.Scheme != "redis" && u.Scheme != "rediss") || u.Host == "" {
+		r.fail(key, "debe ser una URL redis[s]://[:clave@]host:puerto[/db]")
+		return
+	}
+	if env.IsProductionLike() && u.Scheme != "rediss" {
+		r.fail(key, "staging/producción exige TLS (rediss://)")
 	}
 }

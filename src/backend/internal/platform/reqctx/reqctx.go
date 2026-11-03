@@ -15,6 +15,7 @@ const (
 	tenantKey ctxKey = iota + 1
 	userKey
 	requestIDKey
+	planKey
 )
 
 // WithTenantID devuelve un contexto con el tenant autenticado.
@@ -55,6 +56,20 @@ func WithRequestID(ctx context.Context, id string) context.Context {
 func RequestID(ctx context.Context) string {
 	if id, ok := ctx.Value(requestIDKey).(string); ok {
 		return id
+	}
+	return ""
+}
+
+// WithTenantPlan devuelve un contexto con el plan comercial vigente del tenant autenticado (lo fija
+// el middleware de autenticación tras consultar tenancy; lo usan los feature flags).
+func WithTenantPlan(ctx context.Context, plan string) context.Context {
+	return context.WithValue(ctx, planKey, plan)
+}
+
+// TenantPlan devuelve el plan del tenant ("" si no hay).
+func TenantPlan(ctx context.Context) string {
+	if p, ok := ctx.Value(planKey).(string); ok {
+		return p
 	}
 	return ""
 }

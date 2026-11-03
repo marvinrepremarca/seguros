@@ -11,15 +11,22 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"time"
 
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
+
+	"github.com/marvinrepremarca/seguros/internal/platform/config"
+	"github.com/marvinrepremarca/seguros/internal/platform/db"
+	"github.com/marvinrepremarca/seguros/internal/platform/db/migrate"
+	"github.com/marvinrepremarca/seguros/migrations"
 )
 
 // Env es una instancia de PostgreSQL con los roles de la aplicación.
@@ -28,6 +35,10 @@ type Env struct {
 	AppURL string
 	// MigratorURL conecta como seguros_migrator (dueño de los esquemas).
 	MigratorURL string
+	// WorkerURL conecta como seguros_worker (relay del outbox y River).
+	WorkerURL string
+	// PlatformURL conecta como seguros_platform (cmd/platformctl).
+	PlatformURL string
 	// SuperuserURL conecta como postgres; solo para preparar escenarios de prueba.
 	SuperuserURL string
 
@@ -53,7 +64,7 @@ func Start(ctx context.Context) (*Env, error) {
 		return nil, err
 	}
 	pw := map[string]string{}
-	for _, k := range []string{"POSTGRES_PASSWORD", "SEGUROS_MIGRATOR_PASSWORD", "SEGUROS_APP_PASSWORD", "KEYCLOAK_DB_PASSWORD"} {
+	for _, k := range []string{"POSTGRES_PASSWORD", "SEGUROS_MIGRATOR_PASSWORD", "SEGUROS_APP_PASSWORD", "SEGUROS_WORKER_PASSWORD", "SEGUROS_PLATFORM_PASSWORD", "KEYCLOAK_DB_PASSWORD"} {
 		if pw[k], err = randomHex(16); err != nil {
 			return nil, err
 		}
@@ -67,6 +78,8 @@ func Start(ctx context.Context) (*Env, error) {
 		testcontainers.WithEnv(map[string]string{
 			"SEGUROS_MIGRATOR_PASSWORD": pw["SEGUROS_MIGRATOR_PASSWORD"],
 			"SEGUROS_APP_PASSWORD":      pw["SEGUROS_APP_PASSWORD"],
+			"SEGUROS_WORKER_PASSWORD":   pw["SEGUROS_WORKER_PASSWORD"],
+			"SEGUROS_PLATFORM_PASSWORD": pw["SEGUROS_PLATFORM_PASSWORD"],
 			"KEYCLOAK_DB_PASSWORD":      pw["KEYCLOAK_DB_PASSWORD"],
 		}),
 		postgres.BasicWaitStrategies(),
@@ -90,6 +103,8 @@ func Start(ctx context.Context) (*Env, error) {
 	return &Env{
 		AppURL:       mk("seguros_app", pw["SEGUROS_APP_PASSWORD"], "seguros"),
 		MigratorURL:  mk("seguros_migrator", pw["SEGUROS_MIGRATOR_PASSWORD"], "seguros"),
+		WorkerURL:    mk("seguros_worker", pw["SEGUROS_WORKER_PASSWORD"], "seguros"),
+		PlatformURL:  mk("seguros_platform", pw["SEGUROS_PLATFORM_PASSWORD"], "seguros"),
 		SuperuserURL: mk("postgres", pw["POSTGRES_PASSWORD"], "seguros"),
 		container:    c,
 	}, nil
@@ -125,4 +140,41 @@ func composeImage(composeFile, service string) (string, error) {
 		return "", fmt.Errorf("pgtest: imagen de %q no encontrada en el compose", service)
 	}
 	return string(m[1]), nil
+}
+
+// MigrateAll aplica todas las migraciones reales de los módulos (migrations.FS) con el rol
+// migrator, igual que cmd/migrate.
+func (e *Env) MigrateAll(ctx context.Context) error {
+	sqlDB, err := migrate.Open(e.MigratorURL)
+	if err != nil {
+		return fmt.Errorf("pgtest: %w", err)
+	}
+	runErr := migrate.New(sqlDB, migrations.FS, slog.New(slog.DiscardHandler)).Up(ctx)
+	if cerr := sqlDB.Close(); cerr != nil {
+		runErr = errors.Join(runErr, cerr)
+	}
+	if runErr != nil {
+		return fmt.Errorf("pgtest: migrando: %w", runErr)
+	}
+	return nil
+}
+
+// OpenApp abre el pool de la aplicación (rol seguros_app, sujeto a RLS).
+func (e *Env) OpenApp(ctx context.Context) (*db.DB, error) { return e.open(ctx, e.AppURL) }
+
+// OpenWorker abre el pool del worker (rol seguros_worker).
+func (e *Env) OpenWorker(ctx context.Context) (*db.DB, error) { return e.open(ctx, e.WorkerURL) }
+
+// OpenPlatform abre el pool de platformctl (rol seguros_platform).
+func (e *Env) OpenPlatform(ctx context.Context) (*db.DB, error) { return e.open(ctx, e.PlatformURL) }
+
+func (e *Env) open(ctx context.Context, url string) (*db.DB, error) {
+	d, err := db.Open(ctx, config.Database{
+		URL: config.NewSecret(url), MaxConns: 8, MinConns: 0,
+		MaxConnLifetime: time.Hour, StatementTimeout: 10 * time.Second,
+	}, db.Options{ApplicationName: "pgtest"})
+	if err != nil {
+		return nil, fmt.Errorf("pgtest: abriendo BD: %w", err)
+	}
+	return d, nil
 }

@@ -46,6 +46,27 @@ Objetivo: todo lo transversal que los módulos dan por hecho.
 
 **DoD:** todo lo anterior con pruebas; `security-auditor` y `architecture-guardian` sin hallazgos Altos/Críticos.
 
+**Hallazgos de seguridad abiertos (Medios/Bajos, auditoría de 1.6 del 2026-11-03).** No bloquean la Fase 1; deben cerrarse antes de la Fase 6 (salida a producción):
+- **M1 — Revocación de sesiones:** roles, bajas o salida de la organización en Keycloak no se reflejan hasta el fin de la sesión (máx. 8 h). Implementar OIDC Back-Channel Logout (`sid`/`sub` → sesiones en Valkey) y revalidación periódica (refresh token) o vida más corta para roles financieros/admin.
+- **M2 (resto) — Rate limit distribuido:** el contador de `httprate` es por réplica; moverlo a Valkey cuando haya >1 réplica de `api`. (Hecho: cabecera de IP de confianza obligatoria en staging/prod y límites separados antes de la sesión.)
+- **M3 — MFA por `acr`/step-up:** hoy se verifica el claim `amr`, que depende de la configuración de cada autenticador en Keycloak. Migrar a Level of Authentication (`acr_values` + verificación de `acr`) con ADR y prueba E2E contra Keycloak con y sin OTP.
+- **B7 — Organización por id:** vincular el tenant al id de la Organization de Keycloak (no solo al alias) para que recrear una organización con el mismo alias no herede el tenant.
+
+Auditoría de 1.7/1.8/1.10 (2026-11-03). El hallazgo Alto (roles: la API podía ejecutar el relay, tocar River y escribir switches globales) y M2–M4, B1, B4–B6 quedaron corregidos. Siguen abiertos:
+- **M1 — Flags que activan controles:** con fail-closed, `module.compliance` "apagado por error" dejaría emitir pólizas sin KYC. Cuando Policies implemente el gate (Fase 2), debe usar `Evaluator.Resolve` y bloquear la emisión con `SourceError`; y `kill` sobre flags de control debe exigir confirmación adicional. Requiere ADR.
+- **B2 — Bindings criptográficos:** incluir tenant y versión en el AAD del envoltorio de la DEK, y permitir que el llamador incluya el ID del registro en el AAD del campo (Parties, Fase 2).
+- **B3 — Llaves:** versión de la llave de blind index con ruta de reindexado; token de OpenBao con AppRole/renovación; rechazar versiones duplicadas en `SEGUROS_CRYPTO_LOCAL_KEKS`; un fallo al desenvolver una DEK retirada no debe bloquear al tenant entero.
+- **B7 — Override de plataforma vs. tenant:** distinguir quién fijó un override para que un TenantAdmin no revierta un `off` de la plataforma (relevante cuando existan flags `tenantEditable`).
+- **B8 — Serializar cambios de flags por tenant** (`pg_advisory_xact_lock`) para que dos cambios concurrentes no dejen dependencias inconsistentes.
+- **B9 — Rate limit por usuario y tenant en la API** (hoy solo login/callback por IP).
+
+Revisiones finales de la Fase 1 (2026-11-03): `architecture-guardian` APROBADO y `security-auditor` sin Altos/Críticos. Corregidos al cierre: consumidores que confirmaban eventos con el flag no evaluable (ahora reintentan), escritura de `tenancy.tenants` solo para `seguros_platform`, `audit.ensure_partitions` solo para el worker, verificación del rol de BD al arrancar api/worker, `sslmode=verify-full` en producción y `go mod tidy`. Quedan abiertos:
+- **Antes de la Fase 2 (primer módulo con datos Confidenciales):** CSP con nonces, Trusted Types y headers de seguridad para la SPA servida fuera de Vite (hoy solo la API los tiene). Auditoría y eventos (`TenantPlanChanged`/`TenantStatusChanged`) de alta, plan y suspensión de tenants, con `--reason` en platformctl.
+- **Antes de la Fase 3:** envoltorio de jobs por tenant con guardia de flag (`jobs.TenantWorker`); purga de `messaging.inbox` y reproceso de `dead_letters` desde platformctl.
+- **Mejoras de arquitectura:** ADR "outbox propio + transporte en proceso (RabbitMQ en fase 2)" (desvía de watermill-sql en ARCHITECTURE.md §3/§5); componente de arch-lint que impida a `app` importar `httpx`/`db`/`session`; mover la selección de `/bff/features` a un caso de uso; caché corta del tenant en el autenticador; SQL de `internal/platform` a sqlc o excepción documentada; generar los permisos TS desde `authz/catalog.go`; `go mod tidy -diff` en CI.
+- **Bajos de seguridad:** identidad real del operador en el historial de kill switches (no solo `--operator`); traces de Playwright sin el valor de la contraseña cuando apunten a entornos persistentes; `ListFlags` sin flags `ops`; errores del publisher normalizados por código.
+- **Fase 6:** aprovisionar los roles `seguros_worker` y `seguros_platform` en staging/producción (en desarrollo los crea `deploy/postgres/init/01-roles.sh`).
+
 ---
 
 ## Fase 2 — Núcleo de negocio (módulos no apagables)
@@ -75,7 +96,7 @@ Pruebas k6 (objetivos en testing.md), ZAP, restauración de backup probada, runb
 | Ítem | Estado | Fecha | Notas |
 |---|---|---|---|
 | Fase 0 | ✅ Hecho | 2026-10-30 | DoD verificada: make check, pnpm check, compose sano y CI en verde (PR #1) |
-| Fase 1 | 🟨 En curso | 2026-10-30 | 1.1 ✅ · 1.2 ✅ · 1.3 ✅ · 1.4 ✅ (sesión A, PR #2) · siguiente: 1.5–1.7 |
+| Fase 1 | ✅ Hecho | 2026-11-03 | 1.1 ✅ · 1.2 ✅ · 1.3 ✅ · 1.4 ✅ (sesión A, PR #2) · 1.5 ✅ · 1.6 ✅ · 1.7 ✅ · 1.8 ✅ · 1.9 ✅ (adelantada: la usan login y flags; `platform/audit` + `migrations/audit`) · 1.10 ✅ (`platform/crypto`; se cablea en api/worker con el primer módulo con datos Restringidos, Fase 2) · 1.11 ✅ · 1.12 ✅ (`make e2e-full`). DoD verificada: make check, integración, pnpm check, E2E 3/3; architecture-guardian y security-auditor sin Altos/Críticos (hallazgos Medios/Bajos abiertos arriba) |
 | Fase 2 | ⬜ Pendiente | | |
 | Fase 3 | ⬜ Pendiente | | |
 | Fase 4 | ⬜ Pendiente | | |

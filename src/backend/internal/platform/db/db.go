@@ -74,6 +74,32 @@ func (d *DB) checkRole(ctx context.Context) error {
 	return nil
 }
 
+// Pool expone el pool solo a la plataforma que lo exige por API de terceros (River en
+// platform/jobs y cmd/worker). Prohibido en módulos: test/arch falla si internal/modules lo usa.
+func (d *DB) Pool() *pgxpool.Pool { return d.pool }
+
+// ErrUnexpectedRole indica que el binario se conectó con un rol que no le corresponde.
+var ErrUnexpectedRole = errors.New("db: el binario se conectó con un rol de BD que no le corresponde")
+
+// RequireRole falla si el rol conectado no es want o pertenece a alguno de forbidden (ej. la API
+// configurada por error con la credencial del worker, que puede cruzar tenants). Fail-closed.
+func (d *DB) RequireRole(ctx context.Context, want string, forbidden ...string) error {
+	var ok bool
+	err := d.pool.QueryRow(ctx, `
+		SELECT current_user = $1 AND NOT EXISTS (
+			SELECT 1 FROM unnest($2::text[]) AS f(role)
+			WHERE EXISTS (SELECT 1 FROM pg_catalog.pg_roles r WHERE r.rolname = f.role)
+			  AND pg_catalog.pg_has_role(current_user, f.role, 'MEMBER'))`,
+		want, forbidden).Scan(&ok)
+	if err != nil {
+		return fmt.Errorf("db: verificando rol: %w", err)
+	}
+	if !ok {
+		return ErrUnexpectedRole
+	}
+	return nil
+}
+
 // Close cierra el pool.
 func (d *DB) Close() { d.pool.Close() }
 
@@ -88,11 +114,23 @@ func (d *DB) Ping(ctx context.Context) error {
 // WithTenantTx ejecuta fn en una transacción con app.tenant_id fijado (transaction-local) al
 // tenant del contexto. Hace commit si fn devuelve nil y rollback si devuelve error o entra en
 // pánico. Sin tenant en el contexto devuelve ErrNoTenant sin tocar la BD.
-func (d *DB) WithTenantTx(ctx context.Context, fn func(tx pgx.Tx) error) (err error) {
+func (d *DB) WithTenantTx(ctx context.Context, fn func(tx pgx.Tx) error) error {
 	tenant, ok := reqctx.TenantID(ctx)
 	if !ok {
 		return ErrNoTenant
 	}
+	return d.runTx(ctx, tenant.String(), fn)
+}
+
+// WithoutTenantTx ejecuta fn en una transacción con app.tenant_id vacío: toda tabla con RLS
+// falla al consultarse (fail-closed). Solo sirve para invocar funciones SECURITY DEFINER de
+// plataforma que resuelven el tenant ANTES de conocerlo (ej. tenancy.resolve_tenant_by_org_alias
+// en el login). Prohibido para leer o escribir datos de negocio.
+func (d *DB) WithoutTenantTx(ctx context.Context, fn func(tx pgx.Tx) error) error {
+	return d.runTx(ctx, "", fn)
+}
+
+func (d *DB) runTx(ctx context.Context, tenant string, fn func(tx pgx.Tx) error) (err error) {
 	tx, err := d.pool.Begin(ctx)
 	if err != nil {
 		return fmt.Errorf("db: iniciando transacción: %w", err)
@@ -104,7 +142,7 @@ func (d *DB) WithTenantTx(ctx context.Context, fn func(tx pgx.Tx) error) (err er
 		}
 	}()
 
-	if _, err := tx.Exec(ctx, `SELECT set_config('app.tenant_id', $1, true)`, tenant.String()); err != nil {
+	if _, err := tx.Exec(ctx, `SELECT set_config('app.tenant_id', $1, true)`, tenant); err != nil {
 		return fmt.Errorf("db: fijando tenant: %w", err)
 	}
 	if err := fn(tx); err != nil {

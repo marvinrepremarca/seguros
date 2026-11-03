@@ -21,6 +21,8 @@ const ContentTypeProblem = "application/problem+json"
 // Códigos estables de errores de plataforma (campo `type`).
 const (
 	CodeInternal         = "platform.internal"
+	CodeBadRequest       = "platform.bad_request"
+	CodeRateLimited      = "platform.rate_limited"
 	CodeNotFound         = "platform.not_found"
 	CodeMethodNotAllowed = "platform.method_not_allowed"
 	CodeBodyTooLarge     = "platform.body_too_large"

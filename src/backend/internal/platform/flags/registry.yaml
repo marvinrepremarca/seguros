@@ -1,0 +1,94 @@
+# Registro central de feature flags (rules/feature-flags.md). Fuente única de las claves: de aquí
+# `make generate` produce las constantes Go (keys.gen.go) y TS (src/frontend/src/shared/lib/features.gen.ts).
+#
+# Campos:
+#   key            kebab-case: module.<modulo> | <modulo>.<funcionalidad> | release.<modulo>.<cambio> | ops.<area>.<cosa>
+#   kind           module | feature | release | ops
+#   description    qué enciende (es-CO)
+#   owner          módulo dueño
+#   default        valor si el plan del tenant no lo incluye y no hay override
+#   plans          planes que lo tienen encendido por defecto (DECISIONS.md §3)
+#   requires       flags que deben estar encendidos (los módulos núcleo no tienen flag)
+#   tenantEditable el TenantAdmin puede cambiarlo (solo kind=feature); los módulos los gestiona la plataforma
+#   removeBy       fecha límite de retiro (obligatoria en kind=release)
+#
+# Los módulos núcleo (tenancy, identity, featuremgmt, audit, parties, catalog, policies) no tienen flag.
+flags:
+  - key: module.billing
+    kind: module
+    description: Cartera y cobro — planes de pago, cuotas, pagos informados, gestión de cobro (Flujo 4)
+    owner: billing
+    default: false
+    plans: [basico, profesional, empresarial]
+
+  - key: module.renewals
+    kind: module
+    description: Renovaciones — alertas, recotización y retención (Flujo 6)
+    owner: renewals
+    default: false
+    plans: [basico, profesional, empresarial]
+
+  - key: module.documents
+    kind: module
+    description: Gestión documental — versiones y retención (transversal)
+    owner: documents
+    default: false
+    plans: [basico, profesional, empresarial]
+
+  - key: module.crm
+    kind: module
+    description: CRM — prospectos, embudo, asignación de asesor, seguimientos (Flujo 1)
+    owner: crm
+    default: false
+    plans: [profesional, empresarial]
+
+  - key: module.quoting
+    kind: module
+    description: Cotización — solicitudes, propuestas y comparativo (Flujo 2)
+    owner: quoting
+    default: false
+    plans: [profesional, empresarial]
+
+  - key: module.claims
+    kind: module
+    description: Siniestros — reporte, documentación y seguimiento con la aseguradora (Flujo 7)
+    owner: claims
+    default: false
+    plans: [profesional, empresarial]
+
+  - key: module.notifications
+    kind: module
+    description: Notificaciones — email, SMS y WhatsApp con plantillas
+    owner: notifications
+    default: false
+    plans: [profesional, empresarial]
+
+  - key: module.commissions
+    kind: module
+    description: Comisiones — esperada, liquidación de aseguradora, conciliación y comisión interna (Flujo 9)
+    owner: commissions
+    default: false
+    plans: [empresarial]
+    # Causa comisión sobre prima pagada, que registra Billing (DECISIONS.md N3).
+    requires: [module.billing]
+
+  - key: module.compliance
+    kind: module
+    description: Cumplimiento — SARLAFT, listas restrictivas, PQR y habeas data (Flujo 10)
+    owner: compliance
+    default: false
+    plans: [empresarial]
+
+  - key: module.reporting
+    kind: module
+    description: Reportes — indicadores de la agencia (KPIs)
+    owner: reporting
+    default: false
+    plans: [empresarial]
+
+  - key: module.integrations
+    kind: module
+    description: Integraciones con aseguradoras (cada aseguradora tiene además su kill switch ops.integrations.<aseguradora>)
+    owner: integrations
+    default: false
+    plans: [empresarial]

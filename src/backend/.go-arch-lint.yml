@@ -6,6 +6,10 @@ workdir: .
 allow:
   depOnAnyVendor: false
   ignoreNotFoundComponents: true # los módulos se crean a partir de la Fase 1
+  # deepScan trata como dependencia de `app` el adaptador que module.go le inyecta por su puerto
+  # (la inversión de dependencias que exige la arquitectura hexagonal). Las reglas de imports
+  # siguen verificándose.
+  deepScan: false
 
 excludeFiles:
   - "^.*_test\\.go$"
@@ -29,10 +33,13 @@ components:
       - internal/platform/outbox/**
       - internal/platform/jobs/**
       - internal/platform/crypto/**
+      - internal/platform/audit/**
+      - internal/platform/session/**
   module: { in: internal/modules/* }
   domain: { in: internal/modules/*/domain/** }
   app: { in: internal/modules/*/app/** }
   adapters: { in: internal/modules/*/adapters/** }
+  sqlc: { in: internal/modules/*/adapters/postgres/sqlc } # código generado por sqlc
   contracts: { in: internal/modules/*/contracts/** }
   migrations: { in: migrations }
   cmd: { in: cmd/** }
@@ -50,8 +57,11 @@ deps:
   app:
     mayDependOn: [kernel, domain, platform, contracts]
     canUse: [uuid]
+  sqlc:
+    mayDependOn: [kernel]
+    anyVendorDeps: true
   adapters:
-    mayDependOn: [kernel, domain, app, platform, contracts]
+    mayDependOn: [kernel, domain, app, platform, contracts, sqlc]
     anyVendorDeps: true
   module:
     mayDependOn: [kernel, domain, app, adapters, platform, contracts]
