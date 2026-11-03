@@ -73,16 +73,25 @@ func NewServer(opts Options) *Server { return &Server{opts: opts} }
 
 // NewGuard construye el guardia de permisos a partir del contrato embebido (x-permission).
 func NewGuard(policy *authz.Policy) (*authz.OperationGuard, error) {
-	spec, err := GetSwagger()
+	spec, err := GetSpec()
 	if err != nil {
 		return nil, err
 	}
 	return authz.NewOperationGuard(spec, policy)
 }
 
-// Mount registra las rutas del BFF. La sesión, el autenticador y CSRF los aplica cmd/api a todo el
-// grupo; aquí se añade la sesión de la transacción de login.
-func (s *Server) Mount(r chi.Router) {
+// Mount registra las rutas del BFF con su contrato (autorización por x-permission + validación de
+// la petición). La sesión, el autenticador y CSRF los aplica cmd/api a todo el grupo; aquí se añade
+// la sesión de la transacción de login.
+func (s *Server) Mount(r chi.Router) error {
+	spec, err := GetSpec()
+	if err != nil {
+		return err
+	}
+	contract, err := httpx.Contract(spec, s.opts.Guard.Check, s.opts.Logger)
+	if err != nil {
+		return err
+	}
 	guard := func(f StrictHandlerFunc, operationID string) StrictHandlerFunc {
 		return func(ctx context.Context, w http.ResponseWriter, r *http.Request, req any) (any, error) {
 			if err := s.opts.Guard.Check(ctx, operationID); err != nil {
@@ -96,9 +105,10 @@ func (s *Server) Mount(r chi.Router) {
 		ResponseErrorHandlerFunc: func(w http.ResponseWriter, r *http.Request, err error) { httpx.WriteError(w, r, s.opts.Logger, err) },
 	})
 	r.Group(func(g chi.Router) {
-		g.Use(s.opts.AuthTx.LoadAndSave)
+		g.Use(contract, s.opts.AuthTx.LoadAndSave)
 		HandlerWithOptions(h, ChiServerOptions{BaseRouter: g, ErrorHandlerFunc: badRequest})
 	})
+	return nil
 }
 
 func badRequest(w http.ResponseWriter, r *http.Request, _ error) {

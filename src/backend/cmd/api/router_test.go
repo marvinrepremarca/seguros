@@ -15,13 +15,20 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/getkin/kin-openapi/openapi3"
+	"github.com/google/uuid"
+
+	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
+	featuremgmthttp "github.com/marvinrepremarca/seguros/internal/modules/featuremgmt/adapters/http"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity"
+	identityhttp "github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/http"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/oidc"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/app"
 	tenancy "github.com/marvinrepremarca/seguros/internal/modules/tenancy/contracts"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/authz"
 	"github.com/marvinrepremarca/seguros/internal/platform/config"
+	"github.com/marvinrepremarca/seguros/internal/platform/flags"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 )
 
@@ -56,7 +63,61 @@ func testRouter(t *testing.T) *chi.Mux {
 		Auth: config.Auth{PublicURL: publicURL, SessionIdle: time.Minute, SessionLifetime: time.Hour},
 	})
 	require.NoError(t, err)
-	return buildRouter(routerDeps{Logger: logger, Clock: clock, MaxBodyBytes: 1 << 20, Identity: idm})
+	reg, err := flags.LoadRegistry()
+	require.NoError(t, err)
+	fm := featuremgmt.New(featuremgmt.Deps{
+		Registry: reg, Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger, Tenants: noTenants{},
+	})
+	r, err := buildRouter(routerDeps{Logger: logger, Clock: clock, MaxBodyBytes: 1 << 20, Identity: idm, FeatureMgmt: fm})
+	require.NoError(t, err)
+	return r
+}
+
+type allOff struct{}
+
+func (allOff) IsEnabled(context.Context, flags.Key) bool { return false }
+
+// contracts son los contratos OpenAPI montados en la API.
+func contracts(t *testing.T) []*openapi3.T {
+	t.Helper()
+	var out []*openapi3.T
+	for _, get := range []func() (*openapi3.T, error){identityhttp.GetSpec, featuremgmthttp.GetSpec} {
+		spec, err := get()
+		require.NoError(t, err)
+		out = append(out, spec)
+	}
+	return out
+}
+
+// TestOperationsWithPermissionRejectPrincipalWithoutIt: con sesión pero sin el permiso, toda
+// operación con x-permission fino responde 403 (antes de validar la petición o tocar datos).
+func TestOperationsWithPermissionRejectPrincipalWithoutIt(t *testing.T) {
+	t.Parallel()
+	r := testRouter(t)
+	policy, err := authz.DefaultPolicy()
+	require.NoError(t, err)
+	tenant := kernel.TenantID(uuid.Must(uuid.NewV7()))
+	p := authz.NewPrincipal(kernel.UserID(uuid.Must(uuid.NewV7())), tenant, []authz.Role{authz.RoleSalesAgent}, policy)
+	checked := 0
+	for _, spec := range contracts(t) {
+		for path, item := range spec.Paths.Map() {
+			for method, op := range item.Operations() {
+				perm, ok := op.Extensions[authz.XPermission].(string)
+				require.True(t, ok, "%s sin x-permission", op.OperationID)
+				if perm == authz.PermPublic || perm == authz.PermAuthenticated {
+					continue
+				}
+				target := param.ReplaceAllString(path, "module.billing")
+				req := httptest.NewRequestWithContext(authz.WithPrincipal(t.Context(), p), method, target, nil)
+				req.Header.Set("Origin", publicURL)
+				rec := httptest.NewRecorder()
+				r.ServeHTTP(rec, req)
+				assert.Equal(t, http.StatusForbidden, rec.Code, "%s %s (%s) sin %s", method, path, op.OperationID, perm)
+				checked++
+			}
+		}
+	}
+	assert.Positive(t, checked)
 }
 
 // publicRoutes es la lista blanca explícita de rutas sin sesión (rules/security.md §A01).

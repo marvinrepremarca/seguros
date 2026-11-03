@@ -18,6 +18,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/open-feature/go-sdk/openfeature"
+	"golang.org/x/sync/errgroup"
+
+	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/oidc"
 	"github.com/marvinrepremarca/seguros/internal/modules/tenancy"
@@ -25,6 +29,7 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/platform/authz"
 	"github.com/marvinrepremarca/seguros/internal/platform/config"
 	"github.com/marvinrepremarca/seguros/internal/platform/db"
+	"github.com/marvinrepremarca/seguros/internal/platform/flags"
 	"github.com/marvinrepremarca/seguros/internal/platform/httpx"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 	"github.com/marvinrepremarca/seguros/internal/platform/obs"
@@ -97,8 +102,9 @@ func run() error {
 		return err
 	}
 	tenants := tenancy.New(database, clock)
+	recorder := audit.NewRecorder(clock)
 	identityMod, err := identity.New(identity.Deps{
-		DB: database, Clock: clock, Audit: audit.NewRecorder(clock), Tenants: tenants.Directory,
+		DB: database, Clock: clock, Audit: recorder, Tenants: tenants.Directory,
 		Policy: policy, Provider: provider,
 		SessionStore: session.NewValkeyStore(valkeyClient, "bff:sess:", clock),
 		AuthTxStore:  session.NewValkeyStore(valkeyClient, "bff:authtx:", clock),
@@ -108,7 +114,24 @@ func run() error {
 		return err
 	}
 
-	router := buildRouter(routerDeps{
+	// Feature flags: registro → evaluador (L1 + L2 Valkey) → proveedor OpenFeature "tenantflags".
+	registry, err := flags.LoadRegistry()
+	if err != nil {
+		return err
+	}
+	flagStore := featuremgmt.NewStore(database, recorder)
+	evaluator := flags.NewEvaluator(registry, flagStore, flags.NewValkeyCache(valkeyClient), clock, logger)
+	if err := openfeature.SetNamedProviderAndWait(flags.ProviderName, flags.NewProvider(evaluator)); err != nil {
+		return fmt.Errorf("registrando proveedor de flags: %w", err)
+	}
+	featureMod := featuremgmt.New(featuremgmt.Deps{
+		Store: flagStore, Tenants: tenants.Directory, Registry: registry,
+		Invalidator: flags.NewInvalidator(evaluator, valkeyClient),
+		Checker:     flags.NewOpenFeatureChecker(openfeature.NewClient(flags.ProviderName)),
+		Policy:      policy, Clock: clock, Logger: logger,
+	})
+
+	router, err := buildRouter(routerDeps{
 		Logger: logger, Clock: clock, MaxBodyBytes: cfg.HTTP.MaxBodyBytes, ClientIPHdr: cfg.HTTP.ClientIPHeader,
 		Readiness: []httpx.ReadinessCheck{
 			{Name: "postgres", Check: database.Ping},
@@ -116,15 +139,24 @@ func run() error {
 				return valkeyClient.Do(ctx, valkeyClient.B().Ping().Build()).Error()
 			}},
 		},
-		Identity: identityMod,
+		Identity:    identityMod,
+		FeatureMgmt: featureMod,
 	})
+	if err != nil {
+		return err
+	}
 
 	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", cfg.HTTP.Addr)
 	if err != nil {
 		return fmt.Errorf("escuchando en %s: %w", cfg.HTTP.Addr, err)
 	}
 	logger.Info("api escuchando", "addr", ln.Addr().String())
-	if err := httpx.Serve(ctx, httpx.NewServer(cfg.HTTP, router, logger), ln, cfg.HTTP.ShutdownTimeout); err != nil {
+	g, gctx := errgroup.WithContext(ctx)
+	g.Go(func() error {
+		return httpx.Serve(gctx, httpx.NewServer(cfg.HTTP, router, logger), ln, cfg.HTTP.ShutdownTimeout)
+	})
+	g.Go(func() error { return flags.Subscribe(gctx, valkeyClient, evaluator, logger) })
+	if err := g.Wait(); err != nil {
 		return err
 	}
 	logger.Info("api detenida")

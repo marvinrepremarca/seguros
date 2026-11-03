@@ -70,7 +70,7 @@ migrate-status: ## Versión y migraciones pendientes por módulo (desarrollo)
 	cd $(BACKEND) && SEGUROS_MIGRATOR_DB_URL="$$($(DEV_DB_URL) migrator)" go run ./cmd/migrate status
 
 platformctl: ## Operaciones de super-admin en desarrollo (ej. make platformctl args="tenant create ...")
-	cd $(BACKEND) && SEGUROS_DB_URL="$$($(DEV_DB_URL) app)" go run ./cmd/platformctl $(args)
+	cd $(BACKEND) && $(CURDIR)/deploy/scripts/with-dev-env.sh go run ./cmd/platformctl $(args)
 
 run-api: ## Ejecuta la API local contra las dependencias de desarrollo
 	cd $(BACKEND) && $(CURDIR)/deploy/scripts/with-dev-env.sh go run ./cmd/api

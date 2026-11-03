@@ -163,6 +163,8 @@ func LoadAPI(lookup LookupFunc) (API, error) {
 type PlatformCtl struct {
 	Common
 	DB Database
+	// Valkey es opcional: lo exigen solo los comandos de flags (invalidan las cachés de la API).
+	Valkey Valkey
 }
 
 // LoadPlatformCtl carga y valida la configuración de cmd/platformctl. Usa el rol de la app
@@ -172,8 +174,10 @@ func LoadPlatformCtl(lookup LookupFunc) (PlatformCtl, error) {
 	cfg := PlatformCtl{
 		Common: r.common("seguros-platformctl"),
 		DB:     r.database("SEGUROS_DB_URL"),
+		Valkey: Valkey{URL: NewSecret(r.str("SEGUROS_VALKEY_URL", ""))},
 	}
 	r.postgresURL("SEGUROS_DB_URL", cfg.DB.URL, cfg.Env)
+	r.valkeyURL("SEGUROS_VALKEY_URL", cfg.Valkey.URL, cfg.Env)
 	return cfg, r.err()
 }
 

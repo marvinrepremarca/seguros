@@ -104,7 +104,7 @@ func newEnv(t *testing.T) *env {
 	root := httpx.NewRouter(httpx.RouterOptions{Logger: logger, Clock: kernel.SystemClock{}, MaxBodyBytes: 1 << 20})
 	root.Group(func(r chi.Router) {
 		r.Use(sessions.LoadAndSave, identityhttp.NewAuthenticator(sessions, tenants, policy, logger).Middleware, identityhttp.CSRF(sessions, publicURL))
-		srv.Mount(r)
+		require.NoError(t, srv.Mount(r))
 	})
 	return &env{op: op, router: root, tenants: tenants, login: login}
 }
