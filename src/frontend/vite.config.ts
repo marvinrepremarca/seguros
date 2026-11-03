@@ -5,7 +5,10 @@ import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
-export default defineConfig({
+export default defineConfig(({ command }) => ({
+  // Solo en el build: la API (httpx.SPAHandler) reemplaza este marcador por el nonce de cada
+  // petición. En desarrollo no hay CSP y Vite inyecta scripts propios.
+  ...(command === "build" ? { html: { cspNonce: "__CSP_NONCE__" } } : {}),
   plugins: [
     // Debe ir antes de react(): genera src/app/routeTree.gen.ts y divide el código por ruta.
     tanstackRouter({
@@ -43,4 +46,4 @@ export default defineConfig({
       exclude: ["src/**/*.gen.ts", "src/**/api/generated/**", "src/main.tsx"],
     },
   },
-});
+}));

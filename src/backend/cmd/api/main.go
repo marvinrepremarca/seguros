@@ -135,6 +135,14 @@ func run() error {
 		Policy:      policy, Clock: clock, Logger: logger,
 	})
 
+	var spa http.Handler
+	if cfg.HTTP.SPADir != "" {
+		spa, err = httpx.NewSPAHandler(os.DirFS(cfg.HTTP.SPADir), logger)
+		if err != nil {
+			return err
+		}
+	}
+
 	router, err := buildRouter(routerDeps{
 		Logger: logger, Clock: clock, MaxBodyBytes: cfg.HTTP.MaxBodyBytes, ClientIPHdr: cfg.HTTP.ClientIPHeader,
 		Readiness: []httpx.ReadinessCheck{
@@ -145,6 +153,7 @@ func run() error {
 		},
 		Identity:    identityMod,
 		FeatureMgmt: featureMod,
+		SPA:         spa,
 	})
 	if err != nil {
 		return err

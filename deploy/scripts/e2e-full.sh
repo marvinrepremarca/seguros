@@ -33,4 +33,15 @@ for _ in $(seq 1 60); do
 done
 curl -sf http://localhost:8080/health/ready >/dev/null || { echo "la API no arrancó" >&2; exit 1; }
 
+# La SPA compilada servida por la API, con su CSP real (Vite no la aplica).
+pnpm -C "${E2E_FRONTEND_DIR:-src/frontend}" exec vite build >/dev/null
+(cd src/backend && SEGUROS_HTTP_ADDR=:8088 SEGUROS_SPA_DIR="$root/${E2E_FRONTEND_DIR:-src/frontend}/dist" \
+  "$root/deploy/scripts/with-dev-env.sh" "${TMPDIR:-/tmp}/seguros-api-e2e") &
+pids+=($!)
+for _ in $(seq 1 60); do
+  curl -sf http://localhost:8088/health/ready >/dev/null && break
+  sleep 0.5
+done
+E2E_SPA_CSP=1 E2E_BASE_URL=http://localhost:8088 pnpm -C "${E2E_FRONTEND_DIR:-src/frontend}" exec playwright test csp.spec.ts
+
 E2E_FULL=1 E2E_PASSWORD="$(get KC_TEST_USER_PASSWORD)" pnpm -C "${E2E_FRONTEND_DIR:-src/frontend}" exec playwright test "$@"

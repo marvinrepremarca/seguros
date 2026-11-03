@@ -56,6 +56,7 @@ func prodAuth(kv map[string]string) map[string]string {
 	kv["SEGUROS_OIDC_ISSUER"] = "https://id.seguros.example/realms/seguros"
 	kv["SEGUROS_PUBLIC_URL"] = "https://app.seguros.example"
 	kv["SEGUROS_VALKEY_URL"] = "rediss://:" + sentinel + "@valkey:6379/0"
+	kv["SEGUROS_SPA_DIR"] = "/app/web"
 	if _, ok := kv["SEGUROS_HTTP_CLIENT_IP_HEADER"]; !ok {
 		kv["SEGUROS_HTTP_CLIENT_IP_HEADER"] = "X-Real-IP"
 	}
@@ -114,6 +115,7 @@ func TestLoadAPIInvalid(t *testing.T) {
 		{"prod sin TLS a BD", map[string]string{"SEGUROS_ENV": "production", "SEGUROS_DB_URL": db}, "sslmode"},
 		{"staging con sslmode=disable", map[string]string{"SEGUROS_ENV": "staging", "SEGUROS_DB_URL": dsn("sslmode=disable")}, "sslmode"},
 		{"prod con sslmode=require", map[string]string{"SEGUROS_ENV": "production", "SEGUROS_DB_URL": dsn("sslmode=require")}, "verify-full"},
+		{"prod sin SPA", map[string]string{"SEGUROS_ENV": "production", "SEGUROS_DB_URL": dsn("sslmode=verify-full")}, "SEGUROS_SPA_DIR"},
 		{"entorno desconocido", map[string]string{"SEGUROS_ENV": "prod", "SEGUROS_DB_URL": db}, "SEGUROS_ENV"},
 		{"nivel de log", map[string]string{"SEGUROS_LOG_LEVEL": "verbose", "SEGUROS_DB_URL": db}, "SEGUROS_LOG_LEVEL"},
 		{"duración inválida", map[string]string{"SEGUROS_HTTP_READ_TIMEOUT": "15", "SEGUROS_DB_URL": db}, "SEGUROS_HTTP_READ_TIMEOUT: duración inválida"},

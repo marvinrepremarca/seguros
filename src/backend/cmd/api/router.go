@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"log/slog"
+	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -22,6 +23,8 @@ type routerDeps struct {
 	ClientIPHdr  string
 	Identity     *identity.Module
 	FeatureMgmt  *featuremgmt.Module
+	// SPA sirve la aplicación web con su CSP; nil en desarrollo con Vite.
+	SPA http.Handler
 }
 
 // buildRouter compone el router de la API. Orden de middlewares (rules/architecture.md §API):
@@ -42,6 +45,9 @@ func buildRouter(d routerDeps) (*chi.Mux, error) {
 	})
 	if mountErr != nil {
 		return nil, mountErr
+	}
+	if d.SPA != nil {
+		root.NotFound(d.SPA.ServeHTTP) // pública; rutas no declaradas: reserva /api, /bff y /health
 	}
 	return root, nil
 }

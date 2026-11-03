@@ -62,8 +62,8 @@ func RequestID(next http.Handler) http.Handler {
 	})
 }
 
-// SecurityHeaders fija las cabeceras de seguridad de la API (rules/security.md). La SPA define
-// su propia CSP con nonces al servir el HTML.
+// SecurityHeaders fija las cabeceras de seguridad de toda respuesta (rules/security.md). SPAHandler
+// reemplaza la CSP y Cache-Control al servir la aplicación web.
 func SecurityHeaders(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h := w.Header()
