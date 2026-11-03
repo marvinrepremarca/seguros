@@ -33,6 +33,8 @@ components:
       - internal/platform/outbox/**
       - internal/platform/jobs/**
       - internal/platform/crypto/**
+      - internal/platform/audit/**
+      - internal/platform/session/**
   module: { in: internal/modules/* }
   domain: { in: internal/modules/*/domain/** }
   app: { in: internal/modules/*/app/** }
