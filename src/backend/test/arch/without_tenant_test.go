@@ -18,6 +18,7 @@ func withoutTenantAllowed() []string {
 	return []string{
 		"tenancy/adapters/postgres",
 		"featuremgmt/adapters/postgres",
+		"policies/adapters/postgres", // solo policies.due_for_expiration: IDs para el job de vencimiento
 	}
 }
 

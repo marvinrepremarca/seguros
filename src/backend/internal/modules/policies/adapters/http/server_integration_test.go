@@ -1,0 +1,686 @@
+//go:build integration
+
+package policieshttp_test
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"sync"
+	"testing"
+	"time"
+
+	"github.com/go-chi/chi/v5"
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
+
+	"github.com/marvinrepremarca/seguros/internal/modules/catalog"
+	identity "github.com/marvinrepremarca/seguros/internal/modules/identity/contracts"
+	"github.com/marvinrepremarca/seguros/internal/modules/parties"
+	"github.com/marvinrepremarca/seguros/internal/modules/policies"
+	"github.com/marvinrepremarca/seguros/internal/modules/policies/adapters/postgres"
+	"github.com/marvinrepremarca/seguros/internal/modules/policies/app"
+	"github.com/marvinrepremarca/seguros/internal/platform/audit"
+	"github.com/marvinrepremarca/seguros/internal/platform/authz"
+	"github.com/marvinrepremarca/seguros/internal/platform/crypto"
+	"github.com/marvinrepremarca/seguros/internal/platform/db"
+	"github.com/marvinrepremarca/seguros/internal/platform/flags"
+	"github.com/marvinrepremarca/seguros/internal/platform/httpx"
+	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
+	"github.com/marvinrepremarca/seguros/internal/platform/outbox"
+	"github.com/marvinrepremarca/seguros/internal/platform/reqctx"
+	"github.com/marvinrepremarca/seguros/test/pgtest"
+)
+
+//nolint:gochecknoglobals // compartidos por la suite (TestMain)
+var (
+	database *db.DB
+	workerDB *db.DB
+	super    *pgx.Conn
+	superMu  sync.Mutex
+)
+
+func TestMain(m *testing.M) { os.Exit(runMain(m)) }
+
+func runMain(m *testing.M) int {
+	ctx := context.Background()
+	env, err := pgtest.Start(ctx)
+	if err != nil {
+		slog.Error("iniciando PostgreSQL", "error", err)
+		return 1
+	}
+	defer env.Terminate() //nolint:errcheck // limpieza al final de la suite
+	if err := env.MigrateAll(ctx); err != nil {
+		slog.Error("migrando", "error", err)
+		return 1
+	}
+	if database, err = env.OpenApp(ctx); err != nil {
+		slog.Error("abriendo BD", "error", err)
+		return 1
+	}
+	defer database.Close()
+	if workerDB, err = env.OpenWorker(ctx); err != nil {
+		slog.Error("abriendo BD", "error", err)
+		return 1
+	}
+	defer workerDB.Close()
+	if super, err = pgx.Connect(ctx, env.SuperuserURL); err != nil {
+		slog.Error("abriendo BD", "error", err)
+		return 1
+	}
+	defer super.Close(ctx) //nolint:errcheck // limpieza al final de la suite
+	return m.Run()
+}
+
+type principalKey struct{}
+
+// flagControl simula module.compliance por prueba: valor o falla de evaluación.
+type flagControl struct {
+	res flags.Resolution
+	err error
+}
+
+func (f *flagControl) Resolve(context.Context, kernel.TenantID, string, flags.Key) (flags.Resolution, error) {
+	return f.res, f.err
+}
+
+type users struct{ list []identity.User }
+
+func (u *users) Users(context.Context) ([]identity.User, error) { return u.list, nil }
+
+type approvedKyc struct{ ok bool }
+
+func (k *approvedKyc) IsApproved(context.Context, uuid.UUID) (bool, error) { return k.ok, nil }
+
+type env struct {
+	router  *chi.Mux
+	policy  *authz.Policy
+	flag    *flagControl
+	kyc     *approvedKyc
+	users   *users
+	clock   *kernel.FakeClock
+	parties *parties.Module
+	catalog *catalog.Module
+}
+
+func newEnv(t *testing.T) *env {
+	t.Helper()
+	logger := slog.New(slog.DiscardHandler)
+	clock := kernel.NewFakeClock(time.Now().UTC()) //nolint:forbidigo // partición de auditoría del mes actual
+	policy, err := authz.DefaultPolicy()
+	require.NoError(t, err)
+	kek, err := crypto.NewLocalKEK(map[string]string{"v1": "kek-de-prueba-de-al-menos-32-caracteres"}, "v1")
+	require.NoError(t, err)
+	cipher, err := crypto.NewService(database, kek, "indice-de-prueba-de-al-menos-32-caracteres", clock)
+	require.NoError(t, err)
+	recorder := audit.NewRecorder(clock)
+	partiesMod := parties.New(parties.Deps{DB: database, Audit: recorder, Cipher: cipher, Policy: policy, Clock: clock, Logger: logger})
+	catalogMod, err := catalog.New(catalog.Deps{DB: database, Audit: recorder, Policy: policy, Clock: clock, Logger: logger})
+	require.NoError(t, err)
+	e := &env{
+		policy: policy, clock: clock, parties: partiesMod, catalog: catalogMod,
+		flag: &flagControl{res: flags.Resolution{Source: flags.SourceDefault}}, kyc: &approvedKyc{}, users: &users{},
+	}
+	mod := policies.New(policies.Deps{
+		DB: database, Audit: recorder, Outbox: outbox.NewWriter(clock), Parties: partiesMod.Directory, Catalog: catalogMod.Directory,
+		Schemas: catalogMod.Schemas, Users: e.users, Flags: e.flag, Kyc: e.kyc, Policy: policy, Clock: clock, Logger: logger,
+	})
+	root := httpx.NewRouter(httpx.RouterOptions{Logger: logger, Clock: clock, MaxBodyBytes: 1 << 20})
+	var mountErr error
+	root.Group(func(r chi.Router) {
+		r.Use(func(next http.Handler) http.Handler {
+			return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+				ctx := req.Context()
+				if p, ok := ctx.Value(principalKey{}).(authz.Principal); ok {
+					ctx = reqctx.WithTenantPlan(authz.WithPrincipal(ctx, p), "profesional")
+				}
+				next.ServeHTTP(w, req.WithContext(ctx))
+			})
+		})
+		mountErr = errors.Join(mod.Mount(r), partiesMod.Mount(r), catalogMod.Mount(r))
+	})
+	require.NoError(t, mountErr)
+	e.router = root
+	return e
+}
+
+func newTenant() kernel.TenantID { return kernel.TenantID(uuid.Must(uuid.NewV7())) }
+
+func (e *env) as(tenant kernel.TenantID, roles ...authz.Role) *authz.Principal {
+	p := authz.NewPrincipal(kernel.UserID(uuid.Must(uuid.NewV7())), tenant, roles, e.policy)
+	return &p
+}
+
+type resp struct {
+	status int
+	body   map[string]any
+}
+
+func (r resp) str(t *testing.T, key string) string {
+	t.Helper()
+	v, ok := r.body[key].(string)
+	require.True(t, ok, "%s en %v", key, r.body)
+	return v
+}
+
+func (r resp) version(t *testing.T) int {
+	t.Helper()
+	v, ok := r.body["version"].(float64)
+	require.True(t, ok, "version en %v", r.body)
+	return int(v)
+}
+
+func (e *env) do(t *testing.T, who *authz.Principal, method, path string, body any) resp {
+	t.Helper()
+	ctx := context.Background()
+	if who != nil {
+		ctx = context.WithValue(ctx, principalKey{}, *who)
+	}
+	var rd bytes.Buffer
+	if body != nil {
+		require.NoError(t, json.NewEncoder(&rd).Encode(body))
+	}
+	req := httptest.NewRequestWithContext(ctx, method, path, &rd)
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	rec := httptest.NewRecorder()
+	e.router.ServeHTTP(rec, req)
+	out := resp{status: rec.Code, body: map[string]any{}}
+	if rec.Body.Len() > 0 {
+		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out.body), rec.Body.String())
+	}
+	return out
+}
+
+const base = "/api/v1/policies/policies"
+
+// world crea un tenant con catálogo y terceros reales.
+type world struct {
+	tenant          kernel.TenantID
+	ops             *authz.Principal
+	insurer, line   string
+	holder, insured string
+}
+
+func (e *env) world(t *testing.T) world {
+	t.Helper()
+	tenant := newTenant()
+	admin := e.as(tenant, authz.RoleTenantAdmin)
+	ops := e.as(tenant, authz.RoleOperations)
+	create := func(who *authz.Principal, path string, body any) string {
+		r := e.do(t, who, http.MethodPost, path, body)
+		require.Equal(t, http.StatusCreated, r.status, r.body)
+		return r.str(t, "id")
+	}
+	party := func(name string) string {
+		return create(ops, "/api/v1/parties/parties", map[string]any{
+			"kind": "person", "name": name, "documentType": "CC", "documentNumber": fmt.Sprintf("1%09d", uuid.New().ID()%1_000_000_000),
+		})
+	}
+	return world{
+		tenant: tenant, ops: ops,
+		insurer: create(admin, "/api/v1/catalog/insurers", map[string]any{"name": "Sura"}),
+		line:    create(admin, "/api/v1/catalog/lines-of-business", map[string]any{"name": "Autos", "riskSchemaKey": "auto"}),
+		holder:  party("Ana Pérez"), insured: party("Luis Gómez"),
+	}
+}
+
+func (w world) terms() map[string]any {
+	return map[string]any{
+		"insurerId": w.insurer, "lineOfBusinessId": w.line, "currency": "COP", "netPremium": "1000000", "taxes": "190000.50",
+		"effectiveFrom": "2026-01-01", "effectiveTo": "2026-12-31", "paymentForm": "single_payment",
+		"parties": []any{
+			map[string]any{"partyId": w.holder, "role": "holder"},
+			map[string]any{"partyId": w.insured, "role": "insured"},
+		},
+		"coverages": []any{map[string]any{"name": "Daños", "sumInsured": "50000000", "deductible": "10%"}},
+		"items":     []any{map[string]any{"description": "Mazda 3", "riskData": map[string]any{"plate": "ABC123", "brand": "Mazda", "model": "3", "year": 2024}}},
+	}
+}
+
+func (e *env) create(t *testing.T, w world) resp {
+	t.Helper()
+	r := e.do(t, w.ops, http.MethodPost, base, w.terms())
+	require.Equal(t, http.StatusCreated, r.status, r.body)
+	return r
+}
+
+func at(id string, version int, action string) string {
+	return fmt.Sprintf("%s/%s/%s?version=%d", base, id, action, version)
+}
+
+// issued lleva una póliza hasta Vigente.
+func (e *env) issued(t *testing.T, w world) resp {
+	t.Helper()
+	c := e.create(t, w)
+	id := c.str(t, "id")
+	a := e.do(t, w.ops, http.MethodPost, at(id, c.version(t), "accept"), nil)
+	require.Equal(t, http.StatusOK, a.status, a.body)
+	i := e.do(t, w.ops, http.MethodPost, at(id, a.version(t), "issue"), map[string]any{"policyNumber": "POL-" + uuid.NewString()[:8]})
+	require.Equal(t, http.StatusOK, i.status, i.body)
+	return i
+}
+
+func outboxTopics(t *testing.T, tenant kernel.TenantID) []string {
+	t.Helper()
+	superMu.Lock()
+	defer superMu.Unlock()
+	rows, err := super.Query(context.Background(), `SELECT topic FROM messaging.outbox WHERE tenant_id = $1 ORDER BY id`, uuid.UUID(tenant))
+	require.NoError(t, err)
+	defer rows.Close()
+	var out []string
+	for rows.Next() {
+		var s string
+		require.NoError(t, rows.Scan(&s))
+		out = append(out, s)
+	}
+	return out
+}
+
+func auditDetails(t *testing.T, tenant kernel.TenantID, action string) []map[string]string {
+	t.Helper()
+	ctx := reqctx.WithTenantID(context.Background(), tenant)
+	var out []map[string]string
+	require.NoError(t, database.WithTenantTx(ctx, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `SELECT details FROM audit.events WHERE action = $1 ORDER BY id`, action)
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		for rows.Next() {
+			var d map[string]string
+			if err := rows.Scan(&d); err != nil {
+				return err
+			}
+			out = append(out, d)
+		}
+		return rows.Err()
+	}))
+	return out
+}
+
+func TestManualIssuanceFlow(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	w := e.world(t)
+
+	c := e.create(t, w)
+	assert.Equal(t, "in_quotation", c.body["status"])
+	assert.Equal(t, "1190000.5", c.body["totalPremium"], "neta + impuestos, sin pasar por float")
+	id := c.str(t, "id")
+
+	got := e.do(t, w.ops, http.MethodGet, base+"/"+id, nil)
+	require.Equal(t, http.StatusOK, got.status)
+	assert.Len(t, got.body["parties"], 2)
+
+	early := e.do(t, w.ops, http.MethodPost, at(id, 1, "issue"), map[string]any{"policyNumber": "POL-1"})
+	assert.Equal(t, http.StatusConflict, early.status)
+	assert.Equal(t, "policies.policy.invalid_transition", early.body["type"])
+
+	a := e.do(t, w.ops, http.MethodPost, at(id, 1, "accept"), nil)
+	require.Equal(t, http.StatusOK, a.status, a.body)
+	assert.Equal(t, "in_process", a.body["status"])
+
+	stale := e.do(t, w.ops, http.MethodPost, at(id, 1, "issue"), map[string]any{"policyNumber": "POL-1"})
+	assert.Equal(t, "policies.policy.concurrent_update", stale.body["type"])
+
+	adjusted := w.terms()
+	adjusted["netPremium"] = "1100000"
+	u := e.do(t, w.ops, http.MethodPut, fmt.Sprintf("%s/%s?version=%d", base, id, a.version(t)), adjusted)
+	require.Equal(t, http.StatusOK, u.status, u.body)
+	assert.Equal(t, "1100000", u.body["netPremium"])
+
+	i := e.do(t, w.ops, http.MethodPost, at(id, u.version(t), "issue"), map[string]any{"policyNumber": "POL-1"})
+	require.Equal(t, http.StatusOK, i.status, i.body)
+	assert.Equal(t, "active", i.body["status"])
+	assert.Equal(t, "POL-1", i.body["policyNumber"])
+	assert.Contains(t, outboxTopics(t, w.tenant), "policies.policy_issued")
+
+	notEditable := e.do(t, w.ops, http.MethodPut, fmt.Sprintf("%s/%s?version=%d", base, id, i.version(t)), adjusted)
+	assert.Equal(t, "policies.policy.not_editable", notEditable.body["type"])
+
+	details := auditDetails(t, w.tenant, "policies.policy.issued")
+	require.Len(t, details, 1)
+	assert.Equal(t, "not_required", details[0]["kyc"])
+	assert.Equal(t, "default", details[0]["complianceFlagSource"])
+	assert.Equal(t, "in_process", details[0]["from"])
+
+	// El número es único por aseguradora dentro del tenant.
+	other := e.create(t, w)
+	oa := e.do(t, w.ops, http.MethodPost, at(other.str(t, "id"), 1, "accept"), nil)
+	dup := e.do(t, w.ops, http.MethodPost, at(other.str(t, "id"), oa.version(t), "issue"), map[string]any{"policyNumber": "POL-1"})
+	assert.Equal(t, http.StatusConflict, dup.status)
+	assert.Equal(t, "policies.policy.number_taken", dup.body["type"])
+}
+
+// ADR 0012 de punta a punta: la evaluación fallida da 503 y la póliza no cambia.
+func TestIssueGate(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name     string
+		flag     flagControl
+		approved bool
+		status   int
+		code     string
+		kycAudit string
+	}{
+		{"flag apagado", flagControl{res: flags.Resolution{Source: flags.SourcePlan}}, false, http.StatusOK, "", "not_required"},
+		{"flag encendido sin KYC", flagControl{res: flags.Resolution{Enabled: true, Source: flags.SourcePlan}}, false, http.StatusConflict, "policies.issue.kyc_not_approved", ""},
+		{"flag encendido con KYC", flagControl{res: flags.Resolution{Enabled: true, Source: flags.SourcePlan}}, true, http.StatusOK, "", "approved"},
+		{"flag no evaluable", flagControl{err: errors.New("valkey y postgres caídos")}, true, http.StatusServiceUnavailable, "policies.issue.compliance_unavailable", ""},
+		{"flag con origen error", flagControl{res: flags.Resolution{Source: flags.SourceError}}, true, http.StatusServiceUnavailable, "policies.issue.compliance_unavailable", ""},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			e := newEnv(t)
+			w := e.world(t)
+			created := e.create(t, w)
+			id := created.str(t, "id")
+			a := e.do(t, w.ops, http.MethodPost, at(id, 1, "accept"), nil)
+			require.Equal(t, http.StatusOK, a.status)
+
+			*e.flag = c.flag
+			e.kyc.ok = c.approved
+			r := e.do(t, w.ops, http.MethodPost, at(id, a.version(t), "issue"), map[string]any{"policyNumber": "POL-1"})
+			assert.Equal(t, c.status, r.status, r.body)
+
+			got := e.do(t, w.ops, http.MethodGet, base+"/"+id, nil)
+			if c.code != "" {
+				assert.Equal(t, c.code, r.body["type"])
+				assert.Equal(t, "in_process", got.body["status"], "no cambia")
+				assert.NotContains(t, outboxTopics(t, w.tenant), "policies.policy_issued")
+				return
+			}
+			assert.Equal(t, "active", got.body["status"])
+			details := auditDetails(t, w.tenant, "policies.policy.issued")
+			require.Len(t, details, 1)
+			assert.Equal(t, c.kycAudit, details[0]["kyc"])
+		})
+	}
+}
+
+func TestKycBlockIsAudited(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	w := e.world(t)
+	id := e.create(t, w).str(t, "id")
+	a := e.do(t, w.ops, http.MethodPost, at(id, 1, "accept"), nil)
+	*e.flag = flagControl{res: flags.Resolution{Enabled: true, Source: flags.SourceOverride}}
+	require.Equal(t, http.StatusConflict, e.do(t, w.ops, http.MethodPost, at(id, a.version(t), "issue"), map[string]any{"policyNumber": "POL-1"}).status)
+	details := auditDetails(t, w.tenant, "policies.policy.issue_denied")
+	require.Len(t, details, 1)
+	assert.Equal(t, "override", details[0]["complianceFlagSource"])
+}
+
+func TestRejectAndCancel(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	w := e.world(t)
+	c := e.create(t, w)
+	a := e.do(t, w.ops, http.MethodPost, at(c.str(t, "id"), 1, "accept"), nil)
+	rej := e.do(t, w.ops, http.MethodPost, at(c.str(t, "id"), a.version(t), "reject"), map[string]any{"reason": "riesgo no asegurable"})
+	require.Equal(t, http.StatusOK, rej.status, rej.body)
+	assert.Equal(t, "rejected", rej.body["status"])
+
+	p := e.issued(t, w)
+	id := p.str(t, "id")
+	outside := e.do(t, w.ops, http.MethodPost, at(id, p.version(t), "cancel"), map[string]any{"cause": "client_request", "effectiveDate": "2027-01-01", "unearnedPremium": "0"})
+	assert.Equal(t, http.StatusUnprocessableEntity, outside.status)
+	assert.Equal(t, "policies.cancellation.outside_coverage_period", outside.body["type"])
+
+	cancel := e.do(t, w.ops, http.MethodPost, at(id, p.version(t), "cancel"), map[string]any{
+		"cause": "insurer_revocation", "effectiveDate": "2026-12-31", "unearnedPremium": "500000.25", "insurerReference": "REV-9",
+	})
+	require.Equal(t, http.StatusOK, cancel.status, cancel.body)
+	assert.Equal(t, "cancelled", cancel.body["status"])
+	cancellation, ok := cancel.body["cancellation"].(map[string]any)
+	require.True(t, ok)
+	assert.Equal(t, "500000.25", cancellation["unearnedPremium"])
+	assert.Contains(t, outboxTopics(t, w.tenant), "policies.policy_cancelled")
+
+	assert.Equal(t, http.StatusConflict, e.do(t, w.ops, http.MethodPost, at(id, cancel.version(t), "cancel"), map[string]any{"cause": "other", "effectiveDate": "2026-06-01", "unearnedPremium": "0"}).status, "terminal")
+}
+
+func TestEndorsementFlow(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	w := e.world(t)
+	p := e.issued(t, w)
+	id := p.str(t, "id")
+
+	outside := e.do(t, w.ops, http.MethodPost, at(id, p.version(t), "endorsements"), map[string]any{"type": "other", "description": "Fuera de vigencia", "effectiveDate": "2027-01-01"})
+	assert.Equal(t, "policies.endorsement.outside_coverage_period", outside.body["type"])
+
+	req := e.do(t, w.ops, http.MethodPost, at(id, p.version(t), "endorsements"), map[string]any{"type": "item_change", "description": "Cambio de placa", "effectiveDate": "2026-06-01"})
+	require.Equal(t, http.StatusCreated, req.status, req.body)
+	assert.Equal(t, "1000000", req.body["netPremium"], "solicitar no cambia la prima")
+	assert.NotContains(t, outboxTopics(t, w.tenant), "policies.policy_endorsed")
+
+	endorsements, ok := req.body["endorsements"].([]any)
+	require.True(t, ok)
+	require.Len(t, endorsements, 1)
+	first, ok := endorsements[0].(map[string]any)
+	require.True(t, ok)
+	endorsementID, ok := first["id"].(string)
+	require.True(t, ok)
+	path := func(version int, action string) string {
+		return fmt.Sprintf("%s/%s/endorsements/%s/%s?version=%d", base, id, endorsementID, action, version)
+	}
+
+	coverages, ok := req.body["coverages"].([]any)
+	require.True(t, ok)
+	coverage, ok := coverages[0].(map[string]any)
+	require.True(t, ok)
+	items, ok := req.body["items"].([]any)
+	require.True(t, ok)
+	item, ok := items[0].(map[string]any)
+	require.True(t, ok)
+
+	badRisk := e.do(t, w.ops, http.MethodPost, path(req.version(t), "issue"), map[string]any{
+		"number": "END-1", "netPremiumDelta": "0", "taxesDelta": "0",
+		"itemChanges": []any{map[string]any{"itemId": item["id"], "riskData": map[string]any{"plate": "mal"}}},
+	})
+	assert.Equal(t, "catalog.risk_data.invalid", badRisk.body["type"], "valida contra el esquema del bien")
+
+	unknownParty := e.do(t, w.ops, http.MethodPost, path(req.version(t), "issue"), map[string]any{
+		"number": "END-1", "netPremiumDelta": "0", "taxesDelta": "0",
+		"addParties": []any{map[string]any{"partyId": uuid.NewString(), "role": "beneficiary"}},
+	})
+	assert.Equal(t, "policies.policy.invalid_party", unknownParty.body["type"])
+
+	issued := e.do(t, w.ops, http.MethodPost, path(req.version(t), "issue"), map[string]any{
+		"number": "END-1", "netPremiumDelta": "-100000", "taxesDelta": "-19000",
+		"coverageChanges": []any{map[string]any{"coverageId": coverage["id"], "sumInsured": "60000000"}},
+		"itemChanges":     []any{map[string]any{"itemId": item["id"], "riskData": map[string]any{"plate": "XYZ987", "brand": "Mazda", "model": "3", "year": 2024}}},
+		"addParties":      []any{map[string]any{"partyId": w.insured, "role": "beneficiary"}},
+	})
+	require.Equal(t, http.StatusOK, issued.status, issued.body)
+	assert.Equal(t, "900000", issued.body["netPremium"])
+	assert.Len(t, issued.body["parties"], 3)
+	assert.Contains(t, outboxTopics(t, w.tenant), "policies.policy_endorsed")
+
+	// Guardar otra vez la póliza no borra el historial de efectos del endoso.
+	second := e.do(t, w.ops, http.MethodPost, at(id, issued.version(t), "endorsements"), map[string]any{"type": "other", "description": "Otro cambio", "effectiveDate": "2026-07-01"})
+	require.Equal(t, http.StatusCreated, second.status, second.body)
+	ctx := reqctx.WithTenantID(context.Background(), w.tenant)
+	require.NoError(t, database.WithTenantTx(ctx, func(tx pgx.Tx) error {
+		var effects []byte
+		if err := tx.QueryRow(ctx, `SELECT effects FROM policies.endorsements WHERE id = $1`, uuid.MustParse(endorsementID)).Scan(&effects); err != nil {
+			return err
+		}
+		assert.Contains(t, string(effects), "XYZ987")
+		return nil
+	}))
+
+	already := e.do(t, w.ops, http.MethodPost, path(second.version(t), "reject"), map[string]any{"reason": "ya resuelto"})
+	assert.Equal(t, "policies.endorsement.not_pending", already.body["type"])
+}
+
+func TestValidationAgainstOtherModules(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	w := e.world(t)
+	mutate := func(k string, v any) map[string]any {
+		x := w.terms()
+		x[k] = v
+		return x
+	}
+	cases := []struct {
+		name   string
+		body   map[string]any
+		status int
+		code   string
+	}{
+		{"aseguradora inexistente", mutate("insurerId", uuid.NewString()), http.StatusUnprocessableEntity, "catalog.reference.invalid"},
+		{"tercero inexistente", mutate("parties", []any{map[string]any{"partyId": uuid.NewString(), "role": "holder"}, map[string]any{"partyId": w.insured, "role": "insured"}}), http.StatusUnprocessableEntity, "policies.policy.invalid_party"},
+		{"sin tomador", mutate("parties", []any{map[string]any{"partyId": w.holder, "role": "insured"}, map[string]any{"partyId": w.insured, "role": "insured"}}), http.StatusUnprocessableEntity, "policies.policy.invalid_holder"},
+		{"datos de riesgo inválidos", mutate("items", []any{map[string]any{"description": "Moto", "riskData": map[string]any{"plate": "x"}}}), http.StatusUnprocessableEntity, "catalog.risk_data.invalid"},
+		{"datos de salud rechazados", mutate("items", []any{map[string]any{"description": "Vida", "riskData": map[string]any{"plate": "ABC123", "brand": "M", "model": "3", "year": 2024, "health": "x"}}}), http.StatusUnprocessableEntity, "catalog.risk_data.invalid"},
+		{"vigencia invertida", mutate("effectiveTo", "2025-01-01"), http.StatusUnprocessableEntity, "kernel.date_range.invalid"},
+		{"asesor de otra agencia", mutate("agentId", uuid.NewString()), http.StatusUnprocessableEntity, "policies.policy.invalid_reference"},
+		{"prima como número", mutate("netPremium", 1000), http.StatusBadRequest, "platform.bad_request"},
+		{"prima negativa", mutate("netPremium", "-1"), http.StatusBadRequest, "platform.bad_request"},
+		{"tenant en el cuerpo", mutate("tenantId", uuid.NewString()), http.StatusBadRequest, "platform.bad_request"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			r := e.do(t, w.ops, http.MethodPost, base, c.body)
+			assert.Equal(t, c.status, r.status, r.body)
+			assert.Equal(t, c.code, r.body["type"])
+		})
+	}
+}
+
+func TestPermissionsAndOwnership(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	w := e.world(t)
+	agent := e.as(w.tenant, authz.RoleSalesAgent)
+	otherAgent := e.as(w.tenant, authz.RoleSalesAgent)
+	e.users.list = []identity.User{{ID: uuid.UUID(agent.UserID), DisplayName: "Asesora"}}
+
+	mine := w.terms()
+	mine["agentId"] = uuid.UUID(agent.UserID).String()
+	own := e.do(t, w.ops, http.MethodPost, base, mine)
+	require.Equal(t, http.StatusCreated, own.status, own.body)
+	notMine := e.create(t, w)
+
+	assert.Equal(t, http.StatusOK, e.do(t, agent, http.MethodGet, base+"/"+own.str(t, "id"), nil).status)
+	assert.Equal(t, http.StatusNotFound, e.do(t, agent, http.MethodGet, base+"/"+notMine.str(t, "id"), nil).status, "no revela pólizas ajenas")
+	assert.Equal(t, http.StatusNotFound, e.do(t, otherAgent, http.MethodGet, base+"/"+own.str(t, "id"), nil).status)
+
+	list := e.do(t, agent, http.MethodGet, base, nil)
+	require.Equal(t, http.StatusOK, list.status)
+	assert.Len(t, list.body["items"], 1)
+	assert.Len(t, e.do(t, w.ops, http.MethodGet, base, nil).body["items"], 2)
+
+	admin := e.as(w.tenant, authz.RoleTenantAdmin)
+	id := notMine.str(t, "id")
+	cases := []struct {
+		name         string
+		who          *authz.Principal
+		method, path string
+		body         any
+		want         int
+	}{
+		{"sin sesión lista", nil, http.MethodGet, base, nil, http.StatusUnauthorized},
+		{"sin sesión expide", nil, http.MethodPost, at(id, 1, "issue"), map[string]any{"policyNumber": "X"}, http.StatusUnauthorized},
+		{"admin no ve pólizas", admin, http.MethodGet, base, nil, http.StatusForbidden},
+		{"asesor no crea", agent, http.MethodPost, base, w.terms(), http.StatusForbidden},
+		{"asesor no expide", agent, http.MethodPost, at(id, 1, "issue"), map[string]any{"policyNumber": "X"}, http.StatusForbidden},
+		{"asesor no cancela", agent, http.MethodPost, at(id, 1, "cancel"), map[string]any{"cause": "other", "effectiveDate": "2026-06-01", "unearnedPremium": "0"}, http.StatusForbidden},
+		{"asesor no endosa", agent, http.MethodPost, at(id, 1, "endorsements"), map[string]any{"type": "other", "description": "Algo", "effectiveDate": "2026-06-01"}, http.StatusForbidden},
+		{"asesor no lista asesores", agent, http.MethodGet, "/api/v1/policies/agents", nil, http.StatusForbidden},
+		{"operaciones lista asesores", w.ops, http.MethodGet, "/api/v1/policies/agents", nil, http.StatusOK},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			assert.Equal(t, c.want, e.do(t, c.who, c.method, c.path, c.body).status)
+		})
+	}
+}
+
+func TestTenantIsolation(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	a, b := e.world(t), e.world(t)
+	p := e.issued(t, a)
+	id := p.str(t, "id")
+
+	assert.Equal(t, http.StatusNotFound, e.do(t, b.ops, http.MethodGet, base+"/"+id, nil).status)
+	assert.Equal(t, http.StatusNotFound, e.do(t, b.ops, http.MethodPost, at(id, p.version(t), "cancel"), map[string]any{"cause": "other", "effectiveDate": "2026-06-01", "unearnedPremium": "0"}).status)
+	assert.Equal(t, http.StatusNotFound, e.do(t, b.ops, http.MethodPost, at(id, p.version(t), "endorsements"), map[string]any{"type": "other", "description": "Algo", "effectiveDate": "2026-06-01"}).status)
+	assert.Empty(t, e.do(t, b.ops, http.MethodGet, base, nil).body["items"])
+
+	foreign := b.terms()
+	foreign["parties"] = []any{map[string]any{"partyId": a.holder, "role": "holder"}, map[string]any{"partyId": b.insured, "role": "insured"}}
+	assert.Equal(t, "policies.policy.invalid_party", e.do(t, b.ops, http.MethodPost, base, foreign).body["type"], "un tercero de otro tenant no existe")
+
+	ctx := reqctx.WithTenantID(context.Background(), b.tenant)
+	require.NoError(t, database.WithTenantTx(ctx, func(tx pgx.Tx) error {
+		for _, q := range []string{
+			`SELECT count(*) FROM policies.policies`, `SELECT count(*) FROM policies.policy_parties`, `SELECT count(*) FROM policies.coverages`,
+			`SELECT count(*) FROM policies.insured_items`, `SELECT count(*) FROM policies.endorsements`,
+		} {
+			var n int
+			if err := tx.QueryRow(ctx, q).Scan(&n); err != nil {
+				return err
+			}
+			assert.Zero(t, n, q)
+		}
+		return nil
+	}))
+}
+
+// DECISIONS N7: vence el día siguiente al último día cubierto. Cruza tenants y corre como el worker.
+func TestExpirationJob(t *testing.T) {
+	e := newEnv(t)
+	w := e.world(t)
+	due := e.issued(t, w)
+	current := e.issued(t, w)
+	require.NoError(t, setPeriodEnd(uuid.MustParse(current.str(t, "id")), "2999-12-31"))
+
+	store := postgres.NewStore(workerDB, audit.NewRecorder(e.clock), outbox.NewWriter(e.clock))
+	expirer := &app.Expirer{Store: store, Clock: kernel.NewFakeClock(time.Date(2026, 12, 31, 12, 0, 0, 0, time.UTC))}
+	n, err := expirer.Run(context.Background())
+	require.NoError(t, err)
+	assert.Zero(t, n, "el último día sigue cubierto")
+
+	expirer.Clock = kernel.NewFakeClock(time.Date(2027, 1, 1, 5, 30, 0, 0, time.UTC)) // 00:30 en Bogotá
+	n, err = expirer.Run(context.Background())
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, n, 1)
+
+	assert.Equal(t, "expired", e.do(t, w.ops, http.MethodGet, base+"/"+due.str(t, "id"), nil).body["status"])
+	assert.Equal(t, "active", e.do(t, w.ops, http.MethodGet, base+"/"+current.str(t, "id"), nil).body["status"])
+	assert.Contains(t, outboxTopics(t, w.tenant), "policies.policy_expired")
+	assert.NotEmpty(t, auditDetails(t, w.tenant, "policies.policy.expired"))
+
+	again, err := expirer.Run(context.Background())
+	require.NoError(t, err)
+	assert.Zero(t, again, "idempotente")
+
+	// La función que cruza tenants solo es del worker.
+	err = database.WithoutTenantTx(context.Background(), func(tx pgx.Tx) error {
+		_, err := tx.Exec(context.Background(), `SELECT * FROM policies.due_for_expiration('2027-01-01', 10)`)
+		return err
+	})
+	require.ErrorContains(t, err, "permission denied")
+}
+
+func setPeriodEnd(id uuid.UUID, end string) error {
+	superMu.Lock()
+	defer superMu.Unlock()
+	_, err := super.Exec(context.Background(), `UPDATE policies.policies SET effective_to = $1::date WHERE id = $2`, end, id)
+	return err
+}

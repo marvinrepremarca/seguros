@@ -12,6 +12,7 @@ import (
 	identityhttp "github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/http"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/postgres"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/app"
+	"github.com/marvinrepremarca/seguros/internal/modules/identity/contracts"
 	tenancy "github.com/marvinrepremarca/seguros/internal/modules/tenancy/contracts"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/authz"
@@ -39,6 +40,7 @@ type Deps struct {
 // Module expone el BFF y los middlewares de sesión.
 type Module struct {
 	Server        *identityhttp.Server
+	Directory     contracts.Directory
 	Sessions      *scs.SessionManager
 	authenticator *identityhttp.Authenticator
 	publicURL     string
@@ -53,8 +55,10 @@ func New(d Deps) (*Module, error) {
 	if err != nil {
 		return nil, err
 	}
-	login := app.NewCompleteLoginHandler(d.Tenants, postgres.NewStore(d.DB, d.Audit), d.Clock, d.Auth.MFARequired)
+	store := postgres.NewStore(d.DB, d.Audit)
+	login := app.NewCompleteLoginHandler(d.Tenants, store, d.Clock, d.Auth.MFARequired)
 	return &Module{
+		Directory: store,
 		Server: identityhttp.NewServer(identityhttp.Options{
 			Provider: d.Provider, Login: login, Tenants: d.Tenants, Policy: d.Policy,
 			Sessions: sessions, AuthTx: identityhttp.NewAuthTxManager(d.AuthTxStore), Guard: guard,

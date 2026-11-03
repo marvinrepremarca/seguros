@@ -26,6 +26,7 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/modules/identity"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/oidc"
 	"github.com/marvinrepremarca/seguros/internal/modules/parties"
+	"github.com/marvinrepremarca/seguros/internal/modules/policies"
 	"github.com/marvinrepremarca/seguros/internal/modules/tenancy"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/authz"
@@ -155,6 +156,11 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	policiesMod := policies.New(policies.Deps{
+		DB: database, Audit: recorder, Outbox: outbox.NewWriter(clock), Parties: partiesMod.Directory,
+		Catalog: catalogMod.Directory, Schemas: catalogMod.Schemas, Users: identityMod.Directory,
+		Flags: evaluator, Policy: policy, Clock: clock, Logger: logger,
+	})
 
 	var spa http.Handler
 	if cfg.HTTP.SPADir != "" {
@@ -176,6 +182,7 @@ func run() error {
 		FeatureMgmt: featureMod,
 		Parties:     partiesMod,
 		Catalog:     catalogMod,
+		Policies:    policiesMod,
 		SPA:         spa,
 	})
 	if err != nil {

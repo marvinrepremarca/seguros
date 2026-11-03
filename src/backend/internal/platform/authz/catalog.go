@@ -49,6 +49,12 @@ const (
 	CatalogManage   Permission = "catalog.item.manage"
 	AgreementRead   Permission = "catalog.commission-agreement.read"
 	AgreementManage Permission = "catalog.commission-agreement.manage"
+
+	PolicyRead        Permission = "policies.policy.read"
+	PolicyReadOwn     Permission = "policies.policy.read-own"
+	PolicyManage      Permission = "policies.policy.manage"
+	PolicyCancel      Permission = "policies.policy.cancel"
+	EndorsementManage Permission = "policies.endorsement.manage"
 )
 
 // DefaultGrants es la asignación base rol → permisos (DOMAIN.md §4). Se devuelve una copia nueva
@@ -56,12 +62,12 @@ const (
 func DefaultGrants() map[Role][]Permission {
 	return map[Role][]Permission{
 		RoleTenantAdmin:       {FeatureFlagRead, FeatureFlagUpdate, CatalogRead, CatalogManage, AgreementRead, AgreementManage},
-		RoleManager:           {FeatureFlagRead, PartyRead, DocumentReveal, ConsentRead, CatalogRead, AgreementRead, AgreementManage},
-		RoleSalesAgent:        {PartyRead, PartyCreate, PartyUpdate, ConsentRead, ConsentCreate, CatalogRead},
-		RoleOperations:        {PartyRead, PartyCreate, PartyUpdate, DocumentReveal, ConsentRead, ConsentCreate, CatalogRead},
-		RoleClaimsAnalyst:     {PartyRead, CatalogRead},
-		RoleCollections:       {PartyRead, CatalogRead},
-		RoleAccounting:        {PartyRead, CatalogRead, AgreementRead},
-		RoleComplianceOfficer: {PartyRead, DocumentReveal, ConsentRead, ConsentCreate, CatalogRead},
+		RoleManager:           {FeatureFlagRead, PartyRead, DocumentReveal, ConsentRead, CatalogRead, AgreementRead, AgreementManage, PolicyRead},
+		RoleSalesAgent:        {PartyRead, PartyCreate, PartyUpdate, ConsentRead, ConsentCreate, CatalogRead, PolicyReadOwn},
+		RoleOperations:        {PartyRead, PartyCreate, PartyUpdate, DocumentReveal, ConsentRead, ConsentCreate, CatalogRead, PolicyRead, PolicyManage, PolicyCancel, EndorsementManage},
+		RoleClaimsAnalyst:     {PartyRead, CatalogRead, PolicyRead},
+		RoleCollections:       {PartyRead, CatalogRead, PolicyRead},
+		RoleAccounting:        {PartyRead, CatalogRead, AgreementRead, PolicyRead},
+		RoleComplianceOfficer: {PartyRead, DocumentReveal, ConsentRead, ConsentCreate, CatalogRead, PolicyRead},
 	}
 }

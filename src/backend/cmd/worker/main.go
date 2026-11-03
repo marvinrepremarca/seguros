@@ -16,6 +16,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
+	"github.com/marvinrepremarca/seguros/internal/modules/policies"
 	"github.com/marvinrepremarca/seguros/internal/modules/tenancy"
 	tenancycontracts "github.com/marvinrepremarca/seguros/internal/modules/tenancy/contracts"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
@@ -120,6 +121,7 @@ func run() error {
 	// Jobs River (periódicos de plataforma; los módulos añadirán los suyos).
 	workers := river.NewWorkers()
 	periodic := jobs.PlatformJobs(workers, database, clock)
+	periodic = append(periodic, policies.RegisterJobs(workers, database, audit.NewRecorder(clock), outbox.NewWriter(clock), clock)...)
 	riverClient, _, err := jobs.NewWorkerClient(database.Pool(), jobs.WorkerOptions{Workers: workers, Periodic: periodic, Logger: logger})
 	if err != nil {
 		return err

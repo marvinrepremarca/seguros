@@ -6,11 +6,14 @@ package identitysqlc
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
 
 type Querier interface {
 	GetUserBySubject(ctx context.Context, arg GetUserBySubjectParams) (GetUserBySubjectRow, error)
 	InsertUser(ctx context.Context, arg InsertUserParams) error
+	ListUsers(ctx context.Context, tenantID uuid.UUID) ([]ListUsersRow, error)
 	UpdateUserLogin(ctx context.Context, arg UpdateUserLoginParams) (int64, error)
 }
 

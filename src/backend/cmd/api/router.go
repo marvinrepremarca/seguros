@@ -12,6 +12,7 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity"
 	"github.com/marvinrepremarca/seguros/internal/modules/parties"
+	"github.com/marvinrepremarca/seguros/internal/modules/policies"
 	"github.com/marvinrepremarca/seguros/internal/platform/httpx"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 )
@@ -27,6 +28,7 @@ type routerDeps struct {
 	FeatureMgmt  *featuremgmt.Module
 	Parties      *parties.Module
 	Catalog      *catalog.Module
+	Policies     *policies.Module
 	// SPA sirve la aplicación web con su CSP; nil en desarrollo con Vite.
 	SPA http.Handler
 }
@@ -47,7 +49,7 @@ func buildRouter(d routerDeps) (*chi.Mux, error) {
 		// Búsqueda de personas: más estricta (rules/security.md §Rate limiting).
 		r.Use(httpx.RateLimitByIP("/api/v1/parties/parties/search-by-document", 60, time.Minute, d.ClientIPHdr))
 		r.Use(d.Identity.Middlewares()...)
-		mountErr = errors.Join(d.Identity.Server.Mount(r), d.FeatureMgmt.Mount(r), d.Parties.Mount(r), d.Catalog.Mount(r))
+		mountErr = errors.Join(d.Identity.Server.Mount(r), d.FeatureMgmt.Mount(r), d.Parties.Mount(r), d.Catalog.Mount(r), d.Policies.Mount(r))
 	})
 	if mountErr != nil {
 		return nil, mountErr

@@ -106,6 +106,20 @@ sql:
         emit_empty_slices: true
         emit_result_struct_pointers: false
         emit_enum_valid_method: true
+  - name: policies
+    engine: postgresql
+    schema: migrations/policies
+    queries: queries/policies
+    strict_function_checks: true
+    gen:
+      go:
+        package: policiessqlc
+        out: internal/modules/policies/adapters/postgres/sqlc
+        sql_package: pgx/v5
+        emit_interface: true
+        emit_empty_slices: true
+        emit_result_struct_pointers: false
+        emit_enum_valid_method: true
 # Plantilla por módulo:
 #  - name: policies
 #    engine: postgresql
