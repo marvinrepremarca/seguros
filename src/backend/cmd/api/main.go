@@ -18,11 +18,17 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/marvinrepremarca/seguros/internal/modules/identity"
+	"github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/oidc"
+	"github.com/marvinrepremarca/seguros/internal/modules/tenancy"
+	"github.com/marvinrepremarca/seguros/internal/platform/audit"
+	"github.com/marvinrepremarca/seguros/internal/platform/authz"
 	"github.com/marvinrepremarca/seguros/internal/platform/config"
 	"github.com/marvinrepremarca/seguros/internal/platform/db"
 	"github.com/marvinrepremarca/seguros/internal/platform/httpx"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 	"github.com/marvinrepremarca/seguros/internal/platform/obs"
+	"github.com/marvinrepremarca/seguros/internal/platform/session"
 )
 
 func main() {
@@ -73,11 +79,44 @@ func run() error {
 	}
 	defer database.Close()
 
-	router := httpx.NewRouter(httpx.RouterOptions{
-		Logger:       logger,
-		Clock:        kernel.SystemClock{},
-		MaxBodyBytes: cfg.HTTP.MaxBodyBytes,
-		Readiness:    []httpx.ReadinessCheck{{Name: "postgres", Check: database.Ping}},
+	valkeyClient, err := session.NewValkeyClient(cfg.Valkey.URL.Reveal())
+	if err != nil {
+		return err
+	}
+	defer valkeyClient.Close()
+
+	clock := kernel.SystemClock{}
+	policy, err := authz.DefaultPolicy()
+	if err != nil {
+		return err
+	}
+	discoverCtx, cancelDiscover := context.WithTimeout(ctx, 15*time.Second)
+	provider, err := oidc.New(discoverCtx, cfg.Auth, oidc.NewHTTPClient())
+	cancelDiscover()
+	if err != nil {
+		return err
+	}
+	tenants := tenancy.New(database, clock)
+	identityMod, err := identity.New(identity.Deps{
+		DB: database, Clock: clock, Audit: audit.NewRecorder(clock), Tenants: tenants.Directory,
+		Policy: policy, Provider: provider,
+		SessionStore: session.NewValkeyStore(valkeyClient, "bff:sess:", clock),
+		AuthTxStore:  session.NewValkeyStore(valkeyClient, "bff:authtx:", clock),
+		Auth:         cfg.Auth, Logger: logger,
+	})
+	if err != nil {
+		return err
+	}
+
+	router := buildRouter(routerDeps{
+		Logger: logger, Clock: clock, MaxBodyBytes: cfg.HTTP.MaxBodyBytes, ClientIPHdr: cfg.HTTP.ClientIPHeader,
+		Readiness: []httpx.ReadinessCheck{
+			{Name: "postgres", Check: database.Ping},
+			{Name: "valkey", Check: func(ctx context.Context) error {
+				return valkeyClient.Do(ctx, valkeyClient.B().Ping().Build()).Error()
+			}},
+		},
+		Identity: identityMod,
 	})
 
 	ln, err := (&net.ListenConfig{}).Listen(ctx, "tcp", cfg.HTTP.Addr)

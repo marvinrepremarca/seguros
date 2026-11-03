@@ -43,3 +43,9 @@ func TestRequestID(t *testing.T) {
 	assert.Empty(t, reqctx.RequestID(context.Background()))
 	assert.Equal(t, "abc", reqctx.RequestID(reqctx.WithRequestID(context.Background(), "abc")))
 }
+
+func TestTenantPlan(t *testing.T) {
+	t.Parallel()
+	assert.Empty(t, reqctx.TenantPlan(context.Background()))
+	assert.Equal(t, "profesional", reqctx.TenantPlan(reqctx.WithTenantPlan(context.Background(), "profesional")))
+}

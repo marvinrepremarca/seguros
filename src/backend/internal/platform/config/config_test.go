@@ -36,9 +36,32 @@ func env(kv map[string]string) config.LookupFunc {
 	}
 }
 
+// apiEnv completa kv con las variables obligatorias de auth y Valkey de cmd/api (desarrollo),
+// sin sobrescribir las que la prueba fije.
+func apiEnv(kv map[string]string) config.LookupFunc {
+	full := map[string]string{
+		"SEGUROS_OIDC_ISSUER":        "http://localhost:8081/realms/seguros-dev",
+		"SEGUROS_OIDC_CLIENT_SECRET": sentinel,
+		"SEGUROS_PUBLIC_URL":         "http://localhost:5173",
+		"SEGUROS_VALKEY_URL":         "redis://:" + sentinel + "@localhost:6379/0",
+	}
+	for k, v := range kv {
+		full[k] = v
+	}
+	return env(full)
+}
+
+// prodAuth son las variables de auth/Valkey válidas en staging/producción.
+func prodAuth(kv map[string]string) map[string]string {
+	kv["SEGUROS_OIDC_ISSUER"] = "https://id.seguros.example/realms/seguros"
+	kv["SEGUROS_PUBLIC_URL"] = "https://app.seguros.example"
+	kv["SEGUROS_VALKEY_URL"] = "rediss://:" + sentinel + "@valkey:6379/0"
+	return kv
+}
+
 func TestLoadAPIDefaults(t *testing.T) {
 	t.Parallel()
-	cfg, err := config.LoadAPI(env(map[string]string{"SEGUROS_DB_URL": dsn("")}))
+	cfg, err := config.LoadAPI(apiEnv(map[string]string{"SEGUROS_DB_URL": dsn("")}))
 	require.NoError(t, err)
 	assert.Equal(t, config.EnvDevelopment, cfg.Env)
 	assert.Equal(t, "seguros-api", cfg.ServiceName)
@@ -54,7 +77,7 @@ func TestLoadAPIDefaults(t *testing.T) {
 
 func TestLoadAPIOverrides(t *testing.T) {
 	t.Parallel()
-	cfg, err := config.LoadAPI(env(map[string]string{
+	cfg, err := config.LoadAPI(apiEnv(prodAuth(map[string]string{
 		"SEGUROS_ENV":                 "production",
 		"SEGUROS_DB_URL":              dsn("sslmode=verify-full"),
 		"SEGUROS_HTTP_ADDR":           ":9090",
@@ -63,7 +86,7 @@ func TestLoadAPIOverrides(t *testing.T) {
 		"SEGUROS_DB_MAX_CONNS":        "50",
 		"OTEL_EXPORTER_OTLP_ENDPOINT": "https://otel.example.com:4318",
 		"SEGUROS_TRACE_SAMPLE_RATIO":  "0.25",
-	}))
+	})))
 	require.NoError(t, err)
 	assert.Equal(t, config.EnvProduction, cfg.Env)
 	assert.True(t, cfg.Env.IsProductionLike())
@@ -102,7 +125,7 @@ func TestLoadAPIInvalid(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := config.LoadAPI(env(tc.env))
+			_, err := config.LoadAPI(apiEnv(tc.env))
 			require.Error(t, err)
 			assert.Contains(t, err.Error(), tc.wantKey)
 			assert.NotContains(t, err.Error(), sentinel, "el error no debe revelar la contraseña")
@@ -159,4 +182,48 @@ func TestSecretIsRedacted(t *testing.T) {
 	slog.New(slog.NewJSONHandler(&buf, nil)).Info("x", "pw", s)
 	assert.NotContains(t, buf.String(), sentinel)
 	assert.Contains(t, buf.String(), "[REDACTED]")
+}
+
+func TestLoadAPIAuthDefaults(t *testing.T) {
+	t.Parallel()
+	cfg, err := config.LoadAPI(apiEnv(map[string]string{"SEGUROS_DB_URL": dsn("")}))
+	require.NoError(t, err)
+	assert.Equal(t, "seguros-bff", cfg.Auth.ClientID)
+	assert.True(t, cfg.Auth.MFARequired, "MFA activa por defecto")
+	assert.Equal(t, 30*time.Minute, cfg.Auth.SessionIdle)
+	assert.Equal(t, 8*time.Hour, cfg.Auth.SessionLifetime)
+	assert.Equal(t, sentinel, cfg.Auth.ClientSecret.Reveal())
+	assert.NotContains(t, fmt.Sprintf("%v %+v", cfg, cfg), sentinel, "los secretos no se imprimen")
+}
+
+func TestLoadAPIAuthInvalid(t *testing.T) {
+	t.Parallel()
+	db := dsn("")
+	prodDB := dsn("sslmode=verify-full")
+	tests := []struct {
+		name    string
+		env     map[string]string
+		wantKey string
+	}{
+		{"sin issuer", map[string]string{"SEGUROS_DB_URL": db, "SEGUROS_OIDC_ISSUER": ""}, "SEGUROS_OIDC_ISSUER: es obligatoria"},
+		{"sin secreto", map[string]string{"SEGUROS_DB_URL": db, "SEGUROS_OIDC_CLIENT_SECRET": ""}, "SEGUROS_OIDC_CLIENT_SECRET: es obligatoria"},
+		{"public url con ruta", map[string]string{"SEGUROS_DB_URL": db, "SEGUROS_PUBLIC_URL": "http://localhost:5173/app"}, "SEGUROS_PUBLIC_URL: debe ser una origin"},
+		{"issuer no http", map[string]string{"SEGUROS_DB_URL": db, "SEGUROS_OIDC_ISSUER": "ftp://kc/realms/x"}, "SEGUROS_OIDC_ISSUER: URL"},
+		{"mfa no booleano", map[string]string{"SEGUROS_DB_URL": db, "SEGUROS_AUTH_MFA_REQUIRED": "si"}, "SEGUROS_AUTH_MFA_REQUIRED"},
+		{"idle mayor que lifetime", map[string]string{"SEGUROS_DB_URL": db, "SEGUROS_SESSION_IDLE_TIMEOUT": "9h"}, "SEGUROS_SESSION_IDLE_TIMEOUT"},
+		{"valkey no redis", map[string]string{"SEGUROS_DB_URL": db, "SEGUROS_VALKEY_URL": "http://v:6379"}, "SEGUROS_VALKEY_URL"},
+		{"prod sin mfa", prodAuth(map[string]string{"SEGUROS_ENV": "production", "SEGUROS_DB_URL": prodDB, "SEGUROS_AUTH_MFA_REQUIRED": "false"}), "SEGUROS_AUTH_MFA_REQUIRED"},
+		{"prod con discovery", prodAuth(map[string]string{"SEGUROS_ENV": "production", "SEGUROS_DB_URL": prodDB, "SEGUROS_OIDC_DISCOVERY_URL": "https://kc:8443/realms/x"}), "SEGUROS_OIDC_DISCOVERY_URL"},
+		{"prod issuer http", map[string]string{"SEGUROS_ENV": "staging", "SEGUROS_DB_URL": prodDB}, "SEGUROS_OIDC_ISSUER: debe usar https"},
+		{"prod valkey sin tls", map[string]string{"SEGUROS_ENV": "staging", "SEGUROS_DB_URL": prodDB}, "rediss"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			_, err := config.LoadAPI(apiEnv(tc.env))
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tc.wantKey)
+			assert.NotContains(t, err.Error(), sentinel)
+		})
+	}
 }

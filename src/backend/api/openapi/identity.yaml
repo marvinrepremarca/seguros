@@ -1,0 +1,129 @@
+openapi: 3.0.3
+info:
+  title: Seguros — Identidad y BFF
+  version: 1.0.0
+  description: |
+    Endpoints del BFF (Backend for Frontend). El navegador nunca recibe tokens: la sesión vive en
+    el servidor (Valkey) y se identifica con la cookie `__Host-seguros_session`
+    (`HttpOnly; Secure; SameSite=Strict`). Toda operación declara `x-permission`:
+    `public` (lista blanca), `authenticated` (sesión válida) o un permiso `<modulo>.<recurso>.<accion>`.
+    Las operaciones que modifican exigen la cabecera `X-CSRF-Token` (valor de la cookie `__Host-csrf`).
+servers:
+  - url: /
+paths:
+  /bff/auth/login:
+    get:
+      operationId: login
+      summary: Inicia el login OIDC (Authorization Code + PKCE) con Keycloak.
+      x-permission: public
+      parameters:
+        - name: returnTo
+          in: query
+          required: false
+          description: Ruta relativa de la SPA a la que volver tras el login.
+          schema: { type: string, maxLength: 512 }
+      responses:
+        "302":
+          description: Redirección al proveedor de identidad.
+          headers:
+            Location: { schema: { type: string } }
+        "429": { $ref: "#/components/responses/Problem" }
+  /bff/auth/callback:
+    get:
+      operationId: loginCallback
+      summary: Recibe la respuesta del proveedor de identidad y crea la sesión.
+      x-permission: public
+      parameters:
+        - { name: code, in: query, required: false, schema: { type: string, maxLength: 4096 } }
+        - { name: state, in: query, required: false, schema: { type: string, maxLength: 256 } }
+        - { name: error, in: query, required: false, schema: { type: string, maxLength: 256 } }
+      responses:
+        "200":
+          description: |
+            Página mínima que redirige a la SPA (meta refresh). La redirección se hace desde la misma
+            origin para que el navegador envíe la cookie SameSite=Strict recién creada. Si el login
+            no se completa, redirige a `/login?error=<código estable>`.
+          content:
+            text/html:
+              schema: { type: string }
+        "400": { $ref: "#/components/responses/Problem" }
+        "429": { $ref: "#/components/responses/Problem" }
+  /bff/auth/logout:
+    post:
+      operationId: logout
+      summary: Cierra la sesión local y devuelve la URL de cierre de sesión del proveedor.
+      x-permission: authenticated
+      responses:
+        "200":
+          description: Sesión cerrada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LogoutResult" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+  /bff/me:
+    get:
+      operationId: getSession
+      summary: Usuario autenticado, tenant, roles y permisos efectivos.
+      x-permission: authenticated
+      responses:
+        "200":
+          description: Sesión actual.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "401": { $ref: "#/components/responses/Problem" }
+components:
+  responses:
+    Problem:
+      description: Error (RFC 9457).
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string, description: Código estable del error. }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        traceId: { type: string }
+        requestId: { type: string }
+    LogoutResult:
+      type: object
+      required: [logoutUrl]
+      additionalProperties: false
+      properties:
+        logoutUrl:
+          type: string
+          description: URL de cierre de sesión del proveedor de identidad (navegar a ella).
+    Session:
+      type: object
+      required: [user, tenant, roles, permissions]
+      additionalProperties: false
+      properties:
+        user: { $ref: "#/components/schemas/SessionUser" }
+        tenant: { $ref: "#/components/schemas/SessionTenant" }
+        roles:
+          type: array
+          items: { type: string }
+        permissions:
+          type: array
+          items: { type: string }
+    SessionUser:
+      type: object
+      required: [id, displayName]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        displayName: { type: string, maxLength: 200 }
+    SessionTenant:
+      type: object
+      required: [id, plan]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        plan: { type: string, enum: [basico, profesional, empresarial] }

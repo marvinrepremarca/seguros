@@ -9,7 +9,7 @@ GO_MOD   := github.com/marvinrepremarca/seguros
 COMPOSE  := deploy/scripts/compose.sh
 
 .PHONY: help generate generate-sqlc generate-openapi fmt fmt-check lint arch test test-integration \
-        check vuln licenses migrate-up migrate-status run-api platformctl dev-env dev-up dev-down dev-status dev-logs
+        check vuln licenses migrate-up migrate-status run-api dev-seed platformctl dev-env dev-up dev-down dev-status dev-logs
 
 help: ## Lista los targets
 	@grep -hE '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -73,7 +73,11 @@ platformctl: ## Operaciones de super-admin en desarrollo (ej. make platformctl a
 	cd $(BACKEND) && SEGUROS_DB_URL="$$($(DEV_DB_URL) app)" go run ./cmd/platformctl $(args)
 
 run-api: ## Ejecuta la API local contra las dependencias de desarrollo
-	cd $(BACKEND) && SEGUROS_DB_URL="$$($(DEV_DB_URL) app)" go run ./cmd/api
+	cd $(BACKEND) && $(CURDIR)/deploy/scripts/with-dev-env.sh go run ./cmd/api
+
+dev-seed: ## Crea el tenant de desarrollo vinculado a la organización agencia-demo de Keycloak
+	@cd $(BACKEND) && SEGUROS_DB_URL="$$($(DEV_DB_URL) app)" go run ./cmd/platformctl tenant create \
+	  --name "Agencia Demo" --plan profesional --org agencia-demo || echo "(el tenant ya existía)"
 
 dev-env: ## Crea/completa deploy/.env con secretos aleatorios locales
 	@deploy/scripts/dev-env.sh

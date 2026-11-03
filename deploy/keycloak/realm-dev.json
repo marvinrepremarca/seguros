@@ -74,7 +74,7 @@
       "serviceAccountsEnabled": false,
       "frontchannelLogout": false,
       "redirectUris": [
-        "http://localhost:8080/bff/auth/callback"
+        "http://localhost:5173/bff/auth/callback"
       ],
       "webOrigins": [],
       "attributes": {
@@ -107,8 +107,28 @@
             "id.token.claim": "false",
             "access.token.claim": "true"
           }
+        },
+        {
+          "name": "amr",
+          "protocol": "openid-connect",
+          "protocolMapper": "oidc-amr-mapper",
+          "config": {
+            "id.token.claim": "true",
+            "access.token.claim": "true",
+            "introspection.token.claim": "true"
+          }
         }
-      ]
+      ],
+      "defaultClientScopes": [
+        "basic",
+        "profile",
+        "email",
+        "roles",
+        "web-origins",
+        "acr",
+        "organization"
+      ],
+      "optionalClientScopes": []
     }
   ],
   "users": [
@@ -274,6 +294,59 @@
         "Operations",
         "Collections",
         "SalesAgent"
+      ]
+    }
+  ],
+  "organizationsEnabled": true,
+  "organizations": [
+    {
+      "name": "Agencia Demo",
+      "alias": "agencia-demo",
+      "enabled": true,
+      "description": "Organización de desarrollo vinculada al tenant de prueba (make dev-seed).",
+      "domains": [
+        {
+          "name": "agencia-demo.example.test",
+          "verified": false
+        }
+      ],
+      "members": [
+        {
+          "username": "admin.dev",
+          "membershipType": "MANAGED"
+        },
+        {
+          "username": "manager.dev",
+          "membershipType": "MANAGED"
+        },
+        {
+          "username": "sales.dev",
+          "membershipType": "MANAGED"
+        },
+        {
+          "username": "ops.dev",
+          "membershipType": "MANAGED"
+        },
+        {
+          "username": "claims.dev",
+          "membershipType": "MANAGED"
+        },
+        {
+          "username": "collections.dev",
+          "membershipType": "MANAGED"
+        },
+        {
+          "username": "accounting.dev",
+          "membershipType": "MANAGED"
+        },
+        {
+          "username": "compliance.dev",
+          "membershipType": "MANAGED"
+        },
+        {
+          "username": "multi.dev",
+          "membershipType": "MANAGED"
+        }
       ]
     }
   ]

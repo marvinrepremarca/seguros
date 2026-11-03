@@ -71,6 +71,9 @@ type HTTP struct {
 	IdleTimeout       time.Duration
 	ShutdownTimeout   time.Duration
 	MaxBodyBytes      int64
+	// ClientIPHeader es la cabecera con la IP del cliente que fija el proxy de confianza (Traefik).
+	// Vacía = RemoteAddr (sin proxy, desarrollo).
+	ClientIPHeader string
 }
 
 // Database configura el pool de la aplicación (rol seguros_app, sujeto a RLS).
@@ -82,11 +85,37 @@ type Database struct {
 	StatementTimeout time.Duration
 }
 
+// Auth configura el BFF: login OIDC con Keycloak y sesión server-side.
+type Auth struct {
+	// Issuer es el `iss` esperado en los tokens (URL pública del realm).
+	Issuer string
+	// DiscoveryURL es la URL desde la que el backend descubre el proveedor cuando no puede
+	// alcanzar Issuer (solo desarrollo: Keycloak en otro contenedor). Vacía = Issuer.
+	DiscoveryURL string
+	ClientID     string
+	ClientSecret Secret
+	// PublicURL es la origin pública de la SPA y el BFF (ej. https://app.seguros.co). De ella
+	// salen la redirect URI (/bff/auth/callback) y el Origin aceptado en peticiones que modifican.
+	PublicURL string
+	// MFARequired exige MFA (claim amr) para los roles de authz.MFARoles. Siempre true en
+	// staging/producción.
+	MFARequired     bool
+	SessionIdle     time.Duration
+	SessionLifetime time.Duration
+}
+
+// Valkey configura la conexión a Valkey (sesiones, caché de flags, rate limiting).
+type Valkey struct {
+	URL Secret
+}
+
 // API es la configuración de cmd/api.
 type API struct {
 	Common
-	HTTP HTTP
-	DB   Database
+	HTTP   HTTP
+	DB     Database
+	Auth   Auth
+	Valkey Valkey
 }
 
 // Migrator es la configuración de cmd/migrate (rol seguros_migrator, dueño de los esquemas).
@@ -108,8 +137,11 @@ func LoadAPI(lookup LookupFunc) (API, error) {
 			IdleTimeout:       r.duration("SEGUROS_HTTP_IDLE_TIMEOUT", 120*time.Second),
 			ShutdownTimeout:   r.duration("SEGUROS_HTTP_SHUTDOWN_TIMEOUT", 20*time.Second),
 			MaxBodyBytes:      r.int64("SEGUROS_HTTP_MAX_BODY_BYTES", 1<<20),
+			ClientIPHeader:    r.str("SEGUROS_HTTP_CLIENT_IP_HEADER", ""),
 		},
-		DB: r.database("SEGUROS_DB_URL"),
+		DB:     r.database("SEGUROS_DB_URL"),
+		Auth:   r.auth(),
+		Valkey: r.valkey(),
 	}
 	r.positiveDurations(map[string]time.Duration{
 		"SEGUROS_HTTP_READ_HEADER_TIMEOUT": cfg.HTTP.ReadHeaderTimeout,
@@ -122,6 +154,8 @@ func LoadAPI(lookup LookupFunc) (API, error) {
 		r.fail("SEGUROS_HTTP_MAX_BODY_BYTES", "debe ser > 0")
 	}
 	r.postgresURL("SEGUROS_DB_URL", cfg.DB.URL, cfg.Env)
+	r.validateAuth(cfg.Auth, cfg.Env)
+	r.valkeyURL("SEGUROS_VALKEY_URL", cfg.Valkey.URL, cfg.Env)
 	return cfg, r.err()
 }
 
@@ -306,5 +340,90 @@ func (r *reader) postgresURL(key string, s Secret, env Env) {
 		default:
 			r.fail(key, "staging/producción exige sslmode=require|verify-ca|verify-full")
 		}
+	}
+}
+
+func (r *reader) bool(key string, def bool) bool {
+	v := r.str(key, "")
+	if v == "" {
+		return def
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		r.fail(key, "debe ser true o false")
+		return def
+	}
+	return b
+}
+
+func (r *reader) auth() Auth {
+	return Auth{
+		Issuer:          r.required("SEGUROS_OIDC_ISSUER"),
+		DiscoveryURL:    r.str("SEGUROS_OIDC_DISCOVERY_URL", ""),
+		ClientID:        r.str("SEGUROS_OIDC_CLIENT_ID", "seguros-bff"),
+		ClientSecret:    NewSecret(r.required("SEGUROS_OIDC_CLIENT_SECRET")),
+		PublicURL:       strings.TrimRight(r.required("SEGUROS_PUBLIC_URL"), "/"),
+		MFARequired:     r.bool("SEGUROS_AUTH_MFA_REQUIRED", true),
+		SessionIdle:     r.duration("SEGUROS_SESSION_IDLE_TIMEOUT", 30*time.Minute),
+		SessionLifetime: r.duration("SEGUROS_SESSION_LIFETIME", 8*time.Hour),
+	}
+}
+
+func (r *reader) validateAuth(a Auth, env Env) {
+	r.httpURL("SEGUROS_OIDC_ISSUER", a.Issuer, env, true)
+	r.httpURL("SEGUROS_OIDC_DISCOVERY_URL", a.DiscoveryURL, env, true)
+	r.httpURL("SEGUROS_PUBLIC_URL", a.PublicURL, env, false)
+	if env.IsProductionLike() {
+		if a.DiscoveryURL != "" {
+			r.fail("SEGUROS_OIDC_DISCOVERY_URL", "solo se permite en development/test")
+		}
+		if !a.MFARequired {
+			r.fail("SEGUROS_AUTH_MFA_REQUIRED", "no se puede desactivar en staging/producción")
+		}
+	}
+	r.positiveDurations(map[string]time.Duration{
+		"SEGUROS_SESSION_IDLE_TIMEOUT": a.SessionIdle,
+		"SEGUROS_SESSION_LIFETIME":     a.SessionLifetime,
+	})
+	if a.SessionIdle > a.SessionLifetime {
+		r.fail("SEGUROS_SESSION_IDLE_TIMEOUT", "no puede superar SEGUROS_SESSION_LIFETIME")
+	}
+}
+
+// httpURL valida una URL http(s) (https obligatorio en staging/producción). allowPath permite ruta
+// (issuer de Keycloak: /realms/<realm>); sin ella debe ser una origin.
+func (r *reader) httpURL(key, v string, env Env, allowPath bool) {
+	if v == "" {
+		return
+	}
+	u, err := url.Parse(v)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.RawQuery != "" || u.Fragment != "" || u.User != nil {
+		r.fail(key, "URL http(s) inválida")
+		return
+	}
+	if !allowPath && u.Path != "" {
+		r.fail(key, "debe ser una origin (esquema://host[:puerto]) sin ruta")
+	}
+	if env.IsProductionLike() && u.Scheme != "https" {
+		r.fail(key, "debe usar https en staging/producción")
+	}
+}
+
+func (r *reader) valkey() Valkey {
+	return Valkey{URL: NewSecret(r.required("SEGUROS_VALKEY_URL"))}
+}
+
+// valkeyURL valida la URL sin incluirla en el error (contiene la contraseña).
+func (r *reader) valkeyURL(key string, s Secret, env Env) {
+	if s.IsEmpty() {
+		return
+	}
+	u, err := url.Parse(s.Reveal())
+	if err != nil || (u.Scheme != "redis" && u.Scheme != "rediss") || u.Host == "" {
+		r.fail(key, "debe ser una URL redis[s]://[:clave@]host:puerto[/db]")
+		return
+	}
+	if env.IsProductionLike() && u.Scheme != "rediss" {
+		r.fail(key, "staging/producción exige TLS (rediss://)")
 	}
 }
