@@ -104,6 +104,22 @@ type Auth struct {
 	SessionLifetime time.Duration
 }
 
+// Crypto configura el cifrado de campos (platform/crypto).
+type Crypto struct {
+	// Provider: "openbao" (obligatorio en staging/producción) o "local" (desarrollo/pruebas).
+	Provider string
+	// LocalKEKs: versión → material secreto (≥ 32 caracteres) de la KEK local; LocalActive es la
+	// versión con la que se envuelven DEKs nuevas.
+	LocalKEKs   map[string]Secret
+	LocalActive string
+	// OpenBao Transit.
+	OpenBaoAddr  string
+	OpenBaoToken Secret
+	OpenBaoKey   string
+	// IndexKey es el material de las llaves de blind index (≥ 32 caracteres).
+	IndexKey Secret
+}
+
 // Valkey configura la conexión a Valkey (sesiones, caché de flags, rate limiting).
 type Valkey struct {
 	URL Secret
@@ -207,6 +223,60 @@ func LoadWorker(lookup LookupFunc) (Worker, error) {
 	r.postgresURL("SEGUROS_DB_URL", cfg.DB.URL, cfg.Env)
 	r.valkeyURL("SEGUROS_VALKEY_URL", cfg.Valkey.URL, cfg.Env)
 	return cfg, r.err()
+}
+
+// LoadCrypto carga y valida la configuración de cifrado de campos (la usan api y worker a partir de
+// los módulos con datos Restringidos).
+//
+//	SEGUROS_CRYPTO_PROVIDER=local|openbao
+//	SEGUROS_CRYPTO_LOCAL_KEKS=v1:<secreto>,v2:<secreto>   SEGUROS_CRYPTO_LOCAL_ACTIVE=v2
+//	SEGUROS_OPENBAO_ADDR=https://openbao:8200  SEGUROS_OPENBAO_TOKEN=...  SEGUROS_OPENBAO_TRANSIT_KEY=seguros
+//	SEGUROS_CRYPTO_INDEX_KEY=<secreto>
+func LoadCrypto(lookup LookupFunc, env Env) (Crypto, error) {
+	r := reader{lookup: lookup}
+	c := Crypto{
+		Provider:     r.str("SEGUROS_CRYPTO_PROVIDER", "local"),
+		LocalKEKs:    map[string]Secret{},
+		LocalActive:  r.str("SEGUROS_CRYPTO_LOCAL_ACTIVE", "v1"),
+		OpenBaoAddr:  r.str("SEGUROS_OPENBAO_ADDR", ""),
+		OpenBaoToken: NewSecret(r.str("SEGUROS_OPENBAO_TOKEN", "")),
+		OpenBaoKey:   r.str("SEGUROS_OPENBAO_TRANSIT_KEY", "seguros"),
+		IndexKey:     NewSecret(r.required("SEGUROS_CRYPTO_INDEX_KEY")),
+	}
+	if len(c.IndexKey.Reveal()) > 0 && len(c.IndexKey.Reveal()) < 32 {
+		r.fail("SEGUROS_CRYPTO_INDEX_KEY", "necesita ≥ 32 caracteres")
+	}
+	switch c.Provider {
+	case "local":
+		if env.IsProductionLike() {
+			r.fail("SEGUROS_CRYPTO_PROVIDER", "staging/producción exige openbao (la KEK no puede vivir en el entorno)")
+		}
+		for _, item := range strings.Split(r.required("SEGUROS_CRYPTO_LOCAL_KEKS"), ",") {
+			v, m, ok := strings.Cut(strings.TrimSpace(item), ":")
+			if item == "" {
+				continue
+			}
+			if !ok || v == "" || len(m) < 32 {
+				r.fail("SEGUROS_CRYPTO_LOCAL_KEKS", "formato versión:secreto (secreto ≥ 32 caracteres)")
+				continue
+			}
+			c.LocalKEKs[v] = NewSecret(m)
+		}
+		if _, ok := c.LocalKEKs[c.LocalActive]; !ok && len(c.LocalKEKs) > 0 {
+			r.fail("SEGUROS_CRYPTO_LOCAL_ACTIVE", "no corresponde a ninguna KEK de SEGUROS_CRYPTO_LOCAL_KEKS")
+		}
+	case "openbao":
+		r.httpURL("SEGUROS_OPENBAO_ADDR", c.OpenBaoAddr, env, false)
+		if c.OpenBaoAddr == "" {
+			r.fail("SEGUROS_OPENBAO_ADDR", "es obligatoria")
+		}
+		if c.OpenBaoToken.IsEmpty() {
+			r.fail("SEGUROS_OPENBAO_TOKEN", "es obligatoria")
+		}
+	default:
+		r.fail("SEGUROS_CRYPTO_PROVIDER", "debe ser local u openbao")
+	}
+	return c, r.err()
 }
 
 // LoadMigrator carga y valida la configuración de cmd/migrate.
