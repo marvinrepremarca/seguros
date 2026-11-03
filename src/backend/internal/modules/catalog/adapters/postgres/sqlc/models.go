@@ -8,8 +8,9 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 	"github.com/shopspring/decimal"
+
+	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 )
 
 type CatalogCommissionAgreement struct {

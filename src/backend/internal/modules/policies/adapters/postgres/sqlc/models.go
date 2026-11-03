@@ -9,8 +9,9 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgtype"
-	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 	"github.com/shopspring/decimal"
+
+	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 )
 
 type PoliciesCoverage struct {

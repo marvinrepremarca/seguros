@@ -18,12 +18,18 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/google/uuid"
 
+	"github.com/marvinrepremarca/seguros/internal/modules/catalog"
+	cataloghttp "github.com/marvinrepremarca/seguros/internal/modules/catalog/adapters/http"
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
 	featuremgmthttp "github.com/marvinrepremarca/seguros/internal/modules/featuremgmt/adapters/http"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity"
 	identityhttp "github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/http"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/oidc"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/app"
+	"github.com/marvinrepremarca/seguros/internal/modules/parties"
+	partieshttp "github.com/marvinrepremarca/seguros/internal/modules/parties/adapters/http"
+	"github.com/marvinrepremarca/seguros/internal/modules/policies"
+	policieshttp "github.com/marvinrepremarca/seguros/internal/modules/policies/adapters/http"
 	tenancy "github.com/marvinrepremarca/seguros/internal/modules/tenancy/contracts"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/authz"
@@ -68,7 +74,13 @@ func testRouter(t *testing.T) *chi.Mux {
 	fm := featuremgmt.New(featuremgmt.Deps{
 		Registry: reg, Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger, Tenants: noTenants{},
 	})
-	r, err := buildRouter(routerDeps{Logger: logger, Clock: clock, MaxBodyBytes: 1 << 20, Identity: idm, FeatureMgmt: fm})
+	cat, err := catalog.New(catalog.Deps{Policy: policy, Clock: clock, Logger: logger})
+	require.NoError(t, err)
+	r, err := buildRouter(routerDeps{
+		Logger: logger, Clock: clock, MaxBodyBytes: 1 << 20, Identity: idm, FeatureMgmt: fm, Catalog: cat,
+		Parties:  parties.New(parties.Deps{Policy: policy, Clock: clock, Logger: logger}),
+		Policies: policies.New(policies.Deps{Policy: policy, Clock: clock, Logger: logger}),
+	})
 	require.NoError(t, err)
 	return r
 }
@@ -81,7 +93,9 @@ func (allOff) IsEnabled(context.Context, flags.Key) bool { return false }
 func contracts(t *testing.T) []*openapi3.T {
 	t.Helper()
 	var out []*openapi3.T
-	for _, get := range []func() (*openapi3.T, error){identityhttp.GetSpec, featuremgmthttp.GetSpec} {
+	for _, get := range []func() (*openapi3.T, error){
+		identityhttp.GetSpec, featuremgmthttp.GetSpec, partieshttp.GetSpec, cataloghttp.GetSpec, policieshttp.GetSpec,
+	} {
 		spec, err := get()
 		require.NoError(t, err)
 		out = append(out, spec)
@@ -94,10 +108,11 @@ func contracts(t *testing.T) []*openapi3.T {
 func TestOperationsWithPermissionRejectPrincipalWithoutIt(t *testing.T) {
 	t.Parallel()
 	r := testRouter(t)
-	policy, err := authz.DefaultPolicy()
+	// Principal sin permisos: ya ningún rol base carece de todos (SalesAgent registra clientes).
+	noGrants, err := authz.NewPolicy(map[authz.Role][]authz.Permission{})
 	require.NoError(t, err)
 	tenant := kernel.TenantID(uuid.Must(uuid.NewV7()))
-	p := authz.NewPrincipal(kernel.UserID(uuid.Must(uuid.NewV7())), tenant, []authz.Role{authz.RoleSalesAgent}, policy)
+	p := authz.NewPrincipal(kernel.UserID(uuid.Must(uuid.NewV7())), tenant, []authz.Role{authz.RoleSalesAgent}, noGrants)
 	checked := 0
 	for _, spec := range contracts(t) {
 		for path, item := range spec.Paths.Map() {

@@ -19,9 +19,10 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
-	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 	"github.com/oapi-codegen/runtime"
 	"github.com/shopspring/decimal"
+
+	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 )
 
 // Defines values for CommissionBasis.
