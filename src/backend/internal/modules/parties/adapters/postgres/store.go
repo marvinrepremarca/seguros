@@ -18,6 +18,7 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/modules/parties/domain"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/db"
+	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 	"github.com/marvinrepremarca/seguros/internal/platform/reqctx"
 )
 
@@ -185,10 +186,10 @@ func (r *repository) Update(ctx context.Context, p *domain.Party, doc *app.Seale
 	return nil
 }
 
-func (r *repository) RecordResponsibleChange(ctx context.Context, id domain.PartyID, version int32, previous uuid.NullUUID, agent uuid.UUID, reason string, at time.Time) error {
+func (r *repository) RecordResponsibleChange(ctx context.Context, id domain.PartyID, version int32, previous uuid.NullUUID, agent uuid.UUID, reason kernel.TransferReason, at time.Time) error {
 	if err := r.q.InsertResponsibleHistory(ctx, partiessqlc.InsertResponsibleHistoryParams{
 		TenantID: r.tenant, PartyID: uuid.UUID(id), PartyVersion: version, PreviousAgentID: previous,
-		NewAgentID: agent, Reason: reason, Actor: actor(ctx), ChangedAt: at,
+		NewAgentID: agent, Reason: reason.Code, Note: text(reason.Note), Actor: actor(ctx), ChangedAt: at,
 	}); err != nil {
 		return fmt.Errorf("parties: guardando historial de responsable: %w", err)
 	}

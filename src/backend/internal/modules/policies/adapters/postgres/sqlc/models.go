@@ -89,6 +89,7 @@ type PoliciesPolicyAgentHistory struct {
 	EffectiveAt     time.Time
 	Reason          string
 	ChangedBy       uuid.NullUUID
+	Note            pgtype.Text
 }
 
 type PoliciesPolicyParty struct {
@@ -96,4 +97,15 @@ type PoliciesPolicyParty struct {
 	PolicyID uuid.UUID
 	PartyID  uuid.UUID
 	Role     string
+}
+
+type PoliciesPortfolioTransferRequest struct {
+	ID          uuid.UUID
+	TenantID    uuid.UUID
+	FromAgentID uuid.UUID
+	ToAgentID   uuid.UUID
+	Reason      string
+	Note        pgtype.Text
+	RequestedBy uuid.UUID
+	RequestedAt time.Time
 }

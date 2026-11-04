@@ -57,7 +57,7 @@ type PartyRepository interface {
 	// Update aplica concurrencia optimista; doc nil conserva el documento guardado.
 	Update(ctx context.Context, p *domain.Party, doc *SealedDocument) error
 	// RecordResponsibleChange agrega al historial append-only; version es la que quedó tras el cambio.
-	RecordResponsibleChange(ctx context.Context, id domain.PartyID, version int32, previous uuid.NullUUID, agent uuid.UUID, reason string, at time.Time) error
+	RecordResponsibleChange(ctx context.Context, id domain.PartyID, version int32, previous uuid.NullUUID, agent uuid.UUID, reason kernel.TransferReason, at time.Time) error
 	InsertConsent(ctx context.Context, c domain.Consent) error
 	ListConsents(ctx context.Context, id domain.PartyID) ([]domain.Consent, error)
 	Summaries(ctx context.Context, ids []uuid.UUID) (map[uuid.UUID]contracts.PartySummary, error)

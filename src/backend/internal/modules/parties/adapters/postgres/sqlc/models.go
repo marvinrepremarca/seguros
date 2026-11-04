@@ -55,6 +55,7 @@ type PartiesPartyResponsibleHistory struct {
 	Reason          string
 	ChangedBy       uuid.NullUUID
 	ChangedAt       time.Time
+	Note            pgtype.Text
 }
 
 type PartiesPolicyScope struct {

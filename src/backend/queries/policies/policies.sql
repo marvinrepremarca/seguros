@@ -95,12 +95,20 @@ SELECT r.tenant_id::uuid AS tenant_id, r.id::uuid AS id
 FROM policies.due_for_expiration(@today::date, @page_size::integer) AS r;
 
 -- name: InsertAgentHistory :exec
-INSERT INTO policies.policy_agent_history (id, tenant_id, policy_id, previous_agent_id, agent_id, effective_at, reason, changed_by)
-VALUES (@id, @tenant_id, @policy_id, @previous_agent_id, @agent_id, @effective_at, @reason, @changed_by);
+INSERT INTO policies.policy_agent_history (id, tenant_id, policy_id, previous_agent_id, agent_id, effective_at, reason, note, changed_by)
+VALUES (@id, @tenant_id, @policy_id, @previous_agent_id, @agent_id, @effective_at, @reason, @note, @changed_by);
+
+-- name: InsertTransferRequest :exec
+INSERT INTO policies.portfolio_transfer_requests (id, tenant_id, from_agent_id, to_agent_id, reason, note, requested_by, requested_at)
+VALUES (@id, @tenant_id, @from_agent_id, @to_agent_id, @reason, @note, @requested_by, @requested_at);
 
 -- name: ListReassignablePolicyIDs :many
-SELECT id FROM policies.policies
-WHERE tenant_id = @tenant_id AND agent_id = @agent_id
-  AND status IN ('in_quotation', 'in_process', 'active', 'in_arrears', 'expired')
-ORDER BY id
+SELECT p.id FROM policies.policies p
+WHERE p.tenant_id = @tenant_id AND p.agent_id = @agent_id
+  AND p.status IN ('in_quotation', 'in_process', 'active', 'in_arrears', 'expired')
+  AND NOT EXISTS (
+      SELECT 1 FROM policies.policy_agent_history h
+      WHERE h.tenant_id = p.tenant_id AND h.policy_id = p.id
+        AND h.agent_id = @agent_id AND h.effective_at > @requested_at)
+ORDER BY p.id
 LIMIT @page_size;

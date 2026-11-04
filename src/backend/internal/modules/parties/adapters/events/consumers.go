@@ -32,7 +32,7 @@ func PortfolioTransfer(recorder *audit.Recorder) outbox.Consumer {
 			ctx = reqctx.WithUserID(ctx, kernel.UserID(ev.RequestedBy))
 			n, err := partiessqlc.New(tx).TransferResponsibleAgent(ctx, partiessqlc.TransferResponsibleAgentParams{
 				ToAgent: ev.ToAgentID, UpdatedAt: e.OccurredAt, TenantID: uuid.UUID(e.TenantID),
-				FromAgent: uuid.NullUUID{UUID: ev.FromAgentID, Valid: true}, Reason: ev.Reason,
+				FromAgent: uuid.NullUUID{UUID: ev.FromAgentID, Valid: true}, Reason: ev.Reason, RequestedAt: ev.RequestedAt,
 				Actor: uuid.NullUUID{UUID: ev.RequestedBy, Valid: true},
 			})
 			if err != nil {
@@ -44,7 +44,7 @@ func PortfolioTransfer(recorder *audit.Recorder) outbox.Consumer {
 			return recorder.Record(ctx, tx, audit.Entry{
 				Action: "parties.portfolio.transferred", ResourceType: "parties.party", ResourceID: ev.FromAgentID.String(), Outcome: audit.OutcomeSuccess,
 				Details: map[string]string{
-					"new": ev.ToAgentID.String(), "reason": ev.Reason, "requestedBy": ev.RequestedBy.String(), "clients": strconv.FormatInt(n, 10),
+					"new": ev.ToAgentID.String(), "reason": ev.Reason, "requestedBy": ev.RequestedBy.String(), "requestId": ev.RequestID.String(), "clients": strconv.FormatInt(n, 10),
 				},
 			})
 		},

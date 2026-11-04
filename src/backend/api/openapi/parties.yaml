@@ -243,13 +243,18 @@ components:
         address: { type: string, maxLength: 200 }
         city: { type: string, maxLength: 100 }
         document: { $ref: "#/components/schemas/DocumentInput" }
+    TransferReason:
+      type: string
+      description: Catálogo de motivos (DECISIONS N12). Con `other` la nota es obligatoria.
+      enum: [employee_departure, role_change, prolonged_absence, portfolio_redistribution, client_request, branch_change, assignment_correction, other]
     AssignResponsibleRequest:
       type: object
       required: [agentId, reason, version]
       additionalProperties: false
       properties:
         agentId: { type: string, format: uuid }
-        reason: { type: string, minLength: 3, maxLength: 200 }
+        reason: { $ref: "#/components/schemas/TransferReason" }
+        note: { type: string, maxLength: 200, description: "Opcional. Texto libre: no escriba datos de salud ni documentos." }
         version: { type: integer, format: int32, minimum: 1 }
     Party:
       type: object

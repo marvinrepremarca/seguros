@@ -3,7 +3,9 @@ import { useState } from "react";
 
 import { problemMessage } from "@/shared/lib/problem";
 import { Button } from "@/shared/ui/button";
-import { ErrorMessage, Field, QueryState, Select, Textarea } from "@/shared/ui/field";
+import { requiredReason, type TransferReasonCode } from "@/shared/lib/transferReasons";
+import { TransferReasonFields } from "@/shared/ui/TransferReasonFields";
+import { ErrorMessage, Field, QueryState, Select } from "@/shared/ui/field";
 
 import { transferPortfolio } from "../api/generated/policies";
 import { agentsQuery } from "../queries";
@@ -13,13 +15,21 @@ export function PortfolioTransferPage() {
   const agents = useQuery(agentsQuery());
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
-  const [reason, setReason] = useState("");
+  const [reason, setReason] = useState<TransferReasonCode | "">("");
+  const [note, setNote] = useState("");
   const transfer = useMutation({
-    mutationFn: () => transferPortfolio({ fromAgentId: from, toAgentId: to, reason }),
+    mutationFn: () =>
+      transferPortfolio({
+        fromAgentId: from,
+        toAgentId: to,
+        reason: requiredReason(reason),
+        ...(note ? { note } : {}),
+      }),
     onSuccess: () => {
       setFrom("");
       setTo("");
       setReason("");
+      setNote("");
     },
   });
   return (
@@ -95,20 +105,12 @@ export function PortfolioTransferPage() {
             </Select>
           )}
         </Field>
-        <Field label="Motivo del traspaso">
-          {(p) => (
-            <Textarea
-              {...p}
-              required
-              minLength={3}
-              maxLength={200}
-              value={reason}
-              onChange={(e) => {
-                setReason(e.target.value);
-              }}
-            />
-          )}
-        </Field>
+        <TransferReasonFields
+          reason={reason}
+          note={note}
+          onReasonChange={setReason}
+          onNoteChange={setNote}
+        />
         <Button type="submit" disabled={transfer.isPending}>
           Traspasar cartera
         </Button>

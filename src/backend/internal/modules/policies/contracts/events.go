@@ -2,7 +2,11 @@
 // (DOMAIN.md §3). Llevan IDs y valores no Restringidos; el tenant viaja en los metadatos.
 package contracts
 
-import "github.com/google/uuid"
+import (
+	"time"
+
+	"github.com/google/uuid"
+)
 
 // Tópicos de los eventos de policies.
 const (
@@ -40,10 +44,14 @@ type PolicyAgentChanged struct {
 
 // PortfolioTransferRequested pide pasar toda la cartera de un asesor a otro. Cada módulo procesa la suya.
 type PortfolioTransferRequested struct {
+	RequestID   uuid.UUID `json:"requestId"`
 	FromAgentID uuid.UUID `json:"fromAgentId"`
 	ToAgentID   uuid.UUID `json:"toAgentId"`
+	// Reason es un código del catálogo (DECISIONS N12); la nota libre no viaja en el evento.
 	Reason      string    `json:"reason"`
 	RequestedBy uuid.UUID `json:"requestedBy"`
+	// RequestedAt es el corte: lo asignado al origen después no se mueve.
+	RequestedAt time.Time `json:"requestedAt"`
 }
 
 // PolicyIssued se publica cuando la aseguradora expide la póliza.

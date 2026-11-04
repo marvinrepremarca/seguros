@@ -10,11 +10,11 @@ import (
 )
 
 // ReassignAgent cambia el asesor de una póliza a otro activo (DECISIONS N11).
-func (s *Service) ReassignAgent(ctx context.Context, id domain.PolicyID, version int32, agent uuid.UUID, reason string) (View, error) {
+func (s *Service) ReassignAgent(ctx context.Context, id domain.PolicyID, version int32, agent uuid.UUID, reasonCode, note string) (View, error) {
 	if err := authz.Require(ctx, authz.PolicyAssign); err != nil {
 		return View{}, err
 	}
-	reason, err := domain.ValidTransferReason(reason)
+	reason, err := domain.ValidTransferReason(reasonCode, note)
 	if err != nil {
 		return View{}, err
 	}
@@ -22,7 +22,7 @@ func (s *Service) ReassignAgent(ctx context.Context, id domain.PolicyID, version
 		return View{}, err
 	}
 	return s.change(ctx, id, version, "policies.policy.agent_changed", func(p *domain.Policy) (map[string]string, error) {
-		details := map[string]string{"new": agent.String(), "reason": reason}
+		details := map[string]string{"new": agent.String(), "reason": reason.Code}
 		if previous := p.Snapshot().Terms.AgentID; previous.Valid {
 			details["previous"] = previous.UUID.String()
 		}

@@ -21,6 +21,7 @@ type Querier interface {
 	InsertInsuredItem(ctx context.Context, arg InsertInsuredItemParams) error
 	InsertPolicy(ctx context.Context, arg InsertPolicyParams) error
 	InsertPolicyParty(ctx context.Context, arg InsertPolicyPartyParams) error
+	InsertTransferRequest(ctx context.Context, arg InsertTransferRequestParams) error
 	ListCoverages(ctx context.Context, arg ListCoveragesParams) ([]ListCoveragesRow, error)
 	ListEndorsements(ctx context.Context, arg ListEndorsementsParams) ([]ListEndorsementsRow, error)
 	ListInsuredItems(ctx context.Context, arg ListInsuredItemsParams) ([]ListInsuredItemsRow, error)

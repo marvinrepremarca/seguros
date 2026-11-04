@@ -27,7 +27,7 @@ var (
 	ErrNotFound         = kernel.NewError(kernel.KindNotFound, "parties.party.not_found", "tercero inexistente")
 	ErrConcurrentUpdate = kernel.NewError(kernel.KindConflict, "parties.party.concurrent_update", "el tercero cambió; recargue y reintente")
 	ErrInvalidConsent   = kernel.NewError(kernel.KindValidation, "parties.consent.invalid", "autorización inválida")
-	ErrInvalidReason    = kernel.NewError(kernel.KindValidation, "parties.party.invalid_reason", "motivo de 3 a 200 caracteres")
+	ErrInvalidReason    = kernel.NewError(kernel.KindValidation, "parties.party.invalid_reason", "motivo fuera del catálogo o nota inválida")
 	ErrInvalidAgent     = kernel.NewError(kernel.KindValidation, "parties.party.invalid_agent", "el asesor no pertenece a la agencia o no está activo")
 	ErrFutureConsent    = kernel.NewError(kernel.KindValidation, "parties.consent.future_date", "la fecha de la autorización no puede ser futura")
 )
@@ -206,11 +206,11 @@ func (p *Party) AssignResponsible(agent uuid.UUID, now time.Time) {
 	p.updatedAt = now.UTC()
 }
 
-// ValidTransferReason valida el motivo de un traspaso. El límite en bytes es el de la bitácora.
-func ValidTransferReason(reason string) (string, error) {
-	reason = strings.TrimSpace(reason)
-	if utf8.RuneCountInString(reason) < 3 || len(reason) > 200 {
-		return "", ErrInvalidReason
+// ValidTransferReason valida el motivo de un traspaso contra el catálogo (DECISIONS N12).
+func ValidTransferReason(code, note string) (kernel.TransferReason, error) {
+	reason, ok := kernel.NewTransferReason(code, note)
+	if !ok {
+		return kernel.TransferReason{}, ErrInvalidReason
 	}
 	return reason, nil
 }

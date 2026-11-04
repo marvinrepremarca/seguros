@@ -164,8 +164,8 @@ func (q *Queries) GetPolicy(ctx context.Context, arg GetPolicyParams) (GetPolicy
 }
 
 const insertAgentHistory = `-- name: InsertAgentHistory :exec
-INSERT INTO policies.policy_agent_history (id, tenant_id, policy_id, previous_agent_id, agent_id, effective_at, reason, changed_by)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO policies.policy_agent_history (id, tenant_id, policy_id, previous_agent_id, agent_id, effective_at, reason, note, changed_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 `
 
 type InsertAgentHistoryParams struct {
@@ -176,6 +176,7 @@ type InsertAgentHistoryParams struct {
 	AgentID         uuid.NullUUID
 	EffectiveAt     time.Time
 	Reason          string
+	Note            pgtype.Text
 	ChangedBy       uuid.NullUUID
 }
 
@@ -188,6 +189,7 @@ func (q *Queries) InsertAgentHistory(ctx context.Context, arg InsertAgentHistory
 		arg.AgentID,
 		arg.EffectiveAt,
 		arg.Reason,
+		arg.Note,
 		arg.ChangedBy,
 	)
 	return err
@@ -335,6 +337,36 @@ func (q *Queries) InsertPolicyParty(ctx context.Context, arg InsertPolicyPartyPa
 		arg.PolicyID,
 		arg.PartyID,
 		arg.Role,
+	)
+	return err
+}
+
+const insertTransferRequest = `-- name: InsertTransferRequest :exec
+INSERT INTO policies.portfolio_transfer_requests (id, tenant_id, from_agent_id, to_agent_id, reason, note, requested_by, requested_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+`
+
+type InsertTransferRequestParams struct {
+	ID          uuid.UUID
+	TenantID    uuid.UUID
+	FromAgentID uuid.UUID
+	ToAgentID   uuid.UUID
+	Reason      string
+	Note        pgtype.Text
+	RequestedBy uuid.UUID
+	RequestedAt time.Time
+}
+
+func (q *Queries) InsertTransferRequest(ctx context.Context, arg InsertTransferRequestParams) error {
+	_, err := q.db.Exec(ctx, insertTransferRequest,
+		arg.ID,
+		arg.TenantID,
+		arg.FromAgentID,
+		arg.ToAgentID,
+		arg.Reason,
+		arg.Note,
+		arg.RequestedBy,
+		arg.RequestedAt,
 	)
 	return err
 }
@@ -595,21 +627,31 @@ func (q *Queries) ListPolicyParties(ctx context.Context, arg ListPolicyPartiesPa
 }
 
 const listReassignablePolicyIDs = `-- name: ListReassignablePolicyIDs :many
-SELECT id FROM policies.policies
-WHERE tenant_id = $1 AND agent_id = $2
-  AND status IN ('in_quotation', 'in_process', 'active', 'in_arrears', 'expired')
-ORDER BY id
-LIMIT $3
+SELECT p.id FROM policies.policies p
+WHERE p.tenant_id = $1 AND p.agent_id = $2
+  AND p.status IN ('in_quotation', 'in_process', 'active', 'in_arrears', 'expired')
+  AND NOT EXISTS (
+      SELECT 1 FROM policies.policy_agent_history h
+      WHERE h.tenant_id = p.tenant_id AND h.policy_id = p.id
+        AND h.agent_id = $2 AND h.effective_at > $3)
+ORDER BY p.id
+LIMIT $4
 `
 
 type ListReassignablePolicyIDsParams struct {
-	TenantID uuid.UUID
-	AgentID  uuid.NullUUID
-	PageSize int32
+	TenantID    uuid.UUID
+	AgentID     uuid.NullUUID
+	RequestedAt time.Time
+	PageSize    int32
 }
 
 func (q *Queries) ListReassignablePolicyIDs(ctx context.Context, arg ListReassignablePolicyIDsParams) ([]uuid.UUID, error) {
-	rows, err := q.db.Query(ctx, listReassignablePolicyIDs, arg.TenantID, arg.AgentID, arg.PageSize)
+	rows, err := q.db.Query(ctx, listReassignablePolicyIDs,
+		arg.TenantID,
+		arg.AgentID,
+		arg.RequestedAt,
+		arg.PageSize,
+	)
 	if err != nil {
 		return nil, err
 	}

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -383,6 +384,16 @@ func (r *repository) loadChildren(ctx context.Context, id uuid.UUID, currency ke
 	return nil
 }
 
+func (r *repository) InsertTransferRequest(ctx context.Context, q app.TransferRequest) error {
+	if err := r.q.InsertTransferRequest(ctx, policiessqlc.InsertTransferRequestParams{
+		ID: q.ID, TenantID: r.tenant, FromAgentID: q.From, ToAgentID: q.To, Reason: q.Reason.Code, Note: text(q.Reason.Note),
+		RequestedBy: q.RequestedBy, RequestedAt: q.RequestedAt,
+	}); err != nil {
+		return fmt.Errorf("policies: guardando solicitud de traspaso: %w", err)
+	}
+	return nil
+}
+
 func (r *repository) AppendAgentHistory(ctx context.Context, e domain.PolicyAgentChanged) error {
 	id, err := uuid.NewV7()
 	if err != nil {
@@ -390,16 +401,16 @@ func (r *repository) AppendAgentHistory(ctx context.Context, e domain.PolicyAgen
 	}
 	if err := r.q.InsertAgentHistory(ctx, policiessqlc.InsertAgentHistoryParams{
 		ID: id, TenantID: r.tenant, PolicyID: uuid.UUID(e.PolicyID), PreviousAgentID: e.Previous, AgentID: e.New,
-		EffectiveAt: e.At, Reason: e.Reason, ChangedBy: actor(ctx),
+		EffectiveAt: e.At, Reason: e.Reason, Note: text(e.Note), ChangedBy: actor(ctx),
 	}); err != nil {
 		return fmt.Errorf("policies: guardando historial de asesor: %w", err)
 	}
 	return nil
 }
 
-func (r *repository) ReassignableByAgent(ctx context.Context, agent uuid.UUID, limit int32) ([]domain.PolicyID, error) {
+func (r *repository) ReassignableByAgent(ctx context.Context, agent uuid.UUID, cutoff time.Time, limit int32) ([]domain.PolicyID, error) {
 	rows, err := r.q.ListReassignablePolicyIDs(ctx, policiessqlc.ListReassignablePolicyIDsParams{
-		TenantID: r.tenant, AgentID: uuid.NullUUID{UUID: agent, Valid: true}, PageSize: limit,
+		TenantID: r.tenant, AgentID: uuid.NullUUID{UUID: agent, Valid: true}, RequestedAt: cutoff, PageSize: limit,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("policies: listando cartera: %w", err)

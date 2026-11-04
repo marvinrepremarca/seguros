@@ -84,11 +84,15 @@ WITH moved AS (
     UPDATE parties.parties
     SET responsible_agent_id = @to_agent, updated_at = @updated_at, updated_by = @actor, version = version + 1
     WHERE tenant_id = @tenant_id AND responsible_agent_id = @from_agent
+      AND NOT EXISTS (
+          SELECT 1 FROM parties.party_responsible_history h
+          WHERE h.tenant_id = parties.parties.tenant_id AND h.party_id = parties.parties.id
+            AND h.new_agent_id = @from_agent AND h.changed_at > @requested_at)
     RETURNING id, version
 )
 INSERT INTO parties.party_responsible_history (tenant_id, party_id, party_version, previous_agent_id, new_agent_id, reason, changed_by, changed_at)
 SELECT @tenant_id, id, version, @from_agent, @to_agent, @reason, @actor, @updated_at FROM moved;
 
 -- name: InsertResponsibleHistory :exec
-INSERT INTO parties.party_responsible_history (tenant_id, party_id, party_version, previous_agent_id, new_agent_id, reason, changed_by, changed_at)
-VALUES (@tenant_id, @party_id, @party_version, @previous_agent_id, @new_agent_id, @reason, @actor, @changed_at);
+INSERT INTO parties.party_responsible_history (tenant_id, party_id, party_version, previous_agent_id, new_agent_id, reason, note, changed_by, changed_at)
+VALUES (@tenant_id, @party_id, @party_version, @previous_agent_id, @new_agent_id, @reason, @note, @actor, @changed_at);

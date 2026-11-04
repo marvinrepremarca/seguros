@@ -148,23 +148,42 @@ export interface PolicyTerms {
   items: InsuredItemInput[];
 }
 
+/**
+ * Catálogo de motivos (DECISIONS N12). Con `other` la nota es obligatoria.
+ */
+export type TransferReason = typeof TransferReason[keyof typeof TransferReason];
+
+
+export const TransferReason = {
+  employee_departure: 'employee_departure',
+  role_change: 'role_change',
+  prolonged_absence: 'prolonged_absence',
+  portfolio_redistribution: 'portfolio_redistribution',
+  client_request: 'client_request',
+  branch_change: 'branch_change',
+  assignment_correction: 'assignment_correction',
+  other: 'other',
+} as const;
+
 export interface ReassignAgentRequest {
   agentId: string;
+  reason: TransferReason;
   /**
-     * @minLength 3
+     * Opcional. Texto libre: no escriba datos de salud ni documentos.
      * @maxLength 200
      */
-  reason: string;
+  note?: string;
 }
 
 export interface TransferPortfolioRequest {
   fromAgentId: string;
   toAgentId: string;
+  reason: TransferReason;
   /**
-     * @minLength 3
+     * Opcional. Texto libre: no escriba datos de salud ni documentos.
      * @maxLength 200
      */
-  reason: string;
+  note?: string;
 }
 
 export interface ReasonRequest {

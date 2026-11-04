@@ -209,15 +209,15 @@ export const AssignPartyResponsibleParams = zod.object({
   "partyId": zod.uuid()
 })
 
-export const assignPartyResponsibleBodyReasonMin = 3;
-export const assignPartyResponsibleBodyReasonMax = 200;
+export const assignPartyResponsibleBodyNoteMax = 200;
 
 
 
 
 export const AssignPartyResponsibleBody = zod.object({
   "agentId": zod.uuid(),
-  "reason": zod.string().min(assignPartyResponsibleBodyReasonMin).max(assignPartyResponsibleBodyReasonMax),
+  "reason": zod.enum(['employee_departure', 'role_change', 'prolonged_absence', 'portfolio_redistribution', 'client_request', 'branch_change', 'assignment_correction', 'other']).describe('Catálogo de motivos (DECISIONS N12). Con `other` la nota es obligatoria.'),
+  "note": zod.string().max(assignPartyResponsibleBodyNoteMax).optional().describe('Opcional. Texto libre: no escriba datos de salud ni documentos.'),
   "version": zod.int().min(1)
 })
 

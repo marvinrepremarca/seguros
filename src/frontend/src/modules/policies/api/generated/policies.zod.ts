@@ -166,15 +166,15 @@ export const ListAgentsResponse = zod.object({
 /**
  * @summary Pide pasar toda la cartera de un asesor a otro. Se procesa en segundo plano.
  */
-export const transferPortfolioBodyReasonMin = 3;
-export const transferPortfolioBodyReasonMax = 200;
+export const transferPortfolioBodyNoteMax = 200;
 
 
 
 export const TransferPortfolioBody = zod.object({
   "fromAgentId": zod.uuid(),
   "toAgentId": zod.uuid(),
-  "reason": zod.string().min(transferPortfolioBodyReasonMin).max(transferPortfolioBodyReasonMax)
+  "reason": zod.enum(['employee_departure', 'role_change', 'prolonged_absence', 'portfolio_redistribution', 'client_request', 'branch_change', 'assignment_correction', 'other']).describe('Catálogo de motivos (DECISIONS N12). Con `other` la nota es obligatoria.'),
+  "note": zod.string().max(transferPortfolioBodyNoteMax).optional().describe('Opcional. Texto libre: no escriba datos de salud ni documentos.')
 })
 
 export const TransferPortfolioResponse = zod.void()
@@ -194,14 +194,14 @@ export const ReassignPolicyAgentQueryParams = zod.object({
   "version": zod.int().min(1).describe('Versión de la póliza que el cliente leyó (concurrencia optimista).')
 })
 
-export const reassignPolicyAgentBodyReasonMin = 3;
-export const reassignPolicyAgentBodyReasonMax = 200;
+export const reassignPolicyAgentBodyNoteMax = 200;
 
 
 
 export const ReassignPolicyAgentBody = zod.object({
   "agentId": zod.uuid(),
-  "reason": zod.string().min(reassignPolicyAgentBodyReasonMin).max(reassignPolicyAgentBodyReasonMax)
+  "reason": zod.enum(['employee_departure', 'role_change', 'prolonged_absence', 'portfolio_redistribution', 'client_request', 'branch_change', 'assignment_correction', 'other']).describe('Catálogo de motivos (DECISIONS N12). Con `other` la nota es obligatoria.'),
+  "note": zod.string().max(reassignPolicyAgentBodyNoteMax).optional().describe('Opcional. Texto libre: no escriba datos de salud ni documentos.')
 })
 
 export const ReassignPolicyAgentResponse = zod.object({

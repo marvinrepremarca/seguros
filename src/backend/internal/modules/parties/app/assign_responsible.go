@@ -16,6 +16,7 @@ type AssignResponsibleCommand struct {
 	Version int32
 	AgentID uuid.UUID
 	Reason  string
+	Note    string
 }
 
 // AssignResponsibleHandler traspasa clientes (DECISIONS N11).
@@ -26,7 +27,7 @@ func (h *AssignResponsibleHandler) Handle(ctx context.Context, cmd AssignRespons
 	if err := authz.Require(ctx, authz.PartyAssign); err != nil {
 		return domain.PartySnapshot{}, err
 	}
-	reason, err := domain.ValidTransferReason(cmd.Reason)
+	reason, err := domain.ValidTransferReason(cmd.Reason, cmd.Note)
 	if err != nil {
 		return domain.PartySnapshot{}, err
 	}
@@ -58,7 +59,7 @@ func (h *AssignResponsibleHandler) Handle(ctx context.Context, cmd AssignRespons
 		if err := uow.Parties().RecordResponsibleChange(ctx, cmd.ID, party.Version()+1, previous, cmd.AgentID, reason, party.Snapshot().UpdatedAt); err != nil {
 			return err
 		}
-		details := map[string]string{"new": cmd.AgentID.String(), "reason": reason}
+		details := map[string]string{"new": cmd.AgentID.String(), "reason": reason.Code}
 		if previous.Valid {
 			details["previous"] = previous.UUID.String()
 		}

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -53,8 +54,9 @@ type PolicyRepository interface {
 	List(ctx context.Context, f ListFilter) ([]Summary, error)
 	// AppendAgentHistory agrega una fila al historial de asesores (append-only).
 	AppendAgentHistory(ctx context.Context, e domain.PolicyAgentChanged) error
-	// ReassignableByAgent lista pólizas no terminadas del asesor.
-	ReassignableByAgent(ctx context.Context, agent uuid.UUID, limit int32) ([]domain.PolicyID, error)
+	// ReassignableByAgent lista pólizas no terminadas del asesor, sin las que se le asignaron después de cutoff.
+	ReassignableByAgent(ctx context.Context, agent uuid.UUID, cutoff time.Time, limit int32) ([]domain.PolicyID, error)
+	InsertTransferRequest(ctx context.Context, q TransferRequest) error
 }
 
 // UnitOfWork agrupa repositorio, auditoría y outbox en una transacción con RLS.

@@ -180,11 +180,11 @@ func TestAssignResponsibleAndReason(t *testing.T) {
 	assert.Equal(t, agent, p.Snapshot().Responsible.UUID)
 	assert.Equal(t, now.Add(time.Hour), p.Snapshot().UpdatedAt)
 
-	reason, err := domain.ValidTransferReason("  Retiro del asesor ")
+	reason, err := domain.ValidTransferReason(kernel.TransferEmployeeDeparture, "  Se retira ")
 	require.NoError(t, err)
-	assert.Equal(t, "Retiro del asesor", reason)
-	for _, bad := range []string{"", "ab", strings.Repeat("ñ", 101)} {
-		_, err := domain.ValidTransferReason(bad)
+	assert.Equal(t, "Se retira", reason.Note)
+	for _, bad := range []string{"", "ab", "Retiro del asesor"} {
+		_, err := domain.ValidTransferReason(bad, "")
 		require.ErrorIs(t, err, domain.ErrInvalidReason, bad)
 	}
 }

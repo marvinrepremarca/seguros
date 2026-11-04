@@ -479,7 +479,7 @@ func TestTerminalTransitionsStopGrantingAccess(t *testing.T) {
 	// Vencida sigue dando acceso: es cuando se gestiona la renovación.
 	expired := dt.PolicyIn(t, domain.StatusActive)
 	require.NoError(t, expired.Expire(dt.Date(t, "2027-01-01"), dt.Now()))
-	require.NoError(t, expired.ReassignAgent(uuid.New(), "Retiro del asesor", dt.Now()))
+	require.NoError(t, expired.ReassignAgent(uuid.New(), departure, dt.Now()))
 	assert.True(t, grants(t, expired.PullEvents()))
 }
 
@@ -488,7 +488,7 @@ func TestReassignAgent(t *testing.T) {
 	agent := uuid.New()
 	for _, s := range allStatuses() {
 		p := dt.PolicyIn(t, s)
-		err := p.ReassignAgent(agent, "Retiro del asesor", dt.Now())
+		err := p.ReassignAgent(agent, departure, dt.Now())
 		switch s {
 		case domain.StatusRejected, domain.StatusCancelled, domain.StatusRenewed, domain.StatusNotRenewed:
 			require.ErrorIs(t, err, domain.ErrAgentNotReassignable, s)
@@ -501,12 +501,11 @@ func TestReassignAgent(t *testing.T) {
 	}
 	p := dt.PolicyIn(t, domain.StatusActive)
 	first, second := uuid.New(), uuid.New()
-	require.NoError(t, p.ReassignAgent(first, "Asignación", dt.Now()))
+	require.NoError(t, p.ReassignAgent(first, departure, dt.Now()))
 	p.PullEvents()
-	require.ErrorIs(t, p.ReassignAgent(first, "Otra vez", dt.Now()), domain.ErrSameAgent)
-	require.ErrorIs(t, p.ReassignAgent(second, "x", dt.Now()), domain.ErrInvalidTransferReason)
-	require.ErrorIs(t, p.ReassignAgent(second, strings.Repeat("ñ", 101), dt.Now()), domain.ErrInvalidTransferReason, "límite en bytes de la bitácora")
-	require.NoError(t, p.ReassignAgent(second, "Retiro del asesor", dt.Now()))
+	require.ErrorIs(t, p.ReassignAgent(first, departure, dt.Now()), domain.ErrSameAgent)
+	require.ErrorIs(t, p.ReassignAgent(second, kernel.TransferReason{Code: "retiro"}, dt.Now()), domain.ErrInvalidTransferReason)
+	require.NoError(t, p.ReassignAgent(second, departure, dt.Now()))
 	var changed domain.PolicyAgentChanged
 	for _, e := range p.PullEvents() {
 		if c, ok := e.(domain.PolicyAgentChanged); ok {
@@ -515,5 +514,7 @@ func TestReassignAgent(t *testing.T) {
 	}
 	assert.Equal(t, first, changed.Previous.UUID)
 	assert.Equal(t, second, changed.New.UUID)
-	assert.Equal(t, "Retiro del asesor", changed.Reason)
+	assert.Equal(t, kernel.TransferEmployeeDeparture, changed.Reason)
 }
+
+var departure = kernel.TransferReason{Code: kernel.TransferEmployeeDeparture} //nolint:gochecknoglobals // dato de prueba

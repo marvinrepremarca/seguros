@@ -3,7 +3,9 @@ import { useState } from "react";
 
 import { problemMessage } from "@/shared/lib/problem";
 import { Button } from "@/shared/ui/button";
-import { ErrorMessage, Field, Input, Select } from "@/shared/ui/field";
+import { requiredReason, type TransferReasonCode } from "@/shared/lib/transferReasons";
+import { TransferReasonFields } from "@/shared/ui/TransferReasonFields";
+import { ErrorMessage, Field, Select } from "@/shared/ui/field";
 
 import { assignPartyResponsible, type Party } from "../api/generated/parties";
 import type { AgentsQuery } from "../deps";
@@ -19,12 +21,20 @@ export function ResponsibleAgentSection({
   const queryClient = useQueryClient();
   const agents = useQuery(agentsQuery);
   const [agentId, setAgentId] = useState("");
-  const [reason, setReason] = useState("");
+  const [reason, setReason] = useState<TransferReasonCode | "">("");
+  const [note, setNote] = useState("");
   const assign = useMutation({
-    mutationFn: () => assignPartyResponsible(party.id, { agentId, reason, version: party.version }),
+    mutationFn: () =>
+      assignPartyResponsible(party.id, {
+        agentId,
+        reason: requiredReason(reason),
+        version: party.version,
+        ...(note ? { note } : {}),
+      }),
     onSuccess: async () => {
       setAgentId("");
       setReason("");
+      setNote("");
       await queryClient.invalidateQueries({ queryKey: ["parties"] });
     },
   });
@@ -66,20 +76,12 @@ export function ResponsibleAgentSection({
             </Select>
           )}
         </Field>
-        <Field label="Motivo del cambio">
-          {(p) => (
-            <Input
-              {...p}
-              required
-              minLength={3}
-              maxLength={200}
-              value={reason}
-              onChange={(e) => {
-                setReason(e.target.value);
-              }}
-            />
-          )}
-        </Field>
+        <TransferReasonFields
+          reason={reason}
+          note={note}
+          onReasonChange={setReason}
+          onNoteChange={setNote}
+        />
       </div>
       <Button type="submit" variant="outline" disabled={assign.isPending}>
         Cambiar asesor responsable

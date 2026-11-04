@@ -264,7 +264,7 @@ func (s *Server) IssuePolicy(ctx context.Context, req IssuePolicyRequestObject) 
 
 // ReassignPolicyAgent implementa StrictServerInterface.
 func (s *Server) ReassignPolicyAgent(ctx context.Context, req ReassignPolicyAgentRequestObject) (ReassignPolicyAgentResponseObject, error) {
-	v, err := s.svc.ReassignAgent(ctx, domain.PolicyID(req.PolicyId), req.Params.Version, req.Body.AgentId, req.Body.Reason)
+	v, err := s.svc.ReassignAgent(ctx, domain.PolicyID(req.PolicyId), req.Params.Version, req.Body.AgentId, string(req.Body.Reason), deref(req.Body.Note))
 	return respond[ReassignPolicyAgentResponseObject](v, err, func(p PolicyJSONResponse) ReassignPolicyAgentResponseObject {
 		return ReassignPolicyAgent200JSONResponse{p}
 	})
@@ -272,7 +272,7 @@ func (s *Server) ReassignPolicyAgent(ctx context.Context, req ReassignPolicyAgen
 
 // TransferPortfolio implementa StrictServerInterface.
 func (s *Server) TransferPortfolio(ctx context.Context, req TransferPortfolioRequestObject) (TransferPortfolioResponseObject, error) {
-	if err := s.svc.TransferPortfolio(ctx, req.Body.FromAgentId, req.Body.ToAgentId, req.Body.Reason); err != nil {
+	if err := s.svc.TransferPortfolio(ctx, req.Body.FromAgentId, req.Body.ToAgentId, string(req.Body.Reason), deref(req.Body.Note)); err != nil {
 		return nil, err
 	}
 	return TransferPortfolio202Response{}, nil
@@ -342,4 +342,11 @@ func (s *Server) IssueEndorsement(ctx context.Context, req IssueEndorsementReque
 func (s *Server) RejectEndorsement(ctx context.Context, req RejectEndorsementRequestObject) (RejectEndorsementResponseObject, error) {
 	v, err := s.svc.RejectEndorsement(ctx, domain.PolicyID(req.PolicyId), req.Params.Version, req.EndorsementId, req.Body.Reason)
 	return respond[RejectEndorsementResponseObject](v, err, func(p PolicyJSONResponse) RejectEndorsementResponseObject { return RejectEndorsement200JSONResponse{p} })
+}
+
+func deref(s *string) string {
+	if s == nil {
+		return ""
+	}
+	return *s
 }

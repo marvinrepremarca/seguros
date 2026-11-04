@@ -6,6 +6,8 @@ import { formatDate, formatDateTime, formatMoney } from "@/shared/lib/format";
 import { problemMessage } from "@/shared/lib/problem";
 import { permissions, usePermission } from "@/shared/lib/session";
 import { Button } from "@/shared/ui/button";
+import { requiredReason, type TransferReasonCode } from "@/shared/lib/transferReasons";
+import { TransferReasonFields } from "@/shared/ui/TransferReasonFields";
 import { ErrorMessage, Field, Input, QueryState, Select, Textarea } from "@/shared/ui/field";
 
 import { availableActions } from "../actions";
@@ -368,11 +370,17 @@ function RejectForm({ policy, onDone }: FormProps) {
 function ReassignForm({ policy, onDone }: FormProps) {
   const agents = useQuery(agentsQuery());
   const [agentId, setAgentId] = useState("");
-  const [reason, setReason] = useState("");
+  const [reason, setReason] = useState<TransferReasonCode | "">("");
+  const [note, setNote] = useState("");
   const apply = useApply(policy);
   const reassign = useMutation(
     apply(
-      () => reassignPolicyAgent(policy.id, { agentId, reason }, { version: policy.version }),
+      () =>
+        reassignPolicyAgent(
+          policy.id,
+          { agentId, reason: requiredReason(reason), ...(note ? { note } : {}) },
+          { version: policy.version },
+        ),
       onDone,
     ),
   );
@@ -411,20 +419,12 @@ function ReassignForm({ policy, onDone }: FormProps) {
             </Select>
           )}
         </Field>
-        <Field label="Motivo del cambio">
-          {(p) => (
-            <Input
-              {...p}
-              required
-              minLength={3}
-              maxLength={200}
-              value={reason}
-              onChange={(e) => {
-                setReason(e.target.value);
-              }}
-            />
-          )}
-        </Field>
+        <TransferReasonFields
+          reason={reason}
+          note={note}
+          onReasonChange={setReason}
+          onNoteChange={setNote}
+        />
       </div>
       <Button type="submit" disabled={reassign.isPending}>
         Confirmar cambio de asesor

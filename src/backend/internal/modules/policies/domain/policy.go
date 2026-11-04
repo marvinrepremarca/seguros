@@ -99,10 +99,9 @@ const (
 )
 
 const (
-	maxReasonRunes         = 500
-	maxShortTextRunes      = 200
-	maxReferenceRunes      = 60
-	maxTransferReasonBytes = 200
+	maxReasonRunes    = 500
+	maxShortTextRunes = 200
+	maxReferenceRunes = 60
 )
 
 // PartyRole es el papel de un tercero en la póliza.
@@ -297,8 +296,8 @@ func NewPolicy(id PolicyID, terms Terms, now time.Time) (*Policy, error) {
 
 // Motivos del historial de asesores en los cambios que no son un traspaso.
 const (
-	reasonInitialAgent = "Asignación inicial"
-	reasonTermsUpdated = "Ajuste de datos antes de expedir"
+	reasonInitialAgent = "initial_assignment"
+	reasonTermsUpdated = "terms_updated"
 )
 
 // isTerminal indica si la póliza ya terminó su ciclo (DOMAIN.md §2).
@@ -313,33 +312,32 @@ func (s Status) isTerminal() bool {
 	}
 }
 
-// ValidTransferReason valida el motivo de un traspaso. El límite en bytes es el de la bitácora.
-func ValidTransferReason(reason string) (string, error) {
-	reason = strings.TrimSpace(reason)
-	if utf8.RuneCountInString(reason) < 3 || len(reason) > maxTransferReasonBytes {
-		return "", ErrInvalidTransferReason
+// ValidTransferReason valida el motivo de un traspaso contra el catálogo (DECISIONS N12).
+func ValidTransferReason(code, note string) (kernel.TransferReason, error) {
+	reason, ok := kernel.NewTransferReason(code, note)
+	if !ok {
+		return kernel.TransferReason{}, ErrInvalidTransferReason
 	}
 	return reason, nil
 }
 
 // ReassignAgent cambia el asesor (DECISIONS N11). Una póliza terminada conserva el suyo: ya no hay
 // cartera que atender y su asesor es parte del historial.
-func (p *Policy) ReassignAgent(agent uuid.UUID, reason string, now time.Time) error {
+func (p *Policy) ReassignAgent(agent uuid.UUID, reason kernel.TransferReason, now time.Time) error {
 	if p.status.isTerminal() {
 		return ErrAgentNotReassignable
 	}
 	if p.terms.AgentID.Valid && p.terms.AgentID.UUID == agent {
 		return ErrSameAgent
 	}
-	reason, err := ValidTransferReason(reason)
-	if err != nil {
+	if _, err := ValidTransferReason(reason.Code, reason.Note); err != nil {
 		return err
 	}
 	previous := p.terms.AgentID
 	p.terms.AgentID = uuid.NullUUID{UUID: agent, Valid: true}
 	p.updatedAt = now.UTC()
 	p.events = append(p.events, p.partiesChanged(p.version+1), PolicyAgentChanged{
-		PolicyID: p.id, Previous: previous, New: p.terms.AgentID, At: now.UTC(), Reason: reason,
+		PolicyID: p.id, Previous: previous, New: p.terms.AgentID, At: now.UTC(), Reason: reason.Code, Note: reason.Note,
 	})
 	return nil
 }

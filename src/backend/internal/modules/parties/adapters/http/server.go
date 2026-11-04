@@ -179,7 +179,7 @@ func (s *Server) UpdateParty(ctx context.Context, req UpdatePartyRequestObject) 
 // AssignPartyResponsible implementa StrictServerInterface.
 func (s *Server) AssignPartyResponsible(ctx context.Context, req AssignPartyResponsibleRequestObject) (AssignPartyResponsibleResponseObject, error) {
 	out, err := s.h.Assign.Handle(ctx, app.AssignResponsibleCommand{
-		ID: domain.PartyID(req.PartyId), Version: req.Body.Version, AgentID: req.Body.AgentId, Reason: req.Body.Reason,
+		ID: domain.PartyID(req.PartyId), Version: req.Body.Version, AgentID: req.Body.AgentId, Reason: string(req.Body.Reason), Note: deref(req.Body.Note),
 	})
 	if err != nil {
 		return nil, err

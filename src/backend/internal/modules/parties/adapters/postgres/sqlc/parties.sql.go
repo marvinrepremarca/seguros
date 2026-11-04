@@ -217,8 +217,8 @@ func (q *Queries) InsertParty(ctx context.Context, arg InsertPartyParams) error 
 }
 
 const insertResponsibleHistory = `-- name: InsertResponsibleHistory :exec
-INSERT INTO parties.party_responsible_history (tenant_id, party_id, party_version, previous_agent_id, new_agent_id, reason, changed_by, changed_at)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO parties.party_responsible_history (tenant_id, party_id, party_version, previous_agent_id, new_agent_id, reason, note, changed_by, changed_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 `
 
 type InsertResponsibleHistoryParams struct {
@@ -228,6 +228,7 @@ type InsertResponsibleHistoryParams struct {
 	PreviousAgentID uuid.NullUUID
 	NewAgentID      uuid.UUID
 	Reason          string
+	Note            pgtype.Text
 	Actor           uuid.NullUUID
 	ChangedAt       time.Time
 }
@@ -240,6 +241,7 @@ func (q *Queries) InsertResponsibleHistory(ctx context.Context, arg InsertRespon
 		arg.PreviousAgentID,
 		arg.NewAgentID,
 		arg.Reason,
+		arg.Note,
 		arg.Actor,
 		arg.ChangedAt,
 	)
@@ -439,6 +441,10 @@ WITH moved AS (
     UPDATE parties.parties
     SET responsible_agent_id = $3, updated_at = $6, updated_by = $5, version = version + 1
     WHERE tenant_id = $1 AND responsible_agent_id = $2
+      AND NOT EXISTS (
+          SELECT 1 FROM parties.party_responsible_history h
+          WHERE h.tenant_id = parties.parties.tenant_id AND h.party_id = parties.parties.id
+            AND h.new_agent_id = $2 AND h.changed_at > $7)
     RETURNING id, version
 )
 INSERT INTO parties.party_responsible_history (tenant_id, party_id, party_version, previous_agent_id, new_agent_id, reason, changed_by, changed_at)
@@ -446,12 +452,13 @@ SELECT $1, id, version, $2, $3, $4, $5, $6 FROM moved
 `
 
 type TransferResponsibleAgentParams struct {
-	TenantID  uuid.UUID
-	FromAgent uuid.NullUUID
-	ToAgent   uuid.UUID
-	Reason    string
-	Actor     uuid.NullUUID
-	UpdatedAt time.Time
+	TenantID    uuid.UUID
+	FromAgent   uuid.NullUUID
+	ToAgent     uuid.UUID
+	Reason      string
+	Actor       uuid.NullUUID
+	UpdatedAt   time.Time
+	RequestedAt time.Time
 }
 
 func (q *Queries) TransferResponsibleAgent(ctx context.Context, arg TransferResponsibleAgentParams) (int64, error) {
@@ -462,6 +469,7 @@ func (q *Queries) TransferResponsibleAgent(ctx context.Context, arg TransferResp
 		arg.Reason,
 		arg.Actor,
 		arg.UpdatedAt,
+		arg.RequestedAt,
 	)
 	if err != nil {
 		return 0, err

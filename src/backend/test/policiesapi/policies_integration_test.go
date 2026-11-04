@@ -620,7 +620,7 @@ func TestPermissionsAndOwnership(t *testing.T) {
 		{"asesor no cancela", agent, http.MethodPost, at(id, 1, "cancel"), map[string]any{"cause": "other", "effectiveDate": "2026-06-01", "unearnedPremium": "0"}, http.StatusForbidden},
 		{"asesor no endosa", agent, http.MethodPost, at(id, 1, "endorsements"), map[string]any{"type": "other", "description": "Algo", "effectiveDate": "2026-06-01"}, http.StatusForbidden},
 		{"asesor no lista asesores", agent, http.MethodGet, "/api/v1/policies/agents", nil, http.StatusForbidden},
-		{"asesor no traspasa", agent, http.MethodPost, "/api/v1/policies/portfolio-transfers", map[string]any{"fromAgentId": uuid.NewString(), "toAgentId": uuid.NewString(), "reason": "Retiro"}, http.StatusForbidden},
+		{"asesor no traspasa", agent, http.MethodPost, "/api/v1/policies/portfolio-transfers", map[string]any{"fromAgentId": uuid.NewString(), "toAgentId": uuid.NewString(), "reason": "employee_departure"}, http.StatusForbidden},
 		{"gerente lista asesores", e.as(w.tenant, authz.RoleManager), http.MethodGet, "/api/v1/policies/agents", nil, http.StatusOK},
 		{"operaciones lista asesores", w.ops, http.MethodGet, "/api/v1/policies/agents", nil, http.StatusOK},
 	}
@@ -952,7 +952,7 @@ func TestPortfolioFollowsTheCurrentAssignment(t *testing.T) {
 	assert.Nil(t, byOps.body["responsibleAgentId"], "lo que registra Operaciones no tiene responsable")
 
 	assign := func(who *authz.Principal, agent string, version int) resp {
-		return e.do(t, who, http.MethodPost, parties+"/"+clientID+"/responsible-agent", map[string]any{"agentId": agent, "reason": "Retiro del asesor", "version": version})
+		return e.do(t, who, http.MethodPost, parties+"/"+clientID+"/responsible-agent", map[string]any{"agentId": agent, "reason": "employee_departure", "version": version})
 	}
 	assert.Equal(t, http.StatusForbidden, assign(ana, agentID(beto), 1).status, "un asesor no traspasa")
 	assert.Equal(t, "parties.party.invalid_agent", assign(manager, agentID(gone), 1).body["type"], "no se asigna a quien ya se fue")
@@ -979,7 +979,7 @@ func TestPortfolioFollowsTheCurrentAssignment(t *testing.T) {
 	assert.Equal(t, http.StatusOK, client(ana, w.holder))
 
 	reassign := func(who *authz.Principal, agent string, version int) resp {
-		return e.do(t, who, http.MethodPost, at(policyID, version, "agent"), map[string]any{"agentId": agent, "reason": "Retiro del asesor"})
+		return e.do(t, who, http.MethodPost, at(policyID, version, "agent"), map[string]any{"agentId": agent, "reason": "employee_departure"})
 	}
 	assert.Equal(t, http.StatusForbidden, reassign(ana, agentID(beto), created.version(t)).status)
 	assert.Equal(t, "policies.policy.invalid_agent", reassign(manager, agentID(gone), created.version(t)).body["type"])
@@ -1043,7 +1043,7 @@ func TestPortfolioTransfer(t *testing.T) {
 	e.users.list[0].Active = false // se retira
 
 	transfer := func(who *authz.Principal, a, b string) resp {
-		return e.do(t, who, http.MethodPost, "/api/v1/policies/portfolio-transfers", map[string]any{"fromAgentId": a, "toAgentId": b, "reason": "Retiro del asesor"})
+		return e.do(t, who, http.MethodPost, "/api/v1/policies/portfolio-transfers", map[string]any{"fromAgentId": a, "toAgentId": b, "reason": "employee_departure"})
 	}
 	assert.Equal(t, "policies.policy.same_agent", transfer(manager, toID, toID).body["type"])
 	assert.Equal(t, "policies.policy.invalid_agent", transfer(manager, toID, fromID).body["type"], "el destino debe estar activo")
@@ -1085,8 +1085,8 @@ func TestPortfolioTransfer(t *testing.T) {
 
 // Un endoso que agrega o retira una parte cambia los clientes del asesor, entregado por el camino real:
 // relay, Dispatcher e inbox (DECISIONS N10).
-func TestEndorsementChangesAgentScopeThroughDispatcher(t *testing.T) {
-	t.Parallel()
+// Sin t.Parallel: el relay publica el outbox de todos los tenants y adelantaría los eventos de otras pruebas.
+func TestEndorsementChangesAgentScopeThroughDispatcher(t *testing.T) { //nolint:paralleltest // ver arriba
 	e := newEnv(t)
 	w := e.world(t)
 	agent := e.as(w.tenant, authz.RoleSalesAgent)
@@ -1152,4 +1152,100 @@ func TestEndorsementChangesAgentScopeThroughDispatcher(t *testing.T) {
 	reaches(addedID, http.StatusOK)
 	endorse(withParty.version(t), map[string]any{"removeParties": []any{party}})
 	reaches(addedID, http.StatusNotFound)
+}
+
+// DECISIONS N12: el motivo sale del catálogo, y la nota no llega al evento ni a la bitácora.
+func TestTransferReasonCatalogKeepsNoteOutOfEvents(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	w := e.world(t)
+	manager := e.as(w.tenant, authz.RoleManager)
+	from, to := e.as(w.tenant, authz.RoleSalesAgent), e.as(w.tenant, authz.RoleSalesAgent)
+	e.users.list = []identity.User{
+		{ID: uuid.UUID(from.UserID), DisplayName: "Origen", Active: true},
+		{ID: uuid.UUID(to.UserID), DisplayName: "Destino", Active: true},
+	}
+	body := func(reason, note string) map[string]any {
+		b := map[string]any{"fromAgentId": uuid.UUID(from.UserID).String(), "toAgentId": uuid.UUID(to.UserID).String(), "reason": reason}
+		if note != "" {
+			b["note"] = note
+		}
+		return b
+	}
+	const path = "/api/v1/policies/portfolio-transfers"
+	assert.Equal(t, http.StatusBadRequest, e.do(t, manager, http.MethodPost, path, body("retiro", "")).status, "fuera del catálogo")
+	assert.Equal(t, "policies.policy.invalid_transfer_reason", e.do(t, manager, http.MethodPost, path, body("other", "")).body["type"], "otro exige nota")
+
+	const note = "Nota libre que no debe viajar"
+	require.Equal(t, http.StatusAccepted, e.do(t, manager, http.MethodPost, path, body("other", note)).status)
+	audited := auditDetails(t, w.tenant, "policies.portfolio.transfer_requested")
+	require.Len(t, audited, 1)
+	assert.Equal(t, "other", audited[0]["reason"])
+	assert.NotContains(t, fmt.Sprint(audited[0]), note)
+
+	superMu.Lock()
+	var payload string
+	require.NoError(t, super.QueryRow(context.Background(), `SELECT payload::text FROM messaging.outbox WHERE tenant_id = $1 AND topic = $2`, uuid.UUID(w.tenant), policycontracts.TopicPortfolioTransferRequested).Scan(&payload))
+	superMu.Unlock()
+	assert.NotContains(t, payload, note)
+
+	ctx := reqctx.WithTenantID(context.Background(), w.tenant)
+	var stored string
+	require.NoError(t, database.WithTenantTx(ctx, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT note FROM policies.portfolio_transfer_requests`).Scan(&stored)
+	}))
+	assert.Equal(t, note, stored)
+}
+
+// Lo asignado al origen después de pedir el traspaso no se mueve, y una cartera de más de un lote se
+// completa republicando el evento.
+func TestPortfolioTransferBatchesAndRespectsCutoff(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	w := e.world(t)
+	manager := e.as(w.tenant, authz.RoleManager)
+	from, to := e.as(w.tenant, authz.RoleSalesAgent), e.as(w.tenant, authz.RoleSalesAgent)
+	e.users.list = []identity.User{
+		{ID: uuid.UUID(from.UserID), DisplayName: "Origen", Active: true},
+		{ID: uuid.UUID(to.UserID), DisplayName: "Destino", Active: true},
+	}
+	fromID, toID := uuid.UUID(from.UserID).String(), uuid.UUID(to.UserID).String()
+	terms := w.terms()
+	terms["agentId"] = fromID
+	var first resp
+	for i := range 201 {
+		r := e.do(t, w.ops, http.MethodPost, base, terms)
+		require.Equal(t, http.StatusCreated, r.status, r.body)
+		if i == 0 {
+			first = r
+		}
+	}
+	// Una póliza y un cliente de otro asesor, que pasan al origen después de pedir el traspaso.
+	termsLate := w.terms()
+	termsLate["agentId"] = toID
+	late := e.do(t, w.ops, http.MethodPost, base, termsLate)
+	require.Equal(t, http.StatusCreated, late.status, late.body)
+	client := e.do(t, w.ops, http.MethodPost, "/api/v1/parties/parties", map[string]any{
+		"kind": "person", "name": "Cliente tardío", "documentType": "CC", "documentNumber": fmt.Sprintf("1%09d", uuid.New().ID()%1_000_000_000),
+	})
+	require.Equal(t, http.StatusCreated, client.status, client.body)
+
+	require.Equal(t, http.StatusAccepted, e.do(t, manager, http.MethodPost, "/api/v1/policies/portfolio-transfers", map[string]any{"fromAgentId": fromID, "toAgentId": toID, "reason": "employee_departure"}).status)
+	e.clock.Advance(time.Minute)
+	moved := e.do(t, manager, http.MethodPost, at(late.str(t, "id"), late.version(t), "agent"), map[string]any{"agentId": fromID, "reason": "assignment_correction"})
+	require.Equal(t, http.StatusOK, moved.status, moved.body)
+	assigned := e.do(t, manager, http.MethodPost, "/api/v1/parties/parties/"+client.str(t, "id")+"/responsible-agent", map[string]any{"agentId": fromID, "reason": "assignment_correction", "version": client.version(t)})
+	require.Equal(t, http.StatusOK, assigned.status, assigned.body)
+
+	recorder := audit.NewRecorder(e.clock)
+	store := postgres.NewStore(workerDB, recorder, outbox.NewWriter(e.clock))
+	for range 2 { // el segundo pase entrega el evento republicado
+		deliver(t, w.tenant, policiesevents.PortfolioTransfer(store, e.clock))
+	}
+	deliver(t, w.tenant, partiesevents.PortfolioTransfer(recorder))
+
+	assert.Equal(t, toID, e.do(t, w.ops, http.MethodGet, base+"/"+first.str(t, "id"), nil).body["agentId"])
+	assert.Len(t, auditDetails(t, w.tenant, "policies.policy.agent_changed"), 202, "201 del traspaso y el cambio manual")
+	assert.Equal(t, fromID, e.do(t, w.ops, http.MethodGet, base+"/"+late.str(t, "id"), nil).body["agentId"], "asignada después del corte")
+	assert.Equal(t, fromID, e.do(t, w.ops, http.MethodGet, "/api/v1/parties/parties/"+client.str(t, "id"), nil).body["responsibleAgentId"], "asignado después del corte")
 }

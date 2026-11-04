@@ -235,6 +235,7 @@ type PolicyAgentChanged struct {
 	New      uuid.NullUUID
 	At       time.Time
 	Reason   string
+	Note     string
 }
 
 // PolicyIssued: la aseguradora expidió la póliza.
