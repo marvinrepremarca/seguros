@@ -6,6 +6,9 @@ import { permissions } from "@/shared/lib/session";
 /** Destinos tipados del router (TanStack Router valida rutas y parámetros). */
 export type NavLink =
   | { to: "/" }
+  | { to: "/clientes" }
+  | { to: "/polizas" }
+  | { to: "/configuracion/catalogo" }
   | { to: "/configuracion/funcionalidades" }
   | { to: "/modulos/$modulo"; params: { modulo: string } };
 
@@ -13,7 +16,8 @@ export interface NavItem {
   label: string;
   link: NavLink;
   flag?: FeatureKey;
-  permission?: string;
+  /** Basta uno de estos permisos para ver la entrada. */
+  permissions?: readonly string[];
 }
 
 const moduleLink = (modulo: string): NavLink => ({ to: "/modulos/$modulo", params: { modulo } });
@@ -24,7 +28,18 @@ export interface NavSection {
 }
 
 export const NAV_SECTIONS: readonly NavSection[] = [
-  { title: "General", items: [{ label: "Inicio", link: { to: "/" } }] },
+  {
+    title: "General",
+    items: [
+      { label: "Inicio", link: { to: "/" } },
+      { label: "Clientes", link: { to: "/clientes" }, permissions: [permissions.partyRead] },
+      {
+        label: "Pólizas",
+        link: { to: "/polizas" },
+        permissions: [permissions.policyRead, permissions.policyReadOwn],
+      },
+    ],
+  },
   {
     title: "Venta",
     items: [
@@ -65,7 +80,12 @@ export const NAV_SECTIONS: readonly NavSection[] = [
       {
         label: "Funcionalidades",
         link: { to: "/configuracion/funcionalidades" },
-        permission: permissions.featureFlagRead,
+        permissions: [permissions.featureFlagRead],
+      },
+      {
+        label: "Catálogo",
+        link: { to: "/configuracion/catalogo" },
+        permissions: [permissions.catalogRead],
       },
     ],
   },
@@ -83,7 +103,7 @@ export function visibleSections(
       items: s.items.filter(
         (i) =>
           (i.flag === undefined || isEnabled(i.flag)) &&
-          (i.permission === undefined || can(i.permission)),
+          (i.permissions === undefined || i.permissions.some(can)),
       ),
     }))
     .filter((s) => s.items.length > 0);

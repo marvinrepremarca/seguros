@@ -12,8 +12,16 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as AppRouteImport } from './routes/_app'
 import { Route as LoginRouteImport } from './routes/login'
 import { Route as AppIndexRouteImport } from './routes/_app/index'
+import { Route as AppClientesIndexRouteImport } from './routes/_app/clientes/index'
+import { Route as AppClientesPartyIdRouteImport } from './routes/_app/clientes/$partyId'
+import { Route as AppClientesNuevoRouteImport } from './routes/_app/clientes/nuevo'
+import { Route as AppConfiguracionCatalogoRouteImport } from './routes/_app/configuracion/catalogo'
 import { Route as AppConfiguracionFuncionalidadesRouteImport } from './routes/_app/configuracion/funcionalidades'
 import { Route as AppModulosModuloRouteImport } from './routes/_app/modulos/$modulo'
+import { Route as AppPolizasIndexRouteImport } from './routes/_app/polizas/index'
+import { Route as AppPolizasNuevaRouteImport } from './routes/_app/polizas/nueva'
+import { Route as AppPolizasPolicyIdIndexRouteImport } from './routes/_app/polizas/$policyId/index'
+import { Route as AppPolizasPolicyIdEditarRouteImport } from './routes/_app/polizas/$policyId/editar'
 
 const AppRoute = AppRouteImport.update({
   id: '/_app',
@@ -29,6 +37,27 @@ const AppIndexRoute = AppIndexRouteImport.update({
   path: '/',
   getParentRoute: () => AppRoute,
 } as any)
+const AppClientesIndexRoute = AppClientesIndexRouteImport.update({
+  id: '/clientes/',
+  path: '/clientes/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppClientesPartyIdRoute = AppClientesPartyIdRouteImport.update({
+  id: '/clientes/$partyId',
+  path: '/clientes/$partyId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppClientesNuevoRoute = AppClientesNuevoRouteImport.update({
+  id: '/clientes/nuevo',
+  path: '/clientes/nuevo',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppConfiguracionCatalogoRoute =
+  AppConfiguracionCatalogoRouteImport.update({
+    id: '/configuracion/catalogo',
+    path: '/configuracion/catalogo',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppConfiguracionFuncionalidadesRoute =
   AppConfiguracionFuncionalidadesRouteImport.update({
     id: '/configuracion/funcionalidades',
@@ -40,40 +69,116 @@ const AppModulosModuloRoute = AppModulosModuloRouteImport.update({
   path: '/modulos/$modulo',
   getParentRoute: () => AppRoute,
 } as any)
+const AppPolizasIndexRoute = AppPolizasIndexRouteImport.update({
+  id: '/polizas/',
+  path: '/polizas/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppPolizasNuevaRoute = AppPolizasNuevaRouteImport.update({
+  id: '/polizas/nueva',
+  path: '/polizas/nueva',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppPolizasPolicyIdIndexRoute = AppPolizasPolicyIdIndexRouteImport.update({
+  id: '/polizas/$policyId/',
+  path: '/polizas/$policyId/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppPolizasPolicyIdEditarRoute =
+  AppPolizasPolicyIdEditarRouteImport.update({
+    id: '/polizas/$policyId/editar',
+    path: '/polizas/$policyId/editar',
+    getParentRoute: () => AppRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AppIndexRoute
   '/login': typeof LoginRoute
+  '/clientes/$partyId': typeof AppClientesPartyIdRoute
+  '/clientes/nuevo': typeof AppClientesNuevoRoute
+  '/configuracion/catalogo': typeof AppConfiguracionCatalogoRoute
   '/configuracion/funcionalidades': typeof AppConfiguracionFuncionalidadesRoute
   '/modulos/$modulo': typeof AppModulosModuloRoute
+  '/polizas/nueva': typeof AppPolizasNuevaRoute
+  '/clientes/': typeof AppClientesIndexRoute
+  '/polizas/': typeof AppPolizasIndexRoute
+  '/polizas/$policyId/editar': typeof AppPolizasPolicyIdEditarRoute
+  '/polizas/$policyId/': typeof AppPolizasPolicyIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/': typeof AppIndexRoute
+  '/clientes/$partyId': typeof AppClientesPartyIdRoute
+  '/clientes/nuevo': typeof AppClientesNuevoRoute
+  '/configuracion/catalogo': typeof AppConfiguracionCatalogoRoute
   '/configuracion/funcionalidades': typeof AppConfiguracionFuncionalidadesRoute
   '/modulos/$modulo': typeof AppModulosModuloRoute
+  '/polizas/nueva': typeof AppPolizasNuevaRoute
+  '/clientes': typeof AppClientesIndexRoute
+  '/polizas': typeof AppPolizasIndexRoute
+  '/polizas/$policyId/editar': typeof AppPolizasPolicyIdEditarRoute
+  '/polizas/$policyId': typeof AppPolizasPolicyIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_app': typeof AppRouteWithChildren
   '/login': typeof LoginRoute
   '/_app/': typeof AppIndexRoute
+  '/_app/clientes/$partyId': typeof AppClientesPartyIdRoute
+  '/_app/clientes/nuevo': typeof AppClientesNuevoRoute
+  '/_app/configuracion/catalogo': typeof AppConfiguracionCatalogoRoute
   '/_app/configuracion/funcionalidades': typeof AppConfiguracionFuncionalidadesRoute
   '/_app/modulos/$modulo': typeof AppModulosModuloRoute
+  '/_app/polizas/nueva': typeof AppPolizasNuevaRoute
+  '/_app/clientes/': typeof AppClientesIndexRoute
+  '/_app/polizas/': typeof AppPolizasIndexRoute
+  '/_app/polizas/$policyId/editar': typeof AppPolizasPolicyIdEditarRoute
+  '/_app/polizas/$policyId/': typeof AppPolizasPolicyIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
-    '/' | '/login' | '/configuracion/funcionalidades' | '/modulos/$modulo'
+    | '/'
+    | '/login'
+    | '/clientes/$partyId'
+    | '/clientes/nuevo'
+    | '/configuracion/catalogo'
+    | '/configuracion/funcionalidades'
+    | '/modulos/$modulo'
+    | '/polizas/nueva'
+    | '/clientes/'
+    | '/polizas/'
+    | '/polizas/$policyId/editar'
+    | '/polizas/$policyId/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/' | '/configuracion/funcionalidades' | '/modulos/$modulo'
+  to:
+    | '/login'
+    | '/'
+    | '/clientes/$partyId'
+    | '/clientes/nuevo'
+    | '/configuracion/catalogo'
+    | '/configuracion/funcionalidades'
+    | '/modulos/$modulo'
+    | '/polizas/nueva'
+    | '/clientes'
+    | '/polizas'
+    | '/polizas/$policyId/editar'
+    | '/polizas/$policyId'
   id:
     | '__root__'
     | '/_app'
     | '/login'
     | '/_app/'
+    | '/_app/clientes/$partyId'
+    | '/_app/clientes/nuevo'
+    | '/_app/configuracion/catalogo'
     | '/_app/configuracion/funcionalidades'
     | '/_app/modulos/$modulo'
+    | '/_app/polizas/nueva'
+    | '/_app/clientes/'
+    | '/_app/polizas/'
+    | '/_app/polizas/$policyId/editar'
+    | '/_app/polizas/$policyId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -104,6 +209,34 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppIndexRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/clientes/': {
+      id: '/_app/clientes/'
+      path: '/clientes'
+      fullPath: '/clientes/'
+      preLoaderRoute: typeof AppClientesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/clientes/$partyId': {
+      id: '/_app/clientes/$partyId'
+      path: '/clientes/$partyId'
+      fullPath: '/clientes/$partyId'
+      preLoaderRoute: typeof AppClientesPartyIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/clientes/nuevo': {
+      id: '/_app/clientes/nuevo'
+      path: '/clientes/nuevo'
+      fullPath: '/clientes/nuevo'
+      preLoaderRoute: typeof AppClientesNuevoRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/configuracion/catalogo': {
+      id: '/_app/configuracion/catalogo'
+      path: '/configuracion/catalogo'
+      fullPath: '/configuracion/catalogo'
+      preLoaderRoute: typeof AppConfiguracionCatalogoRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/configuracion/funcionalidades': {
       id: '/_app/configuracion/funcionalidades'
       path: '/configuracion/funcionalidades'
@@ -118,19 +251,63 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppModulosModuloRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/polizas/': {
+      id: '/_app/polizas/'
+      path: '/polizas'
+      fullPath: '/polizas/'
+      preLoaderRoute: typeof AppPolizasIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/polizas/nueva': {
+      id: '/_app/polizas/nueva'
+      path: '/polizas/nueva'
+      fullPath: '/polizas/nueva'
+      preLoaderRoute: typeof AppPolizasNuevaRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/polizas/$policyId/': {
+      id: '/_app/polizas/$policyId/'
+      path: '/polizas/$policyId'
+      fullPath: '/polizas/$policyId/'
+      preLoaderRoute: typeof AppPolizasPolicyIdIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/polizas/$policyId/editar': {
+      id: '/_app/polizas/$policyId/editar'
+      path: '/polizas/$policyId/editar'
+      fullPath: '/polizas/$policyId/editar'
+      preLoaderRoute: typeof AppPolizasPolicyIdEditarRouteImport
+      parentRoute: typeof AppRoute
+    }
   }
 }
 
 interface AppRouteChildren {
   AppIndexRoute: typeof AppIndexRoute
+  AppClientesPartyIdRoute: typeof AppClientesPartyIdRoute
+  AppClientesNuevoRoute: typeof AppClientesNuevoRoute
+  AppConfiguracionCatalogoRoute: typeof AppConfiguracionCatalogoRoute
   AppConfiguracionFuncionalidadesRoute: typeof AppConfiguracionFuncionalidadesRoute
   AppModulosModuloRoute: typeof AppModulosModuloRoute
+  AppPolizasNuevaRoute: typeof AppPolizasNuevaRoute
+  AppClientesIndexRoute: typeof AppClientesIndexRoute
+  AppPolizasIndexRoute: typeof AppPolizasIndexRoute
+  AppPolizasPolicyIdEditarRoute: typeof AppPolizasPolicyIdEditarRoute
+  AppPolizasPolicyIdIndexRoute: typeof AppPolizasPolicyIdIndexRoute
 }
 
 const AppRouteChildren: AppRouteChildren = {
   AppIndexRoute: AppIndexRoute,
+  AppClientesPartyIdRoute: AppClientesPartyIdRoute,
+  AppClientesNuevoRoute: AppClientesNuevoRoute,
+  AppConfiguracionCatalogoRoute: AppConfiguracionCatalogoRoute,
   AppConfiguracionFuncionalidadesRoute: AppConfiguracionFuncionalidadesRoute,
   AppModulosModuloRoute: AppModulosModuloRoute,
+  AppPolizasNuevaRoute: AppPolizasNuevaRoute,
+  AppClientesIndexRoute: AppClientesIndexRoute,
+  AppPolizasIndexRoute: AppPolizasIndexRoute,
+  AppPolizasPolicyIdEditarRoute: AppPolizasPolicyIdEditarRoute,
+  AppPolizasPolicyIdIndexRoute: AppPolizasPolicyIdIndexRoute,
 }
 
 const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)

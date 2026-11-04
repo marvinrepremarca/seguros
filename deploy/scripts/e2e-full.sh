@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Prueba de humo E2E de punta a punta (ROADMAP 1.12), solo desarrollo/CI:
-#   dependencias (make dev-up) → migraciones → tenant de prueba → API → Playwright (Vite + Keycloak).
+#   dependencias (make dev-up) → migraciones → tenant de prueba → build de la SPA → API → Playwright.
 # Uso: deploy/scripts/e2e-full.sh [argumentos extra de playwright]
 set -euo pipefail
 
@@ -25,23 +25,19 @@ if [[ -f /.dockerenv ]] && ! (exec 3<>/dev/tcp/127.0.0.1/8081) 2>/dev/null; then
 fi
 
 (cd src/backend && go build -o "${TMPDIR:-/tmp}/seguros-api-e2e" ./cmd/api)
-(cd src/backend && "$root/deploy/scripts/with-dev-env.sh" "${TMPDIR:-/tmp}/seguros-api-e2e") &
-pids+=($!)
-for _ in $(seq 1 60); do
-  curl -sf http://localhost:8080/health/ready >/dev/null && break
-  sleep 0.5
-done
-curl -sf http://localhost:8080/health/ready >/dev/null || { echo "la API no arrancó" >&2; exit 1; }
+frontend="${E2E_FRONTEND_DIR:-src/frontend}"
+pnpm -C "$frontend" exec vite build >/dev/null
 
-# La SPA compilada servida por la API, con su CSP real (Vite no la aplica).
-pnpm -C "${E2E_FRONTEND_DIR:-src/frontend}" exec vite build >/dev/null
-(cd src/backend && SEGUROS_HTTP_ADDR=:8088 SEGUROS_SPA_DIR="$root/${E2E_FRONTEND_DIR:-src/frontend}/dist" \
+# La API sirve la SPA compilada con su CSP real (Vite no la aplica), en el puerto que el realm de
+# Keycloak admite como redirect: todos los flujos, incluido el login, corren bajo esa CSP.
+(cd src/backend && SEGUROS_HTTP_ADDR=:5173 SEGUROS_SPA_DIR="$root/$frontend/dist" \
   "$root/deploy/scripts/with-dev-env.sh" "${TMPDIR:-/tmp}/seguros-api-e2e") &
 pids+=($!)
 for _ in $(seq 1 60); do
-  curl -sf http://localhost:8088/health/ready >/dev/null && break
+  curl -sf http://localhost:5173/health/ready >/dev/null && break
   sleep 0.5
 done
-E2E_SPA_CSP=1 E2E_BASE_URL=http://localhost:8088 pnpm -C "${E2E_FRONTEND_DIR:-src/frontend}" exec playwright test csp.spec.ts
+curl -sf http://localhost:5173/health/ready >/dev/null || { echo "la API no arrancó" >&2; exit 1; }
 
-E2E_FULL=1 E2E_PASSWORD="$(get KC_TEST_USER_PASSWORD)" pnpm -C "${E2E_FRONTEND_DIR:-src/frontend}" exec playwright test "$@"
+E2E_FULL=1 E2E_SPA_CSP=1 E2E_BASE_URL=http://localhost:5173 E2E_PASSWORD="$(get KC_TEST_USER_PASSWORD)" \
+  pnpm -C "$frontend" exec playwright test "$@"
