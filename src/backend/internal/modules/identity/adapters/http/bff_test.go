@@ -215,7 +215,9 @@ func TestLoginSessionAndLogout(t *testing.T) {
 	assert.Equal(t, "Ana", me.User.DisplayName)
 	assert.Equal(t, "profesional", me.Tenant.Plan)
 	assert.Equal(t, []string{"Manager"}, me.Roles)
-	assert.Equal(t, []string{string(authz.FeatureFlagRead)}, me.Permissions)
+	// Los permisos salen de los roles según la política (crece con cada módulo).
+	assert.Contains(t, me.Permissions, string(authz.FeatureFlagRead))
+	assert.NotContains(t, me.Permissions, string(authz.FeatureFlagUpdate), "Manager no cambia flags")
 	csrf := cookie(t, res, identityhttp.CSRFCookie)
 	assert.False(t, csrf.HttpOnly, "la SPA debe leer el token anti-CSRF")
 	assert.True(t, csrf.Secure)
