@@ -1,6 +1,8 @@
 //go:build integration
 
-package policieshttp_test
+// Package policiesapi prueba la API de pólizas de punta a punta con los módulos reales de los que
+// depende (parties, catalog); por eso vive fuera del módulo: cruza sus fronteras.
+package policiesapi_test
 
 import (
 	"bytes"
