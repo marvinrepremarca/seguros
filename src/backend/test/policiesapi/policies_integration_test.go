@@ -790,7 +790,7 @@ func deliverScopeEvents(t *testing.T, tenant kernel.TenantID) {
 	ctx := reqctx.WithTenantID(context.Background(), tenant)
 	consumer := partiesevents.PolicyScope()
 	for _, e := range events {
-		require.NoError(t, database.WithTenantTx(ctx, func(tx pgx.Tx) error { return consumer.Handle(ctx, tx, e) }))
+		require.NoError(t, workerDB.WithTenantTx(ctx, func(tx pgx.Tx) error { return consumer.Handle(ctx, tx, e) }))
 	}
 }
 
@@ -840,6 +840,15 @@ func TestAgentOnlyReachesOwnClients(t *testing.T) {
 	assert.Equal(t, "parties.party.document_taken", dup.body["type"])
 	assert.NotContains(t, fmt.Sprint(dup.body), "Cliente")
 	assert.Len(t, auditDetails(t, w.tenant, "parties.party.duplicate_rejected"), 1)
+	ctx := reqctx.WithTenantID(context.Background(), w.tenant)
+	require.NoError(t, database.WithTenantTx(ctx, func(tx pgx.Tx) error {
+		var probed uuid.UUID
+		if err := tx.QueryRow(ctx, `SELECT resource_id::uuid FROM audit.events WHERE action = 'parties.party.duplicate_rejected'`).Scan(&probed); err != nil {
+			return err
+		}
+		assert.Equal(t, mineID, probed.String(), "identifica al cliente sondeado")
+		return nil
+	}))
 	search := map[string]any{"documentType": "CC", "documentNumber": number}
 	assert.Equal(t, http.StatusNotFound, e.do(t, other, http.MethodPost, parties+"/search-by-document", search).status)
 	assert.Equal(t, http.StatusOK, e.do(t, agent, http.MethodPost, parties+"/search-by-document", search).status)
@@ -886,7 +895,7 @@ func TestPolicyScopeIgnoresOutOfOrderEvents(t *testing.T) {
 		payload, err := json.Marshal(policycontracts.PolicyPartiesChanged{PolicyID: policyID, PolicyVersion: version, AgentID: agentID, PartyIDs: []uuid.UUID{party}})
 		require.NoError(t, err)
 		event := outbox.Event{ID: uuid.New(), TenantID: tenant, OccurredAt: time.Now().UTC(), Payload: payload} //nolint:forbidigo // instante informativo
-		require.NoError(t, database.WithTenantTx(ctx, func(tx pgx.Tx) error { return consumer.Handle(ctx, tx, event) }))
+		require.NoError(t, workerDB.WithTenantTx(ctx, func(tx pgx.Tx) error { return consumer.Handle(ctx, tx, event) }))
 	}
 	deliver(3, nil)
 	deliver(2, &agent)
@@ -897,4 +906,11 @@ func TestPolicyScopeIgnoresOutOfOrderEvents(t *testing.T) {
 	}))
 	assert.False(t, stored.Valid, "la versión 2 llegó tarde: se descarta")
 	assert.Equal(t, int32(3), version)
+
+	// Solo el worker escribe el alcance: la API no puede forjarlo.
+	err := database.WithTenantTx(ctx, func(tx pgx.Tx) error {
+		_, err := tx.Exec(ctx, `UPDATE parties.policy_scopes SET agent_id = $1 WHERE policy_id = $2`, agent, policyID)
+		return err
+	})
+	require.ErrorContains(t, err, "permission denied")
 }

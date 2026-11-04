@@ -146,17 +146,25 @@ func getInScope(ctx context.Context, repo PartyRepository, id domain.PartyID, sc
 	return p, nil
 }
 
-// withDuplicateAudit deja rastro de un documento repetido: la respuesta confirma que el número existe,
-// y la transacción del cambio ya se revirtió.
-func (d Deps) withDuplicateAudit(ctx context.Context, err error, docType domain.DocumentType) error {
+// withDuplicateAudit deja rastro de un documento repetido, con el cliente que coincidió: la respuesta
+// confirma que el número existe y la transacción del cambio ya se revirtió. Si no se puede auditar,
+// responde como error interno: no se confirma la existencia sin rastro.
+func (d Deps) withDuplicateAudit(ctx context.Context, err error, docType domain.DocumentType, blindIndex []byte) error {
 	if !errors.Is(err, domain.ErrDocumentTaken) {
 		return err
 	}
 	auditErr := d.Store.WithinTenant(ctx, func(ctx context.Context, uow UnitOfWork) error {
+		existing, err := uow.Parties().GetByBlindIndex(ctx, docType, blindIndex)
+		if err != nil {
+			return err
+		}
 		return uow.Audit(ctx, audit.Entry{
-			Action: "parties.party.duplicate_rejected", ResourceType: "parties.party", Outcome: audit.OutcomeDenied,
+			Action: "parties.party.duplicate_rejected", ResourceType: "parties.party", ResourceID: existing.ID().String(), Outcome: audit.OutcomeDenied,
 			Details: map[string]string{"documentType": string(docType)},
 		})
 	})
-	return errors.Join(err, auditErr)
+	if auditErr != nil {
+		return fmt.Errorf("parties: auditando documento repetido: %s", auditErr.Error()) //nolint:errorlint // sin %w: un error de dominio envuelto expondría un código al cliente
+	}
+	return err
 }

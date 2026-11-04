@@ -49,7 +49,7 @@ func (h *CreatePartyHandler) Handle(ctx context.Context, cmd CreatePartyCommand)
 		return uow.Audit(ctx, partyEntry("parties.party.created", id, map[string]string{"kind": string(cmd.Kind)}))
 	})
 	if err != nil {
-		return domain.PartySnapshot{}, h.withDuplicateAudit(ctx, err, cmd.DocumentType)
+		return domain.PartySnapshot{}, h.withDuplicateAudit(ctx, err, cmd.DocumentType, sealed.BlindIndex)
 	}
 	return party.Snapshot(), nil
 }

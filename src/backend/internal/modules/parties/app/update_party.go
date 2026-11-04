@@ -78,8 +78,8 @@ func (h *UpdatePartyHandler) Handle(ctx context.Context, cmd UpdatePartyCommand)
 		out = updated.Snapshot()
 		return nil
 	})
-	if err != nil && cmd.Document != nil {
-		return out, h.withDuplicateAudit(ctx, err, cmd.Document.Type)
+	if err != nil && sealed != nil {
+		return out, h.withDuplicateAudit(ctx, err, cmd.Document.Type, sealed.BlindIndex)
 	}
 	return out, err
 }
