@@ -11,6 +11,7 @@ import (
 )
 
 type Querier interface {
+	GetUserByID(ctx context.Context, arg GetUserByIDParams) (GetUserByIDRow, error)
 	GetUserBySubject(ctx context.Context, arg GetUserBySubjectParams) (GetUserBySubjectRow, error)
 	InsertUser(ctx context.Context, arg InsertUserParams) error
 	ListUsers(ctx context.Context, tenantID uuid.UUID) ([]ListUsersRow, error)

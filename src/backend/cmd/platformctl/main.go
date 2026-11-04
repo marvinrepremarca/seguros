@@ -52,7 +52,7 @@ const usage = `uso:
   platformctl tenant suspend --org <alias> --reason <motivo> --operator <persona>
   platformctl tenant reactivate --org <alias> --reason <motivo> --operator <persona>
   platformctl tenant set-plan --org <alias> --plan <plan> --reason <motivo> --operator <persona>
-  platformctl flag set --org <alias> --key <flag> --value on|off|clear --reason <motivo>
+  platformctl flag set --org <alias> --key <flag> --value on|off|clear --reason <motivo> [--operator <persona> --confirm-control <flag>]
   platformctl flag kill --key <flag> --reason <motivo> --operator <persona> [--confirm-control <flag>]
   platformctl flag restore --key <flag> --reason <motivo> --operator <persona>
   platformctl dead-letter list --org <alias>
@@ -149,7 +149,7 @@ func runFlag(ctx context.Context, d flagDeps, sub string, args []string) error {
 			return err
 		}
 		v, err := mod.PlatformSetFlag.Handle(reqctx.WithTenantID(ctx, info.ID),
-			fmapp.SetTenantFlagCommand{Key: flags.Key(*key), Enabled: enabled, Reason: *reason})
+			fmapp.SetTenantFlagCommand{Key: flags.Key(*key), Enabled: enabled, Reason: *reason, Operator: *operator, ConfirmControl: *confirm})
 		if err != nil {
 			return err
 		}

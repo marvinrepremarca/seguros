@@ -13,6 +13,34 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getUserByID = `-- name: GetUserByID :one
+SELECT id, idp_subject, display_name, left_organization_at FROM identity.users WHERE tenant_id = $1 AND id = $2
+`
+
+type GetUserByIDParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+type GetUserByIDRow struct {
+	ID                 uuid.UUID
+	IdpSubject         string
+	DisplayName        string
+	LeftOrganizationAt *time.Time
+}
+
+func (q *Queries) GetUserByID(ctx context.Context, arg GetUserByIDParams) (GetUserByIDRow, error) {
+	row := q.db.QueryRow(ctx, getUserByID, arg.TenantID, arg.ID)
+	var i GetUserByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.IdpSubject,
+		&i.DisplayName,
+		&i.LeftOrganizationAt,
+	)
+	return i, err
+}
+
 const getUserBySubject = `-- name: GetUserBySubject :one
 SELECT id, tenant_id, idp_subject, email, display_name, last_login_at, created_at, updated_at, version
 FROM identity.users

@@ -73,6 +73,10 @@ const globalScope = "global"
 // l1TTL acota cuánto tarda en verse un cambio si se pierde una invalidación (ARCHITECTURE.md §5).
 const l1TTL = 30 * time.Second
 
+// maxControlStaleness acota cuánto sirve el último valor de un flag de control con el store caído
+// (ADR 0012): pasado este plazo no se puede afirmar su estado y la operación se bloquea.
+const maxControlStaleness = 15 * time.Minute
+
 type l1Entry struct {
 	value   map[Key]bool
 	expires time.Time
@@ -119,7 +123,22 @@ func (e *Evaluator) Resolve(ctx context.Context, tenant kernel.TenantID, plan st
 	if err != nil {
 		return Resolution{Source: SourceError}, err
 	}
+	if def.Control && e.tooStale(tenant) {
+		return Resolution{Source: SourceError}, fmt.Errorf("flags: último valor de %q demasiado viejo", key)
+	}
 	return Evaluate(e.reg, state, plan, key), nil
+}
+
+func (e *Evaluator) tooStale(tenant kernel.TenantID) bool {
+	limit := e.clock.Now().Add(-maxControlStaleness)
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for _, scope := range []string{globalScope, scopeOf(tenant)} {
+		if entry, ok := e.l1[scope]; ok && entry.expires.Before(limit) {
+			return true
+		}
+	}
+	return false
 }
 
 // Snapshot evalúa todos los flags para un tenant y plan.

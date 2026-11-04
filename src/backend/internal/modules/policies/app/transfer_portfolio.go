@@ -4,12 +4,10 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"slices"
 	"time"
 
 	"github.com/google/uuid"
 
-	identity "github.com/marvinrepremarca/seguros/internal/modules/identity/contracts"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies/contracts"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies/domain"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
@@ -42,11 +40,11 @@ func (s *Service) TransferPortfolio(ctx context.Context, from, to uuid.UUID, rea
 	if err := s.checkActiveAgent(ctx, to); err != nil {
 		return err
 	}
-	users, err := s.Users.Agents(ctx)
+	_, found, err := s.Users.Agent(ctx, from)
 	if err != nil {
-		return fmt.Errorf("policies: consultando asesores: %w", err)
+		return fmt.Errorf("policies: consultando asesor: %w", err)
 	}
-	if !slices.ContainsFunc(users, func(u identity.User) bool { return u.ID == from }) {
+	if !found {
 		return domain.ErrInvalidAgent
 	}
 	requestID, err := uuid.NewV7()

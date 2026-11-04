@@ -25,4 +25,6 @@ type User struct {
 // al menos una vez.
 type Directory interface {
 	Agents(ctx context.Context) ([]User, error)
+	// Agent busca un usuario del tenant; false si no es de la agencia.
+	Agent(ctx context.Context, id uuid.UUID) (User, bool, error)
 }

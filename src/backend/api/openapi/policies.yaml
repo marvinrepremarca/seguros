@@ -12,7 +12,7 @@ paths:
   /api/v1/policies/policies:
     get:
       operationId: listPolicies
-      x-permission: authenticated
+      x-permission: "policies.policy.read|policies.policy.read-own"
       parameters:
         - { name: status, in: query, schema: { $ref: "#/components/schemas/PolicyStatus" } }
         - { name: cursor, in: query, schema: { type: string, maxLength: 64 } }
@@ -46,7 +46,7 @@ paths:
     get:
       operationId: listAgents
       summary: Usuarios de la agencia. Solo a los activos se les asigna cartera; requiere manage o assign.
-      x-permission: authenticated
+      x-permission: "policies.policy.manage|policies.policy.assign"
       responses:
         "200":
           description: Asesores.
@@ -108,7 +108,7 @@ paths:
       - { name: policyId, in: path, required: true, schema: { type: string, format: uuid } }
     get:
       operationId: getPolicy
-      x-permission: authenticated
+      x-permission: "policies.policy.read|policies.policy.read-own"
       responses:
         "200": { $ref: "#/components/responses/Policy" }
         "401": { $ref: "#/components/responses/Problem" }

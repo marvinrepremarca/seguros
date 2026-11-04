@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 
+	"github.com/google/uuid"
+
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/contracts"
 )
 
@@ -33,4 +35,17 @@ func (d *AgentDirectory) Agents(ctx context.Context) ([]contracts.User, error) {
 		out = append(out, contracts.User{ID: u.ID, DisplayName: u.DisplayName, Active: active[u.Subject] && !u.LeftOrganization})
 	}
 	return out, nil
+}
+
+// Agent implementa contracts.Directory sin listar los usuarios del tenant.
+func (d *AgentDirectory) Agent(ctx context.Context, id uuid.UUID) (contracts.User, bool, error) {
+	u, ok, err := d.Users.TenantUser(ctx, id)
+	if err != nil || !ok {
+		return contracts.User{}, false, err
+	}
+	active, err := d.Active.ActiveAgentSubjects(ctx)
+	if err != nil {
+		return contracts.User{}, false, errors.Join(contracts.ErrDirectoryUnavailable, err)
+	}
+	return contracts.User{ID: u.ID, DisplayName: u.DisplayName, Active: active[u.Subject] && !u.LeftOrganization}, true, nil
 }

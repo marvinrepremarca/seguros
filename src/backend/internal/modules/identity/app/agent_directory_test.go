@@ -26,6 +26,28 @@ func (a activeAgents) ActiveAgentSubjects(context.Context) (map[string]bool, err
 	return a.subjects, a.err
 }
 
+func (l localUsers) TenantUser(_ context.Context, id uuid.UUID) (app.TenantUser, bool, error) {
+	for _, u := range l {
+		if u.ID == id {
+			return u, true, nil
+		}
+	}
+	return app.TenantUser{}, false, nil
+}
+
+func TestAgentLookup(t *testing.T) {
+	t.Parallel()
+	id := uuid.New()
+	d := &app.AgentDirectory{Users: localUsers{{ID: id, Subject: "kc-a", DisplayName: "Ana"}}, Active: activeAgents{subjects: map[string]bool{"kc-a": true}}}
+	u, ok, err := d.Agent(context.Background(), id)
+	require.NoError(t, err)
+	assert.True(t, ok)
+	assert.True(t, u.Active)
+	_, ok, err = d.Agent(context.Background(), uuid.New())
+	require.NoError(t, err)
+	assert.False(t, ok, "un usuario de otro tenant no aparece")
+}
+
 func TestAgentDirectory(t *testing.T) {
 	t.Parallel()
 	active, gone := uuid.New(), uuid.New()

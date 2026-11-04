@@ -63,6 +63,7 @@ type TenantUser struct {
 // TenantUsers lista los usuarios locales del tenant del contexto (bajo RLS).
 type TenantUsers interface {
 	TenantUsers(ctx context.Context) ([]TenantUser, error)
+	TenantUser(ctx context.Context, id uuid.UUID) (TenantUser, bool, error)
 }
 
 // ActiveAgents devuelve los sujetos del proveedor habilitados y con rol de asesor.

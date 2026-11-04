@@ -396,3 +396,24 @@ func TestKillOfControlFlagRequiresConfirmation(t *testing.T) {
 
 	require.NoError(t, h.Handle(ctx, app.SetGlobalSwitchCommand{Key: "module.compliance", Reason: "resuelto", Operator: "ana.ops"}), "restaurar enciende el control: no pide confirmación")
 }
+
+func TestTurningOffAControlFlagForATenantNeedsConfirmation(t *testing.T) {
+	t.Parallel()
+	reg, err := flags.ParseRegistry([]byte("flags:\n  - {key: module.compliance, kind: module, description: d, owner: x, control: true}\n"))
+	require.NoError(t, err)
+	store := &fakeStore{overrides: map[kernel.TenantID]map[flags.Key]app.Override{}, global: map[flags.Key]bool{}}
+	tenant := kernel.TenantID(uuid.Must(uuid.NewV7()))
+	clock := kernel.NewFakeClock(time.Date(2026, 11, 3, 12, 0, 0, 0, time.UTC))
+	deps := app.NewDeps(reg, store, fakeTenants{plans: map[kernel.TenantID]string{tenant: "basico"}}, &fakeInvalidator{}, clock, slog.New(slog.DiscardHandler))
+	h := app.NewSetTenantFlagHandler(deps, app.ActorPlatform)
+	ctx := platform(tenant)
+	cmd := app.SetTenantFlagCommand{Key: "module.compliance", Enabled: off(), Reason: "piloto sin SARLAFT"}
+	_, err = h.Handle(ctx, cmd)
+	require.ErrorIs(t, err, domain.ErrControlConfirmationRequired)
+	cmd.ConfirmControl = "module.compliance"
+	_, err = h.Handle(ctx, cmd)
+	require.ErrorIs(t, err, domain.ErrInvalidOperator)
+	cmd.Operator = "ana.ops"
+	_, err = h.Handle(ctx, cmd)
+	require.NoError(t, err)
+}

@@ -106,6 +106,15 @@ type users struct{ list []identity.User }
 
 func (u *users) Agents(context.Context) ([]identity.User, error) { return u.list, nil }
 
+func (u *users) Agent(_ context.Context, id uuid.UUID) (identity.User, bool, error) {
+	for _, x := range u.list {
+		if x.ID == id {
+			return x, true, nil
+		}
+	}
+	return identity.User{}, false, nil
+}
+
 type approvedKyc struct{ ok bool }
 
 func (k *approvedKyc) IsApproved(context.Context, uuid.UUID) (bool, error) { return k.ok, nil }
@@ -1271,4 +1280,32 @@ func TestRebuildScopesRepairsTheProjection(t *testing.T) {
 	}
 	deliverScopeEvents(t, w.tenant)
 	assert.Equal(t, http.StatusOK, e.do(t, agent, http.MethodGet, path, nil).status)
+}
+
+// Un bien guardado con otra versión del esquema no se valida contra la vigente.
+func TestEndorsementRejectsItemOnAnotherSchemaVersion(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	w := e.world(t)
+	p := e.issued(t, w)
+	id := p.str(t, "id")
+	req := e.do(t, w.ops, http.MethodPost, at(id, p.version(t), "endorsements"), map[string]any{"type": "item_change", "description": "Cambio de placa", "effectiveDate": "2026-06-01"})
+	require.Equal(t, http.StatusCreated, req.status, req.body)
+	list, ok := req.body["endorsements"].([]any)
+	require.True(t, ok)
+	endorsement, ok := list[0].(map[string]any)
+	require.True(t, ok)
+	items, ok := req.body["items"].([]any)
+	require.True(t, ok)
+	item, ok := items[0].(map[string]any)
+	require.True(t, ok)
+	superMu.Lock()
+	_, err := super.Exec(context.Background(), `UPDATE policies.insured_items SET risk_schema_version = 99 WHERE id = $1`, uuid.MustParse(fmt.Sprint(item["id"])))
+	superMu.Unlock()
+	require.NoError(t, err)
+	r := e.do(t, w.ops, http.MethodPost, fmt.Sprintf("%s/%s/endorsements/%s/issue?version=%d", base, id, endorsement["id"], req.version(t)), map[string]any{
+		"number": "END-1", "netPremiumDelta": "0", "taxesDelta": "0",
+		"itemChanges": []any{map[string]any{"itemId": item["id"], "riskData": map[string]any{"plate": "XYZ987", "brand": "Mazda", "model": "3", "year": 2024}}},
+	})
+	assert.Equal(t, "policies.endorsement.risk_schema_version", r.body["type"])
 }

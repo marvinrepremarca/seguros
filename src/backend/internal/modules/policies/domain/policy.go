@@ -32,6 +32,7 @@ var (
 	ErrInvalidHolder           = kernel.NewError(kernel.KindValidation, "policies.policy.invalid_holder", "debe tener exactamente un tomador")
 	ErrInsuredRequired         = kernel.NewError(kernel.KindValidation, "policies.policy.insured_required", "debe tener al menos un asegurado")
 	ErrTooManyParties          = kernel.NewError(kernel.KindValidation, "policies.policy.too_many_parties", "la póliza supera el máximo de partes")
+	ErrRiskSchemaVersion       = kernel.NewError(kernel.KindValidation, "policies.endorsement.risk_schema_version", "el bien usa otra versión del esquema de riesgo")
 	ErrInvalidParty            = kernel.NewError(kernel.KindValidation, "policies.policy.invalid_party", "parte inválida o repetida")
 	ErrInvalidCoverage         = kernel.NewError(kernel.KindValidation, "policies.policy.invalid_coverage", "cobertura inválida")
 	ErrInvalidItem             = kernel.NewError(kernel.KindValidation, "policies.policy.invalid_item", "bien asegurado inválido")

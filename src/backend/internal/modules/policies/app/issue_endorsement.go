@@ -66,6 +66,11 @@ func (s *Service) IssueEndorsement(ctx context.Context, cmd IssueEndorsementComm
 				if item.ID != c.ItemID {
 					continue
 				}
+				// Los datos se validan contra el esquema vigente: si el bien quedó en otra versión, no se
+				// mezclan hasta tener una regla de migración.
+				if version, ok := s.Schemas.Current(item.RiskSchemaKey); !ok || version != item.RiskSchemaVersion {
+					return nil, domain.ErrRiskSchemaVersion
+				}
 				if err := s.Schemas.Validate(item.RiskSchemaKey, c.RiskData); err != nil {
 					return nil, err
 				}

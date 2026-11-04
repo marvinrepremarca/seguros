@@ -22,3 +22,6 @@ SELECT id, idp_subject, display_name, left_organization_at FROM identity.users W
 UPDATE identity.users
 SET left_organization_at = @left_at, updated_at = @left_at, version = version + 1
 WHERE tenant_id = @tenant_id AND id = @id AND left_organization_at IS NULL;
+
+-- name: GetUserByID :one
+SELECT id, idp_subject, display_name, left_organization_at FROM identity.users WHERE tenant_id = @tenant_id AND id = @id;

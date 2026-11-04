@@ -2,6 +2,7 @@ package postgres
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
@@ -50,4 +51,27 @@ func (s *Store) MarkLeftOrganization(ctx context.Context, tenant kernel.TenantID
 		}
 		return nil
 	})
+}
+
+// TenantUser implementa app.TenantUsers.
+func (s *Store) TenantUser(ctx context.Context, id uuid.UUID) (app.TenantUser, bool, error) {
+	tenant, ok := reqctx.TenantID(ctx)
+	if !ok {
+		return app.TenantUser{}, false, db.ErrNoTenant
+	}
+	var out app.TenantUser
+	found := false
+	err := s.db.WithTenantTx(ctx, func(tx pgx.Tx) error {
+		r, err := identitysqlc.New(tx).GetUserByID(ctx, identitysqlc.GetUserByIDParams{TenantID: uuid.UUID(tenant), ID: id})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil
+		}
+		if err != nil {
+			return fmt.Errorf("identity: leyendo usuario: %w", err)
+		}
+		found = true
+		out = app.TenantUser{ID: r.ID, Subject: r.IdpSubject, DisplayName: r.DisplayName, LeftOrganization: r.LeftOrganizationAt != nil}
+		return nil
+	})
+	return out, found, err
 }

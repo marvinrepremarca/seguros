@@ -31,15 +31,11 @@ func (h *AssignResponsibleHandler) Handle(ctx context.Context, cmd AssignRespons
 	if err != nil {
 		return domain.PartySnapshot{}, err
 	}
-	agents, err := h.Agents.Agents(ctx)
+	agent, ok, err := h.Agents.Agent(ctx, cmd.AgentID)
 	if err != nil {
-		return domain.PartySnapshot{}, fmt.Errorf("parties: consultando asesores: %w", err)
+		return domain.PartySnapshot{}, fmt.Errorf("parties: consultando asesor: %w", err)
 	}
-	active := false
-	for _, a := range agents {
-		active = active || (a.ID == cmd.AgentID && a.Active)
-	}
-	if !active {
+	if !ok || !agent.Active {
 		return domain.PartySnapshot{}, domain.ErrInvalidAgent
 	}
 	var out domain.PartySnapshot

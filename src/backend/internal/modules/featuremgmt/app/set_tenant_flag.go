@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt/contracts"
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt/domain"
@@ -18,6 +19,9 @@ type SetTenantFlagCommand struct {
 	Key     flags.Key
 	Enabled *bool
 	Reason  string
+	// Operator y ConfirmControl son obligatorios para apagar un flag de control (ADR 0012).
+	Operator       string
+	ConfirmControl string
 }
 
 // SetTenantFlagHandler cambia overrides de un tenant con un actor fijo: la API construye uno de
@@ -52,6 +56,15 @@ func (s *SetTenantFlagHandler) Handle(ctx context.Context, cmd SetTenantFlagComm
 	}
 	if def.Kind == flags.KindOps {
 		return FlagView{}, domain.ErrGlobalOnly
+	}
+	if def.Control && cmd.Enabled != nil && !*cmd.Enabled {
+		if cmd.ConfirmControl != string(cmd.Key) {
+			return FlagView{}, domain.ErrControlConfirmationRequired
+		}
+		if operator := strings.TrimSpace(cmd.Operator); operator == "" || len(operator) > 120 {
+			return FlagView{}, domain.ErrInvalidOperator
+		}
+		s.logger.InfoContext(ctx, "flag de control apagado para un tenant", "flag", string(cmd.Key), "operator", strings.TrimSpace(cmd.Operator))
 	}
 	reason, err := domain.NewReason(cmd.Reason)
 	if err != nil {

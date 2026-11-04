@@ -127,14 +127,12 @@ func (d Deps) checkAgent(ctx context.Context, agent uuid.NullUUID) error {
 
 // checkActiveAgent exige que el usuario sea del tenant y siga activo como asesor.
 func (d Deps) checkActiveAgent(ctx context.Context, agent uuid.UUID) error {
-	users, err := d.Users.Agents(ctx)
+	u, ok, err := d.Users.Agent(ctx, agent)
 	if err != nil {
-		return fmt.Errorf("policies: consultando asesores: %w", err)
+		return fmt.Errorf("policies: consultando asesor: %w", err)
 	}
-	for _, u := range users {
-		if u.ID == agent && u.Active {
-			return nil
-		}
+	if !ok || !u.Active {
+		return domain.ErrInvalidAgent
 	}
-	return domain.ErrInvalidAgent
+	return nil
 }

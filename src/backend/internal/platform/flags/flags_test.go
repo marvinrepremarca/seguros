@@ -273,6 +273,31 @@ func TestFailClosedAndLastKnownValue(t *testing.T) {
 	assert.False(t, eval.IsEnabled(tenantCtx(b, "basico"), "module.billing"), "sin valor conocido → apagado aunque el plan lo incluya")
 }
 
+func TestControlFlagLastValueHasAMaximumAge(t *testing.T) {
+	t.Parallel()
+	reg, err := flags.LoadRegistry()
+	require.NoError(t, err)
+	store := &fakeStore{overrides: map[kernel.TenantID]map[flags.Key]bool{}}
+	clock := kernel.NewFakeClock(time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC))
+	eval := flags.NewEvaluator(reg, store, nil, clock, slog.New(slog.DiscardHandler))
+	a := newTenant()
+	store.set(a, flags.ComplianceModule, true)
+	res, err := eval.Resolve(context.Background(), a, "empresarial", flags.ComplianceModule)
+	require.NoError(t, err)
+	require.True(t, res.Enabled)
+
+	store.fail(errors.New("bd caída"))
+	clock.Advance(10 * time.Minute)
+	res, err = eval.Resolve(context.Background(), a, "empresarial", flags.ComplianceModule)
+	require.NoError(t, err)
+	assert.True(t, res.Enabled, "dentro del plazo usa el último valor")
+
+	clock.Advance(10 * time.Minute)
+	res, err = eval.Resolve(context.Background(), a, "empresarial", flags.ComplianceModule)
+	require.Error(t, err, "pasado el plazo no se puede afirmar el estado del control")
+	assert.Equal(t, flags.SourceError, res.Source)
+}
+
 func TestEvaluationWithoutTenant(t *testing.T) {
 	t.Parallel()
 	eval, _, _ := setup(t)
