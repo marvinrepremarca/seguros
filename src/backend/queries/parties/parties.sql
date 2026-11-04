@@ -30,9 +30,9 @@ WHERE p.tenant_id = @tenant_id
   AND (sqlc.narg('name_pattern')::text IS NULL OR p.name ILIKE sqlc.narg('name_pattern')::text ESCAPE '\')
   AND (sqlc.narg('visible_to')::uuid IS NULL
        OR p.responsible_agent_id = sqlc.narg('visible_to')::uuid
-       OR EXISTS (SELECT 1 FROM parties.policy_scopes s
-                  WHERE s.tenant_id = p.tenant_id AND s.agent_id = sqlc.narg('visible_to')::uuid
-                    AND p.id = ANY (s.party_ids)))
+       -- Sin correlación: la subconsulta corre una vez, no una por cliente recorrido.
+       OR p.id IN (SELECT unnest(s.party_ids) FROM parties.policy_scopes s
+                   WHERE s.tenant_id = @tenant_id AND s.agent_id = sqlc.narg('visible_to')::uuid))
 ORDER BY p.id DESC
 LIMIT @page_size;
 

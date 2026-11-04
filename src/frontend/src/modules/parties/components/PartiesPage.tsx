@@ -1,14 +1,37 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import type { ColumnDef } from "@tanstack/react-table";
 import { useState } from "react";
 
 import { usePermission, permissions } from "@/shared/lib/session";
 import { Button } from "@/shared/ui/button";
+import { DataTable } from "@/shared/ui/DataTable";
 import { Field, Input, QueryState } from "@/shared/ui/field";
 
-import { listParties } from "../api/generated/parties";
+import { listParties, type Party } from "../api/generated/parties";
 
 const KIND_LABELS = { person: "Persona", organization: "Organización" } as const;
+
+const COLUMNS = [
+  {
+    header: "Nombre",
+    cell: ({ row }) => (
+      <Link
+        to="/clientes/$partyId"
+        params={{ partyId: row.original.id }}
+        className="underline underline-offset-2"
+      >
+        {row.original.name}
+      </Link>
+    ),
+  },
+  { header: "Tipo", cell: ({ row }) => KIND_LABELS[row.original.kind] },
+  {
+    header: "Documento",
+    cell: ({ row }) => `${row.original.documentType} •••• ${row.original.documentLast4}`,
+  },
+  { header: "Ciudad", cell: ({ row }) => row.original.city ?? "—" },
+] satisfies ColumnDef<Party>[];
 
 export function PartiesPage() {
   const canCreate = usePermission(permissions.partyCreate);
@@ -63,47 +86,12 @@ export function PartiesPage() {
         emptyMessage="No hay clientes para mostrar."
       />
       {items.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <caption className="sr-only">Clientes de la agencia</caption>
-            <thead>
-              <tr className="border-b">
-                <th scope="col" className="py-2 pr-4">
-                  Nombre
-                </th>
-                <th scope="col" className="py-2 pr-4">
-                  Tipo
-                </th>
-                <th scope="col" className="py-2 pr-4">
-                  Documento
-                </th>
-                <th scope="col" className="py-2">
-                  Ciudad
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((p) => (
-                <tr key={p.id} className="border-b">
-                  <td className="py-2 pr-4">
-                    <Link
-                      to="/clientes/$partyId"
-                      params={{ partyId: p.id }}
-                      className="underline underline-offset-2"
-                    >
-                      {p.name}
-                    </Link>
-                  </td>
-                  <td className="py-2 pr-4">{KIND_LABELS[p.kind]}</td>
-                  <td className="py-2 pr-4">
-                    {p.documentType} •••• {p.documentLast4}
-                  </td>
-                  <td className="py-2">{p.city ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          caption="Clientes de la agencia"
+          columns={COLUMNS}
+          data={items}
+          rowKey={(p) => p.id}
+        />
       )}
       {query.hasNextPage && (
         <Button

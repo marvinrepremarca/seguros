@@ -1,13 +1,15 @@
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import type { ColumnDef } from "@tanstack/react-table";
 import { useState } from "react";
 
 import { formatDate, formatMoney } from "@/shared/lib/format";
 import { permissions, usePermission } from "@/shared/lib/session";
 import { Button } from "@/shared/ui/button";
+import { DataTable } from "@/shared/ui/DataTable";
 import { Field, QueryState, Select } from "@/shared/ui/field";
 
-import { listPolicies, PolicyStatus } from "../api/generated/policies";
+import { listPolicies, PolicyStatus, type PolicySummary } from "../api/generated/policies";
 import type { PolicyDeps } from "../deps";
 import { STATUS_LABELS } from "../labels";
 
@@ -35,6 +37,33 @@ export function PoliciesPage({ deps }: { deps: Pick<PolicyDeps, "insurers"> }) {
   });
   const items = query.data?.pages.flatMap((p) => p.items) ?? [];
   const insurerName = (id: string) => insurers.data?.find((i) => i.id === id)?.name ?? "—";
+
+  const columns = [
+    {
+      header: "Número",
+      cell: ({ row }) => (
+        <Link
+          to="/polizas/$policyId"
+          params={{ policyId: row.original.id }}
+          className="underline underline-offset-2"
+        >
+          {row.original.policyNumber ?? "Sin número"}
+        </Link>
+      ),
+    },
+    { header: "Tomador", cell: ({ row }) => row.original.holderName },
+    { header: "Aseguradora", cell: ({ row }) => insurerName(row.original.insurerId) },
+    { header: "Estado", cell: ({ row }) => STATUS_LABELS[row.original.status] },
+    {
+      header: "Prima neta",
+      cell: ({ row }) => formatMoney(row.original.netPremium, row.original.currency),
+    },
+    {
+      header: "Vigencia",
+      cell: ({ row }) =>
+        `${formatDate(row.original.effectiveFrom)} a ${formatDate(row.original.effectiveTo)}`,
+    },
+  ] satisfies ColumnDef<PolicySummary>[];
 
   return (
     <section aria-labelledby="policies-title" className="space-y-4">
@@ -75,55 +104,12 @@ export function PoliciesPage({ deps }: { deps: Pick<PolicyDeps, "insurers"> }) {
         emptyMessage="No hay pólizas para mostrar."
       />
       {items.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <caption className="sr-only">Pólizas de la agencia</caption>
-            <thead>
-              <tr className="border-b">
-                <th scope="col" className="py-2 pr-4">
-                  Número
-                </th>
-                <th scope="col" className="py-2 pr-4">
-                  Tomador
-                </th>
-                <th scope="col" className="py-2 pr-4">
-                  Aseguradora
-                </th>
-                <th scope="col" className="py-2 pr-4">
-                  Estado
-                </th>
-                <th scope="col" className="py-2 pr-4">
-                  Prima neta
-                </th>
-                <th scope="col" className="py-2">
-                  Vigencia
-                </th>
-              </tr>
-            </thead>
-            <tbody>
-              {items.map((p) => (
-                <tr key={p.id} className="border-b">
-                  <td className="py-2 pr-4">
-                    <Link
-                      to="/polizas/$policyId"
-                      params={{ policyId: p.id }}
-                      className="underline underline-offset-2"
-                    >
-                      {p.policyNumber ?? "Sin número"}
-                    </Link>
-                  </td>
-                  <td className="py-2 pr-4">{p.holderName}</td>
-                  <td className="py-2 pr-4">{insurerName(p.insurerId)}</td>
-                  <td className="py-2 pr-4">{STATUS_LABELS[p.status]}</td>
-                  <td className="py-2 pr-4">{formatMoney(p.netPremium, p.currency)}</td>
-                  <td className="py-2">
-                    {formatDate(p.effectiveFrom)} a {formatDate(p.effectiveTo)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <DataTable
+          caption="Pólizas de la agencia"
+          columns={columns}
+          data={items}
+          rowKey={(p) => p.id}
+        />
       )}
       {query.hasNextPage && (
         <Button

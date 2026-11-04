@@ -26,7 +26,7 @@ func AllRoles() []Role {
 
 // MFARoles son los roles que exigen MFA (rules/security.md §Autenticación).
 func MFARoles() []Role {
-	return []Role{RoleTenantAdmin, RoleManager, RoleAccounting, RoleComplianceOfficer}
+	return []Role{RoleTenantAdmin, RoleManager, RoleOperations, RoleAccounting, RoleComplianceOfficer}
 }
 
 // Permission es un permiso fino `<modulo>.<recurso>.<accion>`.

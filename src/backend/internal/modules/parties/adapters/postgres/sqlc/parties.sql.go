@@ -328,9 +328,9 @@ WHERE p.tenant_id = $1
   AND ($3::text IS NULL OR p.name ILIKE $3::text ESCAPE '\')
   AND ($4::uuid IS NULL
        OR p.responsible_agent_id = $4::uuid
-       OR EXISTS (SELECT 1 FROM parties.policy_scopes s
-                  WHERE s.tenant_id = p.tenant_id AND s.agent_id = $4::uuid
-                    AND p.id = ANY (s.party_ids)))
+       -- Sin correlación: la subconsulta corre una vez, no una por cliente recorrido.
+       OR p.id IN (SELECT unnest(s.party_ids) FROM parties.policy_scopes s
+                   WHERE s.tenant_id = $1 AND s.agent_id = $4::uuid))
 ORDER BY p.id DESC
 LIMIT $5
 `

@@ -2,6 +2,18 @@
 // añaden los documentos colombianos. El backend valida siempre.
 import { z } from "zod";
 
+import {
+  CreatePartyBody,
+  createPartyBodyAddressMax,
+  createPartyBodyCityMax,
+  createPartyBodyNameMax,
+  createPartyBodyNameMin,
+  createPartyBodyPhoneMax,
+  registerPartyConsentBodyPurposeMax,
+  registerPartyConsentBodyPurposeMin,
+  registerPartyConsentBodyTextVersionMax,
+} from "./api/generated/parties.zod";
+
 import { isValidCC, isValidNIT, normalizeDocument } from "@/shared/lib/validators";
 
 export const DOCUMENT_LABELS = {
@@ -26,17 +38,25 @@ export function isValidDocument(type: DocumentTypeCode, value: string): boolean 
   }
 }
 
+const name = z
+  .string()
+  .trim()
+  .min(createPartyBodyNameMin, `Mínimo ${createPartyBodyNameMin} caracteres`)
+  .max(createPartyBodyNameMax, `Máximo ${createPartyBodyNameMax} caracteres`);
+
 const contact = {
   email: z.union([z.literal(""), z.email("Correo inválido")]),
-  phone: z.string().max(30, "Máximo 30 caracteres"),
-  address: z.string().max(200, "Máximo 200 caracteres"),
-  city: z.string().max(100, "Máximo 100 caracteres"),
+  phone: z.string().max(createPartyBodyPhoneMax, `Máximo ${createPartyBodyPhoneMax} caracteres`),
+  address: z
+    .string()
+    .max(createPartyBodyAddressMax, `Máximo ${createPartyBodyAddressMax} caracteres`),
+  city: z.string().max(createPartyBodyCityMax, `Máximo ${createPartyBodyCityMax} caracteres`),
 };
 
 export const partyFormSchema = z
   .object({
-    kind: z.enum(["person", "organization"]),
-    name: z.string().trim().min(2, "Mínimo 2 caracteres").max(200, "Máximo 200 caracteres"),
+    kind: CreatePartyBody.shape.kind,
+    name,
     documentType: z.enum(["CC", "CE", "PPT", "NIT"]),
     documentNumber: z.string().min(1, "Obligatorio"),
     ...contact,
@@ -61,7 +81,7 @@ export const partyFormSchema = z
 export type PartyFormValues = z.infer<typeof partyFormSchema>;
 
 export const partyEditSchema = z.object({
-  name: z.string().trim().min(2, "Mínimo 2 caracteres").max(200, "Máximo 200 caracteres"),
+  name,
   ...contact,
 });
 
@@ -69,8 +89,25 @@ export type PartyEditValues = z.infer<typeof partyEditSchema>;
 
 export const consentFormSchema = z.object({
   status: z.enum(["granted", "revoked"]),
-  purpose: z.string().trim().min(3, "Mínimo 3 caracteres").max(200, "Máximo 200 caracteres"),
-  textVersion: z.string().trim().min(1, "Obligatorio").max(40, "Máximo 40 caracteres"),
+  purpose: z
+    .string()
+    .trim()
+    .min(
+      registerPartyConsentBodyPurposeMin,
+      `Mínimo ${registerPartyConsentBodyPurposeMin} caracteres`,
+    )
+    .max(
+      registerPartyConsentBodyPurposeMax,
+      `Máximo ${registerPartyConsentBodyPurposeMax} caracteres`,
+    ),
+  textVersion: z
+    .string()
+    .trim()
+    .min(1, "Obligatorio")
+    .max(
+      registerPartyConsentBodyTextVersionMax,
+      `Máximo ${registerPartyConsentBodyTextVersionMax} caracteres`,
+    ),
   consentDate: z.iso.date("Fecha inválida"),
 });
 

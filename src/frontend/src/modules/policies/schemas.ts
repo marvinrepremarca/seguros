@@ -1,6 +1,15 @@
 // Validación de formularios de pólizas. Los montos se manejan como texto decimal, nunca como número.
 import { z } from "zod";
 
+import {
+  CreatePolicyBody,
+  createPolicyBodyCoveragesItemDeductibleMax,
+  createPolicyBodyCoveragesItemNameMax,
+  createPolicyBodyCoveragesItemNameMin,
+  createPolicyBodyItemsItemDescriptionMax,
+  createPolicyBodyItemsItemDescriptionMin,
+} from "./api/generated/policies.zod";
+
 const AMOUNT = /^\d{1,15}(\.\d{1,4})?$/;
 const SIGNED_AMOUNT = /^-?\d{1,15}(\.\d{1,4})?$/;
 
@@ -25,13 +34,7 @@ export const policyFormSchema = z
     taxes: amount,
     effectiveFrom: date,
     effectiveTo: date,
-    paymentForm: z.enum([
-      "single_payment",
-      "monthly_installments",
-      "quarterly_installments",
-      "automatic_debit",
-      "premium_financing",
-    ]),
+    paymentForm: CreatePolicyBody.shape.paymentForm,
     holderId: z.string().min(1, "Selecciona el tomador"),
     parties: z.array(
       z.object({
@@ -41,9 +44,24 @@ export const policyFormSchema = z
     ),
     coverages: z.array(
       z.object({
-        name: z.string().trim().min(2, "Mínimo 2 caracteres").max(200, "Máximo 200 caracteres"),
+        name: z
+          .string()
+          .trim()
+          .min(
+            createPolicyBodyCoveragesItemNameMin,
+            `Mínimo ${createPolicyBodyCoveragesItemNameMin} caracteres`,
+          )
+          .max(
+            createPolicyBodyCoveragesItemNameMax,
+            `Máximo ${createPolicyBodyCoveragesItemNameMax} caracteres`,
+          ),
         sumInsured: amount,
-        deductible: z.string().max(200, "Máximo 200 caracteres"),
+        deductible: z
+          .string()
+          .max(
+            createPolicyBodyCoveragesItemDeductibleMax,
+            `Máximo ${createPolicyBodyCoveragesItemDeductibleMax} caracteres`,
+          ),
       }),
     ),
     items: z.array(
@@ -51,8 +69,14 @@ export const policyFormSchema = z
         description: z
           .string()
           .trim()
-          .min(2, "Mínimo 2 caracteres")
-          .max(200, "Máximo 200 caracteres"),
+          .min(
+            createPolicyBodyItemsItemDescriptionMin,
+            `Mínimo ${createPolicyBodyItemsItemDescriptionMin} caracteres`,
+          )
+          .max(
+            createPolicyBodyItemsItemDescriptionMax,
+            `Máximo ${createPolicyBodyItemsItemDescriptionMax} caracteres`,
+          ),
         risk: z.record(z.string(), z.string()),
       }),
     ),

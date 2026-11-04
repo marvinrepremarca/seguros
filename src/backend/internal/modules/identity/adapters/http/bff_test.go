@@ -489,9 +489,9 @@ func TestSessionIsRevalidatedWithTheProvider(t *testing.T) {
 		}, http.StatusUnauthorized, nil},
 		{"pasa a un rol sin MFA nueva", func(e *env) {
 			c := claims()
-			c.Roles = []string{"Manager", "Operations"}
+			c.Roles = []string{"Manager", "Collections"}
 			e.op.SetClaims(c)
-		}, http.StatusOK, []string{"Manager", "Operations"}},
+		}, http.StatusOK, []string{"Collections", "Manager"}},
 		{"gana un rol que exige MFA: debe volver a entrar", func(e *env) {
 			c := claims()
 			c.Roles = []string{"Manager", "Accounting"}
