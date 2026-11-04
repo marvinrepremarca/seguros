@@ -46,6 +46,17 @@ type PartiesParty struct {
 	ResponsibleAgentID uuid.NullUUID
 }
 
+type PartiesPartyResponsibleHistory struct {
+	TenantID        uuid.UUID
+	PartyID         uuid.UUID
+	PartyVersion    int32
+	PreviousAgentID uuid.NullUUID
+	NewAgentID      uuid.UUID
+	Reason          string
+	ChangedBy       uuid.NullUUID
+	ChangedAt       time.Time
+}
+
 type PartiesPolicyScope struct {
 	TenantID      uuid.UUID
 	PolicyID      uuid.UUID

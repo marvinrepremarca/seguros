@@ -6,13 +6,16 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/keycloak"
 	"github.com/marvinrepremarca/seguros/internal/platform/config"
+	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 )
 
 func newServer(t *testing.T, users func(first int) (int, any)) *keycloak.Client {
@@ -32,7 +35,7 @@ func newServer(t *testing.T, users func(first int) (int, any)) *keycloak.Client 
 	})
 	srv := httptest.NewServer(mux)
 	t.Cleanup(srv.Close)
-	c, err := keycloak.New(config.Auth{Issuer: srv.URL + "/realms/r", DirectoryClientID: "d", DirectoryClientSecret: config.NewSecret("s")})
+	c, err := keycloak.New(config.Auth{Issuer: srv.URL + "/realms/r", DirectoryClientID: "d", DirectoryClientSecret: config.NewSecret("s")}, kernel.SystemClock{})
 	require.NoError(t, err)
 	return c
 }
@@ -65,6 +68,35 @@ func TestActiveAgentSubjectsFailsOnError(t *testing.T) {
 
 func TestNewRejectsURLWithoutRealm(t *testing.T) {
 	t.Parallel()
-	_, err := keycloak.New(config.Auth{Issuer: "https://id.example.test/otro"})
+	_, err := keycloak.New(config.Auth{Issuer: "https://id.example.test/otro"}, kernel.SystemClock{})
 	require.Error(t, err)
+}
+
+func TestActiveAgentSubjectsCachesBriefly(t *testing.T) {
+	t.Parallel()
+	var calls atomic.Int32
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /realms/r/protocol/openid-connect/token", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		assert.NoError(t, json.NewEncoder(w).Encode(map[string]any{"access_token": "tok", "token_type": "Bearer", "expires_in": 3600}))
+	})
+	mux.HandleFunc("GET /admin/realms/r/roles/SalesAgent/users", func(w http.ResponseWriter, _ *http.Request) {
+		calls.Add(1)
+		assert.NoError(t, json.NewEncoder(w).Encode([]map[string]any{{"id": "a", "enabled": true}}))
+	})
+	srv := httptest.NewServer(mux)
+	t.Cleanup(srv.Close)
+	clock := kernel.NewFakeClock(time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC))
+	c, err := keycloak.New(config.Auth{Issuer: srv.URL + "/realms/r", DirectoryClientID: "d", DirectoryClientSecret: config.NewSecret("s")}, clock)
+	require.NoError(t, err)
+
+	for range 3 {
+		_, err := c.ActiveAgentSubjects(t.Context())
+		require.NoError(t, err)
+	}
+	assert.Equal(t, int32(1), calls.Load())
+	clock.Advance(31 * time.Second)
+	_, err = c.ActiveAgentSubjects(t.Context())
+	require.NoError(t, err)
+	assert.Equal(t, int32(2), calls.Load())
 }

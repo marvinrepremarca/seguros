@@ -961,6 +961,12 @@ func TestPortfolioFollowsTheCurrentAssignment(t *testing.T) {
 	require.Equal(t, http.StatusOK, moved.status, moved.body)
 	assert.Equal(t, http.StatusNotFound, client(ana, clientID))
 	assert.Equal(t, http.StatusOK, client(beto, clientID))
+	var historyRows int
+	historyCtx := reqctx.WithTenantID(context.Background(), w.tenant)
+	require.NoError(t, database.WithTenantTx(historyCtx, func(tx pgx.Tx) error {
+		return tx.QueryRow(historyCtx, `SELECT count(*) FROM parties.party_responsible_history WHERE party_id = $1`, uuid.MustParse(clientID)).Scan(&historyRows)
+	}))
+	assert.Equal(t, 1, historyRows, "el cambio individual también queda en el historial")
 	assert.Len(t, auditDetails(t, w.tenant, "parties.party.responsible_changed"), 1)
 
 	// Cambio de asesor de una póliza: historial y acceso.
@@ -1060,4 +1066,19 @@ func TestPortfolioTransfer(t *testing.T) {
 	clients := auditDetails(t, w.tenant, "parties.portfolio.transferred")
 	require.Len(t, clients, 1)
 	assert.Equal(t, "1", clients[0]["clients"])
+
+	// El rastro es por cliente, con quien pidió el traspaso como autor (DECISIONS N11).
+	ctx := reqctx.WithTenantID(context.Background(), w.tenant)
+	var previous, changedBy uuid.NullUUID
+	require.NoError(t, database.WithTenantTx(ctx, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT previous_agent_id, changed_by FROM parties.party_responsible_history WHERE party_id = $1`, uuid.MustParse(own.str(t, "id"))).Scan(&previous, &changedBy)
+	}))
+	assert.Equal(t, fromID, previous.UUID.String())
+	assert.Equal(t, uuid.UUID(manager.UserID), changedBy.UUID)
+	require.NoError(t, database.WithTenantTx(ctx, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT changed_by FROM policies.policy_agent_history WHERE policy_id = $1 AND agent_id = $2`, uuid.MustParse(active.str(t, "id")), uuid.UUID(to.UserID)).Scan(&changedBy)
+	}))
+	assert.Equal(t, uuid.UUID(manager.UserID), changedBy.UUID)
+
+	assert.Equal(t, http.StatusForbidden, transfer(from, fromID, toID).status, "un asesor no traspasa carteras")
 }

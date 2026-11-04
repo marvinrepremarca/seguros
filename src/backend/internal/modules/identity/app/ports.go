@@ -56,6 +56,8 @@ type TenantUser struct {
 	ID          uuid.UUID
 	Subject     string
 	DisplayName string
+	// LeftOrganization: una revalidación detectó que salió de la organización del tenant.
+	LeftOrganization bool
 }
 
 // TenantUsers lista los usuarios locales del tenant del contexto (bajo RLS).

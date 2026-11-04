@@ -37,6 +37,12 @@ func TestAgentDirectory(t *testing.T) {
 	assert.Equal(t, []contracts.User{{ID: active, DisplayName: "Ana", Active: true}, {ID: gone, DisplayName: "Beto"}}, got,
 		"quien se fue sigue en la lista para traspasar su cartera; un activo de otro tenant no aparece")
 
+	left := localUsers{{ID: active, Subject: "kc-a", DisplayName: "Ana", LeftOrganization: true}}
+	d = &app.AgentDirectory{Users: left, Active: activeAgents{subjects: map[string]bool{"kc-a": true}}}
+	got, err = d.Agents(context.Background())
+	require.NoError(t, err)
+	assert.False(t, got[0].Active, "habilitada en el realm, pero ya no es de esta agencia")
+
 	d.Active = activeAgents{err: errors.New("keycloak caído")}
 	_, err = d.Agents(context.Background())
 	require.ErrorIs(t, err, contracts.ErrDirectoryUnavailable, "no se ofrece como activo a quien no se puede confirmar")

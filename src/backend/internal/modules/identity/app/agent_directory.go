@@ -30,7 +30,7 @@ func (d *AgentDirectory) Agents(ctx context.Context) ([]contracts.User, error) {
 	}
 	out := make([]contracts.User, 0, len(users))
 	for _, u := range users {
-		out = append(out, contracts.User{ID: u.ID, DisplayName: u.DisplayName, Active: active[u.Subject]})
+		out = append(out, contracts.User{ID: u.ID, DisplayName: u.DisplayName, Active: active[u.Subject] && !u.LeftOrganization})
 	}
 	return out, nil
 }

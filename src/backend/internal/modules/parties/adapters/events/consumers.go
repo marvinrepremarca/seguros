@@ -12,7 +12,9 @@ import (
 	partiessqlc "github.com/marvinrepremarca/seguros/internal/modules/parties/adapters/postgres/sqlc"
 	policies "github.com/marvinrepremarca/seguros/internal/modules/policies/contracts"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
+	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 	"github.com/marvinrepremarca/seguros/internal/platform/outbox"
+	"github.com/marvinrepremarca/seguros/internal/platform/reqctx"
 )
 
 // PortfolioTransfer pasa al asesor nuevo los clientes de los que era responsable el anterior
@@ -26,9 +28,12 @@ func PortfolioTransfer(recorder *audit.Recorder) outbox.Consumer {
 			if err := e.Decode(&ev); err != nil {
 				return err
 			}
+			// Quien pidió el traspaso es el autor en el historial y en la bitácora.
+			ctx = reqctx.WithUserID(ctx, kernel.UserID(ev.RequestedBy))
 			n, err := partiessqlc.New(tx).TransferResponsibleAgent(ctx, partiessqlc.TransferResponsibleAgentParams{
-				ToAgent: uuid.NullUUID{UUID: ev.ToAgentID, Valid: true}, UpdatedAt: e.OccurredAt, TenantID: uuid.UUID(e.TenantID),
-				FromAgent: uuid.NullUUID{UUID: ev.FromAgentID, Valid: true},
+				ToAgent: ev.ToAgentID, UpdatedAt: e.OccurredAt, TenantID: uuid.UUID(e.TenantID),
+				FromAgent: uuid.NullUUID{UUID: ev.FromAgentID, Valid: true}, Reason: ev.Reason,
+				Actor: uuid.NullUUID{UUID: ev.RequestedBy, Valid: true},
 			})
 			if err != nil {
 				return fmt.Errorf("parties: traspasando cartera: %w", err)

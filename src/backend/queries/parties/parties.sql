@@ -80,6 +80,15 @@ SET agent_id = EXCLUDED.agent_id, party_ids = EXCLUDED.party_ids,
 WHERE parties.policy_scopes.policy_version < EXCLUDED.policy_version;
 
 -- name: TransferResponsibleAgent :execrows
-UPDATE parties.parties
-SET responsible_agent_id = @to_agent, updated_at = @updated_at, version = version + 1
-WHERE tenant_id = @tenant_id AND responsible_agent_id = @from_agent;
+WITH moved AS (
+    UPDATE parties.parties
+    SET responsible_agent_id = @to_agent, updated_at = @updated_at, updated_by = @actor, version = version + 1
+    WHERE tenant_id = @tenant_id AND responsible_agent_id = @from_agent
+    RETURNING id, version
+)
+INSERT INTO parties.party_responsible_history (tenant_id, party_id, party_version, previous_agent_id, new_agent_id, reason, changed_by, changed_at)
+SELECT @tenant_id, id, version, @from_agent, @to_agent, @reason, @actor, @updated_at FROM moved;
+
+-- name: InsertResponsibleHistory :exec
+INSERT INTO parties.party_responsible_history (tenant_id, party_id, party_version, previous_agent_id, new_agent_id, reason, changed_by, changed_at)
+VALUES (@tenant_id, @party_id, @party_version, @previous_agent_id, @new_agent_id, @reason, @actor, @changed_at);

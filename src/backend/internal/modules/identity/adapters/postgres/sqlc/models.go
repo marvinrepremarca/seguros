@@ -12,15 +12,16 @@ import (
 )
 
 type IdentityUser struct {
-	ID          uuid.UUID
-	TenantID    uuid.UUID
-	IdpSubject  string
-	Email       pgtype.Text
-	DisplayName string
-	LastLoginAt time.Time
-	CreatedAt   time.Time
-	CreatedBy   uuid.NullUUID
-	UpdatedAt   time.Time
-	UpdatedBy   uuid.NullUUID
-	Version     int32
+	ID                 uuid.UUID
+	TenantID           uuid.UUID
+	IdpSubject         string
+	Email              pgtype.Text
+	DisplayName        string
+	LastLoginAt        time.Time
+	CreatedAt          time.Time
+	CreatedBy          uuid.NullUUID
+	UpdatedAt          time.Time
+	UpdatedBy          uuid.NullUUID
+	Version            int32
+	LeftOrganizationAt *time.Time
 }

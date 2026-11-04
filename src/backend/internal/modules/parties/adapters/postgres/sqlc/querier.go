@@ -14,6 +14,7 @@ type Querier interface {
 	GetPartyDocument(ctx context.Context, arg GetPartyDocumentParams) (GetPartyDocumentRow, error)
 	InsertConsent(ctx context.Context, arg InsertConsentParams) error
 	InsertParty(ctx context.Context, arg InsertPartyParams) error
+	InsertResponsibleHistory(ctx context.Context, arg InsertResponsibleHistoryParams) error
 	IsPartyVisibleTo(ctx context.Context, arg IsPartyVisibleToParams) (bool, error)
 	ListConsents(ctx context.Context, arg ListConsentsParams) ([]ListConsentsRow, error)
 	ListParties(ctx context.Context, arg ListPartiesParams) ([]ListPartiesRow, error)

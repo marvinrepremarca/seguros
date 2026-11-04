@@ -56,6 +56,7 @@ type Server struct {
 	current     map[string]Claims
 	revoked     map[string]bool
 	unavailable bool
+	refreshes   int
 }
 
 // Start levanta el proveedor. now fija el reloj de emisión de tokens.
@@ -155,6 +156,7 @@ func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) refreshToken(w http.ResponseWriter, token string) {
 	s.mu.Lock()
+	s.refreshes++
 	subject, known := s.refresh[token]
 	claims, unavailable, revoked := s.current[subject], s.unavailable, s.revoked[subject]
 	s.mu.Unlock()
@@ -188,6 +190,13 @@ func (s *Server) SetClaims(c Claims) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.current[c.Subject] = c
+}
+
+// Refreshes cuenta las renovaciones recibidas.
+func (s *Server) Refreshes() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.refreshes
 }
 
 // SetUnavailable simula una caída del proveedor.

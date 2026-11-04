@@ -68,7 +68,7 @@ func New(d Deps) (*Module, error) {
 		}),
 		Sessions: sessions,
 		authenticator: identityhttp.NewAuthenticator(identityhttp.AuthenticatorOptions{
-			Sessions: sessions, Tenants: d.Tenants, Policy: d.Policy, Provider: d.Provider,
+			Sessions: sessions, Tenants: d.Tenants, Policy: d.Policy, Provider: d.Provider, Members: store,
 			Clock: d.Clock, Interval: d.Auth.SessionRevalidate, Logger: d.Logger,
 		}),
 		publicURL: d.Auth.PublicURL,

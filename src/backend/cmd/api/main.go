@@ -110,7 +110,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	agentsSource, err := keycloak.New(cfg.Auth)
+	agentsSource, err := keycloak.New(cfg.Auth, clock)
 	if err != nil {
 		return err
 	}

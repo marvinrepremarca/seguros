@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -180,6 +181,16 @@ func (r *repository) Update(ctx context.Context, p *domain.Party, doc *app.Seale
 	}
 	if n == 0 {
 		return domain.ErrConcurrentUpdate
+	}
+	return nil
+}
+
+func (r *repository) RecordResponsibleChange(ctx context.Context, id domain.PartyID, version int32, previous uuid.NullUUID, agent uuid.UUID, reason string, at time.Time) error {
+	if err := r.q.InsertResponsibleHistory(ctx, partiessqlc.InsertResponsibleHistoryParams{
+		TenantID: r.tenant, PartyID: uuid.UUID(id), PartyVersion: version, PreviousAgentID: previous,
+		NewAgentID: agent, Reason: reason, Actor: actor(ctx), ChangedAt: at,
+	}); err != nil {
+		return fmt.Errorf("parties: guardando historial de responsable: %w", err)
 	}
 	return nil
 }

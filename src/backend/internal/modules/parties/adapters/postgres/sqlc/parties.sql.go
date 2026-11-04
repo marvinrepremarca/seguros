@@ -216,6 +216,36 @@ func (q *Queries) InsertParty(ctx context.Context, arg InsertPartyParams) error 
 	return err
 }
 
+const insertResponsibleHistory = `-- name: InsertResponsibleHistory :exec
+INSERT INTO parties.party_responsible_history (tenant_id, party_id, party_version, previous_agent_id, new_agent_id, reason, changed_by, changed_at)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+`
+
+type InsertResponsibleHistoryParams struct {
+	TenantID        uuid.UUID
+	PartyID         uuid.UUID
+	PartyVersion    int32
+	PreviousAgentID uuid.NullUUID
+	NewAgentID      uuid.UUID
+	Reason          string
+	Actor           uuid.NullUUID
+	ChangedAt       time.Time
+}
+
+func (q *Queries) InsertResponsibleHistory(ctx context.Context, arg InsertResponsibleHistoryParams) error {
+	_, err := q.db.Exec(ctx, insertResponsibleHistory,
+		arg.TenantID,
+		arg.PartyID,
+		arg.PartyVersion,
+		arg.PreviousAgentID,
+		arg.NewAgentID,
+		arg.Reason,
+		arg.Actor,
+		arg.ChangedAt,
+	)
+	return err
+}
+
 const isPartyVisibleTo = `-- name: IsPartyVisibleTo :one
 SELECT EXISTS (
     SELECT 1 FROM parties.parties p
@@ -405,24 +435,33 @@ func (q *Queries) ListPartySummaries(ctx context.Context, arg ListPartySummaries
 }
 
 const transferResponsibleAgent = `-- name: TransferResponsibleAgent :execrows
-UPDATE parties.parties
-SET responsible_agent_id = $1, updated_at = $2, version = version + 1
-WHERE tenant_id = $3 AND responsible_agent_id = $4
+WITH moved AS (
+    UPDATE parties.parties
+    SET responsible_agent_id = $3, updated_at = $6, updated_by = $5, version = version + 1
+    WHERE tenant_id = $1 AND responsible_agent_id = $2
+    RETURNING id, version
+)
+INSERT INTO parties.party_responsible_history (tenant_id, party_id, party_version, previous_agent_id, new_agent_id, reason, changed_by, changed_at)
+SELECT $1, id, version, $2, $3, $4, $5, $6 FROM moved
 `
 
 type TransferResponsibleAgentParams struct {
-	ToAgent   uuid.NullUUID
-	UpdatedAt time.Time
 	TenantID  uuid.UUID
 	FromAgent uuid.NullUUID
+	ToAgent   uuid.UUID
+	Reason    string
+	Actor     uuid.NullUUID
+	UpdatedAt time.Time
 }
 
 func (q *Queries) TransferResponsibleAgent(ctx context.Context, arg TransferResponsibleAgentParams) (int64, error) {
 	result, err := q.db.Exec(ctx, transferResponsibleAgent,
-		arg.ToAgent,
-		arg.UpdatedAt,
 		arg.TenantID,
 		arg.FromAgent,
+		arg.ToAgent,
+		arg.Reason,
+		arg.Actor,
+		arg.UpdatedAt,
 	)
 	if err != nil {
 		return 0, err

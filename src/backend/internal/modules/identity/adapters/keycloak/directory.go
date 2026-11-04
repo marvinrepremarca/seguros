@@ -11,28 +11,40 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/clientcredentials"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/marvinrepremarca/seguros/internal/platform/authz"
 	"github.com/marvinrepremarca/seguros/internal/platform/config"
+	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 )
 
 const (
 	pageSize = 200
 	maxPages = 50
+	// cacheTTL acota el recorrido del realm: cubre todos los tenants, así que un solo usuario no debe
+	// poder cargarlo. Una baja puede tardar este plazo en dejar de ofrecerse como asesor.
+	cacheTTL = 30 * time.Second
 )
 
 // Client implementa app.ActiveAgents.
 type Client struct {
 	http      *http.Client
 	adminBase string
+	clock     kernel.Clock
+	flight    singleflight.Group
+
+	mu        sync.Mutex
+	cached    map[string]bool
+	cachedTil time.Time
 }
 
 // New deriva las URLs del realm y crea el cliente con credenciales de cliente.
-func New(cfg config.Auth) (*Client, error) {
+func New(cfg config.Auth, clock kernel.Clock) (*Client, error) {
 	realmURL := cfg.Issuer
 	if cfg.DiscoveryURL != "" {
 		realmURL = cfg.DiscoveryURL
@@ -48,11 +60,39 @@ func New(cfg config.Auth) (*Client, error) {
 	ctx := context.WithValue(context.Background(), oauth2.HTTPClient, &http.Client{Timeout: 10 * time.Second})
 	httpClient := credentials.Client(ctx)
 	httpClient.Timeout = 10 * time.Second
-	return &Client{http: httpClient, adminBase: base + "/admin/realms/" + url.PathEscape(realm)}, nil
+	return &Client{http: httpClient, adminBase: base + "/admin/realms/" + url.PathEscape(realm), clock: clock}, nil
 }
 
-// ActiveAgentSubjects implementa app.ActiveAgents: usuarios habilitados con el rol de asesor.
+// ActiveAgentSubjects implementa app.ActiveAgents: usuarios habilitados con el rol de asesor, con caché
+// breve de solo IDs. El mapa devuelto es compartido: los llamadores no deben modificarlo.
 func (c *Client) ActiveAgentSubjects(ctx context.Context) (map[string]bool, error) {
+	c.mu.Lock()
+	cached, valid := c.cached, c.clock.Now().Before(c.cachedTil)
+	c.mu.Unlock()
+	if valid {
+		return cached, nil
+	}
+	v, err, _ := c.flight.Do("agents", func() (any, error) {
+		subjects, err := c.fetchActive(context.WithoutCancel(ctx))
+		if err != nil {
+			return nil, err
+		}
+		c.mu.Lock()
+		c.cached, c.cachedTil = subjects, c.clock.Now().Add(cacheTTL)
+		c.mu.Unlock()
+		return subjects, nil
+	})
+	if err != nil {
+		return nil, err
+	}
+	subjects, ok := v.(map[string]bool)
+	if !ok {
+		return nil, errors.New("keycloak: resultado inesperado")
+	}
+	return subjects, nil
+}
+
+func (c *Client) fetchActive(ctx context.Context) (map[string]bool, error) {
 	out := map[string]bool{}
 	for page := range maxPages {
 		users, err := c.page(ctx, page*pageSize)

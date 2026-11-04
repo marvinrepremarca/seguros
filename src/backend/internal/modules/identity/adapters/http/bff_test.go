@@ -39,11 +39,40 @@ const (
 type fakeTenants struct {
 	mu     sync.Mutex
 	tenant tenancy.TenantInfo
+	// resolveErr simula una falla de la BD del directorio de tenants.
+	resolveErr error
+}
+
+func (f *fakeTenants) failResolve(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.resolveErr = err
+}
+
+type fakeMembers struct {
+	mu   sync.Mutex
+	left []kernel.UserID
+}
+
+func (f *fakeMembers) MarkLeftOrganization(_ context.Context, _ kernel.TenantID, user kernel.UserID, _ time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.left = append(f.left, user)
+	return nil
+}
+
+func (f *fakeMembers) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.left)
 }
 
 func (f *fakeTenants) ResolveByOrgAlias(_ context.Context, alias string) (tenancy.TenantInfo, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
+	if f.resolveErr != nil {
+		return tenancy.TenantInfo{}, f.resolveErr
+	}
 	if alias != "agencia-x" {
 		return tenancy.TenantInfo{}, tenancy.ErrTenantNotFound
 	}
@@ -82,6 +111,7 @@ type env struct {
 	tenants *fakeTenants
 	login   *fakeLogin
 	clock   *kernel.FakeClock
+	members *fakeMembers
 }
 
 func newEnv(t *testing.T) *env {
@@ -105,6 +135,7 @@ func newEnv(t *testing.T) *env {
 		UserID: kernel.UserID(uuid.Must(uuid.NewV7())), TenantID: tenant.ID, Plan: "profesional",
 		Roles: []authz.Role{authz.RoleManager}, DisplayName: "Ana",
 	}}
+	members := &fakeMembers{}
 	logger := slog.New(slog.DiscardHandler)
 	clock := kernel.NewFakeClock(time.Now().UTC()) //nolint:forbidigo // solo decide cuándo revalidar; go-oidc usa el reloj real
 	sessions := identityhttp.NewSessionManager(identityhttp.SessionOptions{Store: memstore.New(), IdleTimeout: 30 * time.Minute, Lifetime: 8 * time.Hour})
@@ -115,11 +146,11 @@ func newEnv(t *testing.T) *env {
 	root := httpx.NewRouter(httpx.RouterOptions{Logger: logger, Clock: kernel.SystemClock{}, MaxBodyBytes: 1 << 20})
 	root.Group(func(r chi.Router) {
 		r.Use(sessions.LoadAndSave, identityhttp.NewAuthenticator(identityhttp.AuthenticatorOptions{
-			Sessions: sessions, Tenants: tenants, Policy: policy, Provider: provider, Clock: clock, Interval: revalidateEvery, Logger: logger,
+			Sessions: sessions, Tenants: tenants, Policy: policy, Provider: provider, Members: members, Clock: clock, Interval: revalidateEvery, Logger: logger,
 		}).Middleware, identityhttp.CSRF(sessions, publicURL))
 		require.NoError(t, srv.Mount(r))
 	})
-	return &env{op: op, router: root, tenants: tenants, login: login, clock: clock}
+	return &env{op: op, router: root, tenants: tenants, login: login, clock: clock, members: members}
 }
 
 // browser guarda cookies manualmente: las cookies __Host- son Secure y httptest usa http.
@@ -462,6 +493,63 @@ func TestSessionIsRevalidatedWithTheProvider(t *testing.T) {
 			assert.Equal(t, c.roles, roles)
 		})
 	}
+}
+
+func TestProviderOutageDoesNotCallTheProviderOnEveryRequest(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	b := newBrowser()
+	e.loginFlow(t, b, "/", claims())
+	e.op.SetUnavailable(true)
+	e.clock.Advance(revalidateEvery)
+	before := e.op.Refreshes()
+
+	for range 3 {
+		status, _ := meRoles(t, e, b)
+		require.Equal(t, http.StatusOK, status)
+	}
+	assert.Equal(t, before+1, e.op.Refreshes(), "tras la falla se espera antes de volver a intentar")
+
+	e.clock.Advance(31 * time.Second)
+	status, _ := meRoles(t, e, b)
+	require.Equal(t, http.StatusOK, status)
+	assert.Equal(t, before+2, e.op.Refreshes(), "pasada la espera se reintenta")
+
+	e.clock.Advance(3 * revalidateEvery)
+	status, _ = meRoles(t, e, b)
+	assert.Equal(t, http.StatusUnauthorized, status, "la espera no alarga la gracia")
+}
+
+func TestLeavingTheOrganizationIsRecorded(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	b := newBrowser()
+	e.loginFlow(t, b, "/", claims())
+	c := claims()
+	c.Organizations = []string{"otra-agencia"}
+	e.op.SetClaims(c)
+	e.clock.Advance(revalidateEvery)
+	status, _ := meRoles(t, e, b)
+	assert.Equal(t, http.StatusUnauthorized, status)
+	assert.Equal(t, 1, e.members.count())
+}
+
+// Una falla de la BD no se confunde con una salida de la organización.
+func TestDirectoryFailureIsToleratedOnlyWithinTheGrace(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	b := newBrowser()
+	e.loginFlow(t, b, "/", claims())
+	e.tenants.failResolve(errors.New("bd caída"))
+	e.clock.Advance(revalidateEvery)
+	status, _ := meRoles(t, e, b)
+	assert.Equal(t, http.StatusOK, status)
+	assert.Zero(t, e.members.count())
+
+	e.clock.Advance(2 * revalidateEvery)
+	status, _ = meRoles(t, e, b)
+	assert.Equal(t, http.StatusUnauthorized, status)
+	assert.Zero(t, e.members.count())
 }
 
 func TestProviderOutageIsToleratedOnlyWithinTheGrace(t *testing.T) {

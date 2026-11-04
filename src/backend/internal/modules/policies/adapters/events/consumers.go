@@ -10,6 +10,7 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/modules/policies/contracts"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 	"github.com/marvinrepremarca/seguros/internal/platform/outbox"
+	"github.com/marvinrepremarca/seguros/internal/platform/reqctx"
 )
 
 // Binder da la unidad de trabajo sobre la transacción del consumidor, que incluye el inbox.
@@ -27,6 +28,8 @@ func PortfolioTransfer(store Binder, clock kernel.Clock) outbox.Consumer {
 			if err := e.Decode(&ev); err != nil {
 				return err
 			}
+			// Quien pidió el traspaso es el autor en el historial y en la bitácora.
+			ctx = reqctx.WithUserID(ctx, kernel.UserID(ev.RequestedBy))
 			uow, err := store.Bind(ctx, tx)
 			if err != nil {
 				return err

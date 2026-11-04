@@ -82,13 +82,14 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) error {
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, idp_subject, display_name FROM identity.users WHERE tenant_id = $1 ORDER BY display_name, id LIMIT 500
+SELECT id, idp_subject, display_name, left_organization_at FROM identity.users WHERE tenant_id = $1 ORDER BY display_name, id LIMIT 500
 `
 
 type ListUsersRow struct {
-	ID          uuid.UUID
-	IdpSubject  string
-	DisplayName string
+	ID                 uuid.UUID
+	IdpSubject         string
+	DisplayName        string
+	LeftOrganizationAt *time.Time
 }
 
 func (q *Queries) ListUsers(ctx context.Context, tenantID uuid.UUID) ([]ListUsersRow, error) {
@@ -100,7 +101,12 @@ func (q *Queries) ListUsers(ctx context.Context, tenantID uuid.UUID) ([]ListUser
 	items := []ListUsersRow{}
 	for rows.Next() {
 		var i ListUsersRow
-		if err := rows.Scan(&i.ID, &i.IdpSubject, &i.DisplayName); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.IdpSubject,
+			&i.DisplayName,
+			&i.LeftOrganizationAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -111,9 +117,26 @@ func (q *Queries) ListUsers(ctx context.Context, tenantID uuid.UUID) ([]ListUser
 	return items, nil
 }
 
+const markUserLeftOrganization = `-- name: MarkUserLeftOrganization :exec
+UPDATE identity.users
+SET left_organization_at = $1, updated_at = $1, version = version + 1
+WHERE tenant_id = $2 AND id = $3 AND left_organization_at IS NULL
+`
+
+type MarkUserLeftOrganizationParams struct {
+	LeftAt   *time.Time
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+func (q *Queries) MarkUserLeftOrganization(ctx context.Context, arg MarkUserLeftOrganizationParams) error {
+	_, err := q.db.Exec(ctx, markUserLeftOrganization, arg.LeftAt, arg.TenantID, arg.ID)
+	return err
+}
+
 const updateUserLogin = `-- name: UpdateUserLogin :execrows
 UPDATE identity.users
-SET email = $1, display_name = $2, last_login_at = $3,
+SET email = $1, display_name = $2, last_login_at = $3, left_organization_at = NULL,
     updated_at = $3, updated_by = id, version = version + 1
 WHERE tenant_id = $4 AND id = $5 AND version = $6
 `

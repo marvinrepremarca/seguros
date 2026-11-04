@@ -11,10 +11,12 @@ import (
 	"net/http"
 	"net/url"
 	"slices"
+	"sync/atomic"
 	"time"
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/google/uuid"
+	"golang.org/x/sync/singleflight"
 
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/app"
 	tenancy "github.com/marvinrepremarca/seguros/internal/modules/tenancy/contracts"
@@ -110,12 +112,23 @@ const revalidateGrace = 3
 // revalidateTimeout acota la espera de la petición por el proveedor.
 const revalidateTimeout = 5 * time.Second
 
+// providerCooldown es cuánto se evita llamar al proveedor tras una falla, mientras la sesión siga
+// dentro de la gracia: un corte de Keycloak no debe sumar la espera a cada petición.
+const providerCooldown = 30 * time.Second
+
+// MembershipRecorder registra que un usuario salió de la organización del tenant, para que deje de
+// ofrecerse como asesor activo.
+type MembershipRecorder interface {
+	MarkLeftOrganization(ctx context.Context, tenant kernel.TenantID, user kernel.UserID, at time.Time) error
+}
+
 // AuthenticatorOptions configura el autenticador.
 type AuthenticatorOptions struct {
 	Sessions *scs.SessionManager
 	Tenants  tenancy.Directory
 	Policy   *authz.Policy
 	Provider IdentityProvider
+	Members  MembershipRecorder
 	Clock    kernel.Clock
 	Interval time.Duration
 	Logger   *slog.Logger
@@ -127,9 +140,13 @@ type Authenticator struct {
 	tenants  tenancy.Directory
 	policy   *authz.Policy
 	provider IdentityProvider
+	members  MembershipRecorder
 	clock    kernel.Clock
 	interval time.Duration
 	logger   *slog.Logger
+	refresh  singleflight.Group
+	// providerDownUntil (UnixNano) marca hasta cuándo se evita llamar al proveedor.
+	providerDownUntil atomic.Int64
 }
 
 // NewAuthenticator construye el autenticador.
@@ -138,7 +155,7 @@ func NewAuthenticator(o AuthenticatorOptions) *Authenticator {
 	if interval <= 0 {
 		interval = defaultRevalidateInterval
 	}
-	return &Authenticator{sessions: o.Sessions, tenants: o.Tenants, policy: o.Policy, provider: o.Provider, clock: o.Clock, interval: interval, logger: o.Logger}
+	return &Authenticator{sessions: o.Sessions, tenants: o.Tenants, policy: o.Policy, provider: o.Provider, members: o.Members, clock: o.Clock, interval: interval, logger: o.Logger}
 }
 
 // Middleware pone en el contexto el principal de la sesión. En cada petición revalida que el
@@ -198,27 +215,52 @@ func (a *Authenticator) revalidate(ctx context.Context, sp storedPrincipal) (sto
 	if age < a.interval {
 		return sp, true
 	}
-	cctx, cancel := context.WithTimeout(ctx, revalidateTimeout)
-	defer cancel()
-	id, err := a.provider.Refresh(cctx, token)
+	withinGrace := age < revalidateGrace*a.interval
+	if withinGrace && now.UnixNano() < a.providerDownUntil.Load() {
+		return sp, true
+	}
+	id, err := a.refreshShared(ctx, token)
 	switch {
 	case errors.Is(err, app.ErrSessionRevoked):
-		a.logger.InfoContext(ctx, "sesión revocada en el proveedor")
+		a.logClosed(ctx, sp, "revoked")
 		return sp, false
 	case err != nil:
+		a.providerDownUntil.Store(now.Add(providerCooldown).UnixNano())
 		a.logger.WarnContext(ctx, "no se pudo revalidar la sesión", "error", err)
-		return sp, age < revalidateGrace*a.interval
+		if !withinGrace {
+			a.logClosed(ctx, sp, "provider_unavailable")
+		}
+		return sp, withinGrace
 	}
-	if !a.inTenantOrganization(ctx, id.Organizations, sp.TenantID) {
+	member, err := a.inTenantOrganization(ctx, id.Organizations, sp.TenantID)
+	switch {
+	case err != nil:
+		// Una falla de la BD no es una salida de la organización: aplica la misma gracia.
+		a.logger.WarnContext(ctx, "no se pudo resolver la organización de la sesión", "error", err)
+		if !withinGrace {
+			a.logClosed(ctx, sp, "directory_unavailable")
+		}
+		return sp, withinGrace
+	case !member:
+		a.logClosed(ctx, sp, "left_organization")
+		a.recordLeft(ctx, sp)
 		return sp, false
 	}
 	roles := authz.ParseRoles(id.Roles)
-	if len(roles) == 0 || gainsMFARole(authz.ParseRoles(sp.Roles), roles) {
+	if len(roles) == 0 {
+		a.logClosed(ctx, sp, "no_roles")
+		return sp, false
+	}
+	if gainsMFARole(authz.ParseRoles(sp.Roles), roles) {
+		a.logClosed(ctx, sp, "mfa_role_gained")
 		return sp, false
 	}
 	names := make([]string, len(roles))
 	for i, r := range roles {
 		names[i] = string(r)
+	}
+	if !slices.Equal(names, sp.Roles) {
+		a.logger.InfoContext(ctx, "roles de la sesión actualizados", "user_id", sp.UserID.String(), "previous", sp.Roles, "new", names)
 	}
 	sp.Roles = names
 	raw, err := json.Marshal(sp)
@@ -234,18 +276,56 @@ func (a *Authenticator) revalidate(ctx context.Context, sp storedPrincipal) (sto
 	return sp, true
 }
 
+// refreshShared une las peticiones paralelas de una misma sesión en una sola llamada al proveedor. No
+// depende de la cancelación de quien la inició: su cliente puede irse sin afectar a las demás.
+func (a *Authenticator) refreshShared(ctx context.Context, token string) (app.VerifiedIdentity, error) {
+	v, err, _ := a.refresh.Do(token, func() (any, error) {
+		cctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), revalidateTimeout)
+		defer cancel()
+		return a.provider.Refresh(cctx, token)
+	})
+	if err != nil {
+		return app.VerifiedIdentity{}, err
+	}
+	id, ok := v.(app.VerifiedIdentity)
+	if !ok {
+		return app.VerifiedIdentity{}, errors.New("identity: resultado inesperado del proveedor")
+	}
+	return id, nil
+}
+
+func (a *Authenticator) logClosed(ctx context.Context, sp storedPrincipal, reason string) {
+	a.logger.InfoContext(ctx, "sesión cerrada por revalidación", "user_id", sp.UserID.String(), "tenant_id", sp.TenantID.String(), "reason", reason)
+}
+
+// recordLeft no impide cerrar la sesión si falla: el cierre es el control, esto solo mantiene la lista.
+func (a *Authenticator) recordLeft(ctx context.Context, sp storedPrincipal) {
+	if a.members == nil {
+		return
+	}
+	if err := a.members.MarkLeftOrganization(ctx, kernel.TenantID(sp.TenantID), kernel.UserID(sp.UserID), a.clock.Now()); err != nil {
+		a.logger.WarnContext(ctx, "registrando la salida de la organización", "error", err)
+	}
+}
+
 // inTenantOrganization indica si alguna organización del usuario sigue vinculada al tenant de la sesión.
-func (a *Authenticator) inTenantOrganization(ctx context.Context, orgs []string, tenant uuid.UUID) bool {
+// Solo "no vinculada" descarta una organización; cualquier otro error se devuelve.
+func (a *Authenticator) inTenantOrganization(ctx context.Context, orgs []string, tenant uuid.UUID) (bool, error) {
+	var failure error
 	for _, org := range orgs {
 		info, err := a.tenants.ResolveByOrgAlias(ctx, org)
-		if err != nil {
+		switch {
+		case errors.Is(err, tenancy.ErrTenantNotFound):
+			continue
+		case err != nil:
+			failure = err
 			continue
 		}
 		if uuid.UUID(info.ID) == tenant {
-			return true
+			return true, nil
 		}
 	}
-	return false
+	return false, failure
 }
 
 func gainsMFARole(before, after []authz.Role) bool {

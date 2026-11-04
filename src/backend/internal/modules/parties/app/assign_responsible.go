@@ -55,6 +55,9 @@ func (h *AssignResponsibleHandler) Handle(ctx context.Context, cmd AssignRespons
 		if err := uow.Parties().Update(ctx, party, nil); err != nil {
 			return err
 		}
+		if err := uow.Parties().RecordResponsibleChange(ctx, cmd.ID, party.Version()+1, previous, cmd.AgentID, reason, party.Snapshot().UpdatedAt); err != nil {
+			return err
+		}
 		details := map[string]string{"new": cmd.AgentID.String(), "reason": reason}
 		if previous.Valid {
 			details["previous"] = previous.UUID.String()
