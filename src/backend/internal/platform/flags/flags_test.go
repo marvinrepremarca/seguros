@@ -72,6 +72,7 @@ func TestComplianceIsAControlFlag(t *testing.T) {
 func TestParseRegistryRejects(t *testing.T) {
 	t.Parallel()
 	tests := map[string]string{
+		"control con requires":   "flags:\n  - {key: module.y, kind: module, description: d, owner: y}\n  - {key: module.x, kind: module, description: d, owner: x, control: true, requires: [module.y]}\n",
 		"campo desconocido":      "flags:\n  - {key: module.x, kind: module, description: d, owner: x, color: red}\n",
 		"tipo desconocido":       "flags:\n  - {key: module.x, kind: toggle, description: d, owner: x}\n",
 		"clave de módulo mala":   "flags:\n  - {key: claims, kind: module, description: d, owner: x}\n",

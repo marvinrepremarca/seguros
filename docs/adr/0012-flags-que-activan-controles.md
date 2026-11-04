@@ -27,5 +27,8 @@ Mientras no exista `Compliance` (Fase 5), un tenant con `module.compliance` ence
 ## Consecuencias
 - Positivas: una falla de infraestructura no omite un control regulatorio; el comportamiento queda probado por tipo de falla.
 - Negativas: una falla de Valkey y de la BD a la vez, sin L1, detiene la emisión de todos los tenants, incluidos los que no tienen el módulo, porque no se puede saber cuáles lo tienen.
+- Un endoso no cambia el tomador: el nuevo no pasaría este control (`policies.endorsement.holder_change_not_allowed`). Si negocio lo requiere, debe evaluar `KycGate` para el nuevo tomador.
+- Un flag de control no admite `requires`: apagar la dependencia desactivaría el control sin confirmación.
+- Requisito para Compliance (Fase 5): el `KycCheck` se liga al documento vigente del tercero y se invalida al rectificarlo. Si solo dependiera del ID, cambiar el documento conservaría el KYC de otra persona.
 - Riesgo abierto: `flag set --value off` y un cambio de plan también apagan el control para **un** tenant. Son decisiones comerciales auditadas y no piden confirmación adicional; revisarlo cuando exista `Compliance`.
 - Actualizado: `registry.yaml` (campo `control`), `.claude/rules/feature-flags.md`, DOMAIN.md, ROADMAP.md.

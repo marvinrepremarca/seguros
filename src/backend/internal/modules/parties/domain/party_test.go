@@ -65,7 +65,8 @@ func TestDocumentIDNeverPrintsTheNumber(t *testing.T) {
 	d := doc(t, domain.DocumentCC, "1020304050")
 	assert.NotContains(t, d.String(), "1020304050")
 	assert.Equal(t, "4050", d.Last4())
-	assert.Empty(t, doc(t, domain.DocumentCC, "123").Last4(), "un documento corto no se muestra completo")
+	assert.Empty(t, doc(t, domain.DocumentCC, "1234567").Last4(), "en un documento corto, 4 dígitos son casi todo el número")
+	assert.Equal(t, "5678", doc(t, domain.DocumentCC, "12345678").Last4())
 
 	var sb strings.Builder
 	slog.New(slog.NewTextHandler(&sb, nil)).Info("x", "doc", d)
@@ -118,7 +119,7 @@ func TestRectify(t *testing.T) {
 	require.NoError(t, err)
 
 	later := now.Add(time.Hour)
-	ce := doc(t, domain.DocumentCE, "AB12345")
+	ce := doc(t, domain.DocumentCE, "ABC12345")
 	require.NoError(t, p.Rectify("Ana María", domain.Contact{City: "Bogotá"}, &ce, later))
 	s := p.Snapshot()
 	assert.Equal(t, "Ana María", s.Name)

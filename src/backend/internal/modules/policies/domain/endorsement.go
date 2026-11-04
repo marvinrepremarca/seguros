@@ -150,7 +150,16 @@ func (p *Policy) applyEffects(netDelta, taxesDelta kernel.Money, effects Endorse
 	if net.IsNegative() || taxes.IsNegative() {
 		return Terms{}, ErrEndorsementPremium
 	}
+	if err := validatePremium(net, taxes); err != nil {
+		return Terms{}, ErrEndorsementPremium
+	}
 	t.NetPremium, t.Taxes = net, taxes
+	// El tomador no cambia por endoso: el nuevo no pasaría el control de KYC de la expedición (N4).
+	for _, party := range slices.Concat(effects.AddParties, effects.RemoveParties) {
+		if party.Role == RoleHolder {
+			return Terms{}, ErrEndorsementHolderChange
+		}
+	}
 	for _, c := range effects.CoverageChanges {
 		j := slices.IndexFunc(t.Coverages, func(x Coverage) bool { return x.ID == c.CoverageID })
 		if j < 0 {

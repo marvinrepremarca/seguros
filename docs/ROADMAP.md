@@ -54,7 +54,7 @@ Objetivo: todo lo transversal que los módulos dan por hecho.
 
 Auditoría de 1.7/1.8/1.10 (2026-11-03). El hallazgo Alto (roles: la API podía ejecutar el relay, tocar River y escribir switches globales) y M2–M4, B1, B4–B6 quedaron corregidos. Siguen abiertos:
 - ~~**M1 — Flags que activan controles:**~~ Definido en [ADR 0012](adr/0012-flags-que-activan-controles.md): la emisión se bloquea si el flag no se puede evaluar y `kill` exige `--confirm-control`.
-- **B2 — Bindings criptográficos:** incluir tenant y versión en el AAD del envoltorio de la DEK, y permitir que el llamador incluya el ID del registro en el AAD del campo (Parties, Fase 2).
+- **B2 — Bindings criptográficos:** incluir tenant y versión en el AAD del envoltorio de la DEK. (Hecho en Fase 2: `EncryptFor`/`DecryptFor` ligan el campo al ID del registro.)
 - **B3 — Llaves:** versión de la llave de blind index con ruta de reindexado; token de OpenBao con AppRole/renovación; rechazar versiones duplicadas en `SEGUROS_CRYPTO_LOCAL_KEKS`; un fallo al desenvolver una DEK retirada no debe bloquear al tenant entero.
 - **B7 — Override de plataforma vs. tenant:** distinguir quién fijó un override para que un TenantAdmin no revierta un `off` de la plataforma (relevante cuando existan flags `tenantEditable`).
 - **B8 — Serializar cambios de flags por tenant** (`pg_advisory_xact_lock`) para que dos cambios concurrentes no dejen dependencias inconsistentes.
@@ -77,6 +77,14 @@ Orden: **Parties → Catalog → Policies**.
 
 **DoD:** flujo 3 (expedición manual de póliza) y 5, 8 operables desde la UI; todas las transiciones probadas.
 
+Revisiones de la Fase 2 (2026-11-04). `security-auditor`: el Alto (un endoso podía cambiar el tomador sin pasar por KYC) y parte de M2, B3, B4 y B5 quedaron corregidos. `architecture-guardian`: M1–M5 corregidos. Quedan abiertos:
+- **M1 — Alcance de lectura de `SalesAgent` sobre clientes** (pendiente de decisión de producto): hoy lee y rectifica todos los clientes del tenant, incluido el documento por API. Las pólizas sí se limitan a las propias.
+- **M2 (resto) — Oráculo de documentos:** la búsqueda y el `PUT` con documento confirman si un número existe. `search-by-document` y `reveal` ya tienen 30/min por usuario (por réplica); faltan límite por tenant, límite y auditoría de conflictos del `PUT`, y alertas de volumen (Fase 6).
+- **M3 — KYC ligado al documento (requisito de la Fase 5):** ver ADR 0012.
+- **Bajos de seguridad:** último valor de un flag de control sin edad máxima (`Resolution.Stale`); `flag set --value off` sobre un flag de control sin `--operator` ni confirmación; `q` con el nombre del cliente en la URL y logs de Traefik (Fase 6); decidir si `Operations` exige MFA, ahora que revela documentos.
+- **Bajos de arquitectura:** derivar los Zod de formularios de los generados; TanStack Table en listados (antes de cartera, Fase 3); `Exists` en `identity.Directory` en vez de listar usuarios; seguir `nextCursor` en los catálogos de la UI; índice `(tenant_id, status, id)` en pólizas y retirar `*_keyset_idx` redundantes; validar contra la versión del esquema de riesgo antes de publicar una v2; alternativas `read`/`read-own` en el guard en vez de `authenticated`; pruebas unitarias de `app` en parties y catalog (hoy cubiertas por integración).
+- **Para el diseño de Renewals (Fase 3):** flujos.md renueva 30–60 días antes del vencimiento, pero `Vencida → Renovada` exige que la póliza ya haya vencido. Validar con negocio. Además, el relay marca publicados los eventos sin consumidores: los de pólizas expedidas antes de activar Billing no se reprocesan.
+
 ## Fase 3 — Dinero
 Orden: **Billing → Commissions → Renewals**. Requiere decisiones de [docs/domain/DECISIONS.md](domain/DECISIONS.md) cerradas para estos módulos.
 
@@ -97,7 +105,7 @@ Pruebas k6 (objetivos en testing.md), ZAP, restauración de backup probada, runb
 |---|---|---|---|
 | Fase 0 | ✅ Hecho | 2026-10-30 | DoD verificada: make check, pnpm check, compose sano y CI en verde (PR #1) |
 | Fase 1 | ✅ Hecho | 2026-11-03 | 1.1 ✅ · 1.2 ✅ · 1.3 ✅ · 1.4 ✅ (sesión A, PR #2) · 1.5 ✅ · 1.6 ✅ · 1.7 ✅ · 1.8 ✅ · 1.9 ✅ (adelantada: la usan login y flags; `platform/audit` + `migrations/audit`) · 1.10 ✅ (`platform/crypto`; se cablea en api/worker con el primer módulo con datos Restringidos, Fase 2) · 1.11 ✅ · 1.12 ✅ (`make e2e-full`). DoD verificada: make check, integración, pnpm check, E2E 3/3; architecture-guardian y security-auditor sin Altos/Críticos (hallazgos Medios/Bajos abiertos arriba) |
-| Fase 2 | 🟨 En curso | | Previos ✅ (CSP de la SPA, auditoría de tenants) |
+| Fase 2 | ✅ Hecho | 2026-11-04 | Previos ✅ (CSP de la SPA, auditoría de tenants) · ADR 0012 ✅ · `parties` ✅ · `catalog` ✅ · `policies` ✅ · UI ✅. DoD verificada: make check, integración (`-p 1`), pnpm check, E2E (`make e2e-full`, bajo la CSP real). Sin hallazgos Altos/Críticos abiertos; Medios y Bajos arriba. Transiciones de mora y renovación: sin endpoint hasta la Fase 3, probadas en dominio y persistencia |
 | Fase 3 | ⬜ Pendiente | | |
 | Fase 4 | ⬜ Pendiente | | |
 | Fase 5 | ⬜ Pendiente | | |

@@ -469,10 +469,15 @@ export type listPoliciesResponse403 = {
   status: 403
 }
 
+export type listPoliciesResponse422 = {
+  data: ProblemResponse
+  status: 422
+}
+
 export type listPoliciesResponseSuccess = (listPoliciesResponse200) & {
   headers: Headers;
 };
-export type listPoliciesResponseError = (listPoliciesResponse400 | listPoliciesResponse401 | listPoliciesResponse403) & {
+export type listPoliciesResponseError = (listPoliciesResponse400 | listPoliciesResponse401 | listPoliciesResponse403 | listPoliciesResponse422) & {
   headers: Headers;
 };
 

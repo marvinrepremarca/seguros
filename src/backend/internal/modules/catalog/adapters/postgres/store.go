@@ -221,9 +221,10 @@ func (r *repository) UpdateProduct(ctx context.Context, p domain.InsuranceProduc
 }
 
 func (r *repository) InsertAgreement(ctx context.Context, a domain.CommissionAgreement) error {
+	s := a.Snapshot()
 	return writeErr(r.q.InsertAgreement(ctx, catalogsqlc.InsertAgreementParams{
-		ID: a.ID, TenantID: r.tenant, InsurerID: a.InsurerID, LineOfBusinessID: a.LineOfBusinessID, ProductID: a.ProductID,
-		Basis: string(a.Basis), Percentage: a.Percentage, ValidFrom: a.Validity.From(), ValidTo: a.Validity.To(), Now: r.now, Actor: actor(ctx),
+		ID: s.ID, TenantID: r.tenant, InsurerID: s.InsurerID, LineOfBusinessID: s.LineID, ProductID: s.ProductID,
+		Basis: string(s.Basis), Percentage: s.Percentage.Decimal(), ValidFrom: s.Validity.From(), ValidTo: s.Validity.To(), Now: r.now, Actor: actor(ctx),
 	}), "insertando acuerdo")
 }
 
@@ -232,10 +233,14 @@ func agreement(id, insurer, line uuid.UUID, product uuid.NullUUID, basis string,
 	if err != nil {
 		return domain.CommissionAgreement{}, fmt.Errorf("catalog: vigencia guardada inválida: %w", err)
 	}
-	return domain.CommissionAgreement{
-		ID: id, InsurerID: insurer, LineOfBusinessID: line, ProductID: product, Basis: domain.Basis(basis),
-		Percentage: row.Percentage, Validity: validity, Version: row.Version,
-	}, nil
+	pct, err := kernel.NewPercentage(row.Percentage)
+	if err != nil {
+		return domain.CommissionAgreement{}, fmt.Errorf("catalog: porcentaje guardado inválido: %w", err)
+	}
+	return domain.RehydrateAgreement(domain.AgreementSnapshot{
+		ID: id, InsurerID: insurer, LineID: line, ProductID: product, Basis: domain.Basis(basis),
+		Percentage: pct, Validity: validity, Version: row.Version,
+	}), nil
 }
 
 func (r *repository) GetAgreement(ctx context.Context, id uuid.UUID) (domain.CommissionAgreement, error) {
@@ -263,9 +268,10 @@ func (r *repository) ListAgreements(ctx context.Context, after uuid.NullUUID, li
 }
 
 func (r *repository) UpdateAgreement(ctx context.Context, a domain.CommissionAgreement) error {
+	s := a.Snapshot()
 	n, err := r.q.UpdateAgreement(ctx, catalogsqlc.UpdateAgreementParams{
-		Basis: string(a.Basis), Percentage: a.Percentage, ValidFrom: a.Validity.From(), ValidTo: a.Validity.To(),
-		Now: r.now, Actor: actor(ctx), TenantID: r.tenant, ID: a.ID, Version: a.Version,
+		Basis: string(s.Basis), Percentage: s.Percentage.Decimal(), ValidFrom: s.Validity.From(), ValidTo: s.Validity.To(),
+		Now: r.now, Actor: actor(ctx), TenantID: r.tenant, ID: s.ID, Version: s.Version,
 	})
 	return updated(n, err, "actualizando acuerdo")
 }

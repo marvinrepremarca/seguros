@@ -100,6 +100,9 @@ func TestNewPolicyInvariants(t *testing.T) {
 		{"prima negativa", func(x *domain.Terms) { x.NetPremium = dt.Money(t, "-1") }, domain.ErrInvalidPremium},
 		{"impuestos negativos", func(x *domain.Terms) { x.Taxes = dt.Money(t, "-1") }, domain.ErrInvalidPremium},
 		{"monedas distintas", func(x *domain.Terms) { x.Taxes = usd }, domain.ErrInvalidPremium},
+		{"el total excede numeric(19,4)", func(x *domain.Terms) {
+			x.NetPremium, x.Taxes = dt.Money(t, "999999999999999"), dt.Money(t, "999999999999999")
+		}, domain.ErrInvalidPremium},
 		{"forma de pago", func(x *domain.Terms) { x.PaymentForm = "x" }, domain.ErrInvalidPaymentForm},
 		{"sin tomador", func(x *domain.Terms) { x.Parties = []domain.PolicyParty{{PartyID: holder, Role: domain.RoleInsured}} }, domain.ErrInvalidHolder},
 		{"dos tomadores", func(x *domain.Terms) {
@@ -365,7 +368,13 @@ func TestIssueEndorsementIsAllOrNothing(t *testing.T) {
 		}, domain.ErrInsuredRequired},
 		{"queda sin tomador", zero(t), zero(t), func(s domain.Snapshot) domain.EndorsementEffects {
 			return domain.EndorsementEffects{RemoveParties: []domain.PolicyParty{{PartyID: s.Terms.Parties[0].PartyID, Role: domain.RoleHolder}}}
-		}, domain.ErrInvalidHolder},
+		}, domain.ErrEndorsementHolderChange},
+		{"cambio de tomador", zero(t), zero(t), func(s domain.Snapshot) domain.EndorsementEffects {
+			return domain.EndorsementEffects{
+				RemoveParties: []domain.PolicyParty{{PartyID: s.Terms.Parties[0].PartyID, Role: domain.RoleHolder}},
+				AddParties:    []domain.PolicyParty{{PartyID: uuid.New(), Role: domain.RoleHolder}},
+			}
+		}, domain.ErrEndorsementHolderChange},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

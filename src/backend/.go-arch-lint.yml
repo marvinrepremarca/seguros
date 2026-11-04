@@ -55,7 +55,7 @@ deps:
     canUse: [uuid]
   domain:
     mayDependOn: [kernel]
-    canUse: [uuid, decimal]
+    canUse: [uuid]
   domaintest:
     mayDependOn: [kernel, domain]
     canUse: [uuid, testify]

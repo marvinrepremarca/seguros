@@ -32,19 +32,20 @@ var (
 	ErrInvalidItem             = kernel.NewError(kernel.KindValidation, "policies.policy.invalid_item", "bien asegurado inválido")
 	ErrInvalidReason           = kernel.NewError(kernel.KindValidation, "policies.policy.invalid_reason", "motivo de 3 a 500 caracteres")
 
-	ErrKycNotApproved         = kernel.NewError(kernel.KindConflict, "policies.issue.kyc_not_approved", "el KYC del tomador no está aprobado")
-	ErrComplianceUnavailable  = kernel.NewError(kernel.KindUnavailable, "policies.issue.compliance_unavailable", "no se pudo determinar si se exige KYC")
-	ErrNotYetExpired          = kernel.NewError(kernel.KindConflict, "policies.policy.not_yet_expired", "la vigencia aún no termina")
-	ErrInvalidCancellation    = kernel.NewError(kernel.KindValidation, "policies.cancellation.invalid", "causa de cancelación o referencia inválida")
-	ErrCancellationDate       = kernel.NewError(kernel.KindValidation, "policies.cancellation.outside_coverage_period", "la fecha efectiva está fuera de la vigencia")
-	ErrInvalidUnearned        = kernel.NewError(kernel.KindValidation, "policies.cancellation.invalid_unearned_premium", "la prima no devengada debe estar entre 0 y la prima neta")
-	ErrEndorsementNotAllowed  = kernel.NewError(kernel.KindConflict, "policies.endorsement.policy_not_active", "los endosos aplican a pólizas vigentes o en mora")
-	ErrEndorsementDate        = kernel.NewError(kernel.KindValidation, "policies.endorsement.outside_coverage_period", "la fecha efectiva está fuera de la vigencia")
-	ErrInvalidEndorsement     = kernel.NewError(kernel.KindValidation, "policies.endorsement.invalid", "tipo, descripción o número de endoso inválido")
-	ErrEndorsementNotFound    = kernel.NewError(kernel.KindNotFound, "policies.endorsement.not_found", "endoso inexistente")
-	ErrEndorsementNotPending  = kernel.NewError(kernel.KindConflict, "policies.endorsement.not_pending", "el endoso ya fue resuelto")
-	ErrEndorsementPremium     = kernel.NewError(kernel.KindValidation, "policies.endorsement.negative_premium", "la prima o los impuestos quedarían negativos")
-	ErrEndorsementUnknownPart = kernel.NewError(kernel.KindValidation, "policies.endorsement.unknown_target", "la cobertura, el bien o la parte no pertenece a la póliza")
+	ErrKycNotApproved          = kernel.NewError(kernel.KindConflict, "policies.issue.kyc_not_approved", "el KYC del tomador no está aprobado")
+	ErrComplianceUnavailable   = kernel.NewError(kernel.KindUnavailable, "policies.issue.compliance_unavailable", "no se pudo determinar si se exige KYC")
+	ErrNotYetExpired           = kernel.NewError(kernel.KindConflict, "policies.policy.not_yet_expired", "la vigencia aún no termina")
+	ErrInvalidCancellation     = kernel.NewError(kernel.KindValidation, "policies.cancellation.invalid", "causa de cancelación o referencia inválida")
+	ErrCancellationDate        = kernel.NewError(kernel.KindValidation, "policies.cancellation.outside_coverage_period", "la fecha efectiva está fuera de la vigencia")
+	ErrInvalidUnearned         = kernel.NewError(kernel.KindValidation, "policies.cancellation.invalid_unearned_premium", "la prima no devengada debe estar entre 0 y la prima neta")
+	ErrEndorsementNotAllowed   = kernel.NewError(kernel.KindConflict, "policies.endorsement.policy_not_active", "los endosos aplican a pólizas vigentes o en mora")
+	ErrEndorsementDate         = kernel.NewError(kernel.KindValidation, "policies.endorsement.outside_coverage_period", "la fecha efectiva está fuera de la vigencia")
+	ErrInvalidEndorsement      = kernel.NewError(kernel.KindValidation, "policies.endorsement.invalid", "tipo, descripción o número de endoso inválido")
+	ErrEndorsementNotFound     = kernel.NewError(kernel.KindNotFound, "policies.endorsement.not_found", "endoso inexistente")
+	ErrEndorsementNotPending   = kernel.NewError(kernel.KindConflict, "policies.endorsement.not_pending", "el endoso ya fue resuelto")
+	ErrEndorsementPremium      = kernel.NewError(kernel.KindValidation, "policies.endorsement.negative_premium", "la prima o los impuestos quedarían negativos")
+	ErrEndorsementHolderChange = kernel.NewError(kernel.KindValidation, "policies.endorsement.holder_change_not_allowed", "un endoso no cambia el tomador: el nuevo tomador no pasaría el control de KYC")
+	ErrEndorsementUnknownPart  = kernel.NewError(kernel.KindValidation, "policies.endorsement.unknown_target", "la cobertura, el bien o la parte no pertenece a la póliza")
 )
 
 // PolicyID identifica una póliza.
@@ -182,6 +183,10 @@ func validatePremium(net, taxes kernel.Money) error {
 	if net.Currency() == "" || net.Currency() != taxes.Currency() || net.IsNegative() || taxes.IsNegative() {
 		return ErrInvalidPremium
 	}
+	// El total también debe caber en numeric(19,4): se calcula en cada lectura.
+	if _, err := net.Add(taxes); err != nil {
+		return ErrInvalidPremium
+	}
 	return nil
 }
 
@@ -287,6 +292,16 @@ type Snapshot struct {
 	CreatedAt       time.Time
 	UpdatedAt       time.Time
 	Version         int32
+}
+
+// TotalPremium devuelve prima neta + impuestos (DECISIONS N8). No falla porque validatePremium
+// exige que el total quepa, salvo datos guardados fuera del dominio.
+func (s Snapshot) TotalPremium() (kernel.Money, error) {
+	total, err := s.Terms.NetPremium.Add(s.Terms.Taxes)
+	if err != nil {
+		return kernel.Money{}, ErrInvalidPremium
+	}
+	return total, nil
 }
 
 // Rehydrate reconstruye desde la BD sin validaciones de creación.

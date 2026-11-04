@@ -7,7 +7,6 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
-	"github.com/shopspring/decimal"
 
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 )
@@ -20,7 +19,6 @@ var (
 	ErrConcurrentUpdate   = kernel.NewError(kernel.KindConflict, "catalog.item.concurrent_update", "el registro cambió; recargue y reintente")
 	ErrInvalidRiskSchema  = kernel.NewError(kernel.KindValidation, "catalog.line_of_business.invalid_risk_schema", "esquema de riesgo desconocido")
 	ErrInvalidBasis       = kernel.NewError(kernel.KindValidation, "catalog.commission_agreement.invalid_basis", "base de comisión desconocida")
-	ErrInvalidPercentage  = kernel.NewError(kernel.KindValidation, "catalog.commission_agreement.invalid_percentage", "porcentaje entre 0 y 100, con hasta 6 decimales")
 	ErrAgreementOverlap   = kernel.NewError(kernel.KindConflict, "catalog.commission_agreement.overlap", "ya hay un acuerdo vigente para ese ámbito en esas fechas")
 	ErrAgreementReference = kernel.NewError(kernel.KindValidation, "catalog.commission_agreement.invalid_reference", "aseguradora, ramo o producto inexistente o incoherente")
 )
@@ -87,25 +85,22 @@ const (
 	BasisWrittenPremium Basis = "written_premium"
 )
 
-//nolint:gochecknoglobals // constante decimal
-var hundred = decimal.NewFromInt(100)
-
 // CommissionAgreement es la comisión pactada con una aseguradora para un ramo y, opcionalmente, un
 // producto, durante una vigencia.
 type CommissionAgreement struct {
-	ID               uuid.UUID
-	InsurerID        uuid.UUID
-	LineOfBusinessID uuid.UUID
-	ProductID        uuid.NullUUID
-	Basis            Basis
-	Percentage       decimal.Decimal
-	Validity         kernel.DateRange
-	Version          int32
+	id         uuid.UUID
+	insurerID  uuid.UUID
+	lineID     uuid.UUID
+	productID  uuid.NullUUID
+	basis      Basis
+	percentage kernel.Percentage
+	validity   kernel.DateRange
+	version    int32
 }
 
 // NewCommissionAgreement valida el acuerdo. Sin base usa prima pagada (DECISIONS N3).
-func NewCommissionAgreement(id, insurer, line uuid.UUID, product uuid.NullUUID, basis Basis, pct decimal.Decimal, from, to kernel.Date) (CommissionAgreement, error) {
-	a := CommissionAgreement{ID: id, InsurerID: insurer, LineOfBusinessID: line, ProductID: product, Version: 1}
+func NewCommissionAgreement(id, insurer, line uuid.UUID, product uuid.NullUUID, basis Basis, pct kernel.Percentage, from, to kernel.Date) (CommissionAgreement, error) {
+	a := CommissionAgreement{id: id, insurerID: insurer, lineID: line, productID: product, version: 1}
 	if basis == "" {
 		basis = BasisPaidPremium
 	}
@@ -115,9 +110,40 @@ func NewCommissionAgreement(id, insurer, line uuid.UUID, product uuid.NullUUID, 
 	return a, nil
 }
 
+// AgreementSnapshot es el estado persistido de un acuerdo.
+type AgreementSnapshot struct {
+	ID         uuid.UUID
+	InsurerID  uuid.UUID
+	LineID     uuid.UUID
+	ProductID  uuid.NullUUID
+	Basis      Basis
+	Percentage kernel.Percentage
+	Validity   kernel.DateRange
+	Version    int32
+}
+
+// RehydrateAgreement reconstruye desde la BD sin validaciones de creación.
+func RehydrateAgreement(s AgreementSnapshot) CommissionAgreement {
+	return CommissionAgreement{
+		id: s.ID, insurerID: s.InsurerID, lineID: s.LineID, productID: s.ProductID,
+		basis: s.Basis, percentage: s.Percentage, validity: s.Validity, version: s.Version,
+	}
+}
+
+// Snapshot devuelve el estado para persistirlo o exponerlo.
+func (a CommissionAgreement) Snapshot() AgreementSnapshot {
+	return AgreementSnapshot{
+		ID: a.id, InsurerID: a.insurerID, LineID: a.lineID, ProductID: a.productID,
+		Basis: a.basis, Percentage: a.percentage, Validity: a.validity, Version: a.version,
+	}
+}
+
+// ID devuelve el identificador.
+func (a CommissionAgreement) ID() uuid.UUID { return a.id }
+
 // Changed aplica los términos sobre la versión esperada.
-func (a CommissionAgreement) Changed(basis Basis, pct decimal.Decimal, from, to kernel.Date, expectedVersion int32) (CommissionAgreement, error) {
-	if a.Version != expectedVersion {
+func (a CommissionAgreement) Changed(basis Basis, pct kernel.Percentage, from, to kernel.Date, expectedVersion int32) (CommissionAgreement, error) {
+	if a.version != expectedVersion {
 		return CommissionAgreement{}, ErrConcurrentUpdate
 	}
 	if err := a.set(basis, pct, from, to); err != nil {
@@ -126,17 +152,14 @@ func (a CommissionAgreement) Changed(basis Basis, pct decimal.Decimal, from, to 
 	return a, nil
 }
 
-func (a *CommissionAgreement) set(basis Basis, pct decimal.Decimal, from, to kernel.Date) error {
+func (a *CommissionAgreement) set(basis Basis, pct kernel.Percentage, from, to kernel.Date) error {
 	if basis != BasisPaidPremium && basis != BasisWrittenPremium {
 		return ErrInvalidBasis
-	}
-	if pct.IsNegative() || pct.GreaterThan(hundred) || !pct.Equal(pct.Truncate(6)) {
-		return ErrInvalidPercentage
 	}
 	validity, err := kernel.NewDateRange(from, to)
 	if err != nil {
 		return err
 	}
-	a.Basis, a.Percentage, a.Validity = basis, pct, validity
+	a.basis, a.percentage, a.validity = basis, pct, validity
 	return nil
 }

@@ -114,7 +114,7 @@ func toTerms(b PolicyTerms) (app.TermsInput, error) {
 
 func toPolicy(v app.View) (Policy, error) {
 	t := v.Terms
-	total, err := t.NetPremium.Add(t.Taxes)
+	total, err := v.TotalPremium()
 	if err != nil {
 		return Policy{}, fmt.Errorf("policies: total de prima: %w", err)
 	}

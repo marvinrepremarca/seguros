@@ -229,10 +229,15 @@ export type listPartiesResponse403 = {
   status: 403
 }
 
+export type listPartiesResponse422 = {
+  data: ProblemResponse
+  status: 422
+}
+
 export type listPartiesResponseSuccess = (listPartiesResponse200) & {
   headers: Headers;
 };
-export type listPartiesResponseError = (listPartiesResponse400 | listPartiesResponse401 | listPartiesResponse403) & {
+export type listPartiesResponseError = (listPartiesResponse400 | listPartiesResponse401 | listPartiesResponse403 | listPartiesResponse422) & {
   headers: Headers;
 };
 

@@ -20,6 +20,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/marvinrepremarca/seguros/internal/modules/catalog"
+	cataloghttp "github.com/marvinrepremarca/seguros/internal/modules/catalog/adapters/http"
 	"github.com/marvinrepremarca/seguros/internal/modules/catalog/contracts"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/authz"
@@ -27,6 +28,7 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/platform/httpx"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 	"github.com/marvinrepremarca/seguros/internal/platform/reqctx"
+	"github.com/marvinrepremarca/seguros/test/contracttest"
 	"github.com/marvinrepremarca/seguros/test/pgtest"
 )
 
@@ -117,6 +119,7 @@ func (e *env) do(t *testing.T, who *authz.Principal, method, path string, body a
 	}
 	rec := httptest.NewRecorder()
 	e.router.ServeHTTP(rec, req)
+	contracttest.New(t, cataloghttp.GetSpec).Check(t, req, rec)
 	out := resp{status: rec.Code, body: map[string]any{}}
 	if rec.Body.Len() > 0 {
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out.body), rec.Body.String())
@@ -224,7 +227,7 @@ func TestAgreementsCannotOverlap(t *testing.T) {
 
 	assert.Equal(t, http.StatusBadRequest, e.do(t, manager, http.MethodPost, agreements, map[string]any{"insurerId": insurer, "lineOfBusinessId": line, "percentage": 12.5, "validFrom": "2026-01-01", "validTo": "2026-12-31"}).status, "un número en el wire se rechaza")
 	bad := e.do(t, manager, http.MethodPut, agreements+"/"+id, map[string]any{"basis": "paid_premium", "percentage": "101", "validFrom": "2026-01-01", "validTo": "2026-12-31", "version": 1})
-	assert.Equal(t, "catalog.commission_agreement.invalid_percentage", bad.body["type"])
+	assert.Equal(t, "kernel.percentage.invalid", bad.body["type"])
 
 	updated := e.do(t, manager, http.MethodPut, agreements+"/"+id, map[string]any{"basis": "written_premium", "percentage": "11", "validFrom": "2026-01-01", "validTo": "2026-12-31", "version": 1})
 	require.Equal(t, http.StatusOK, updated.status, updated.body)
@@ -266,8 +269,10 @@ func TestTenantIsolationAndDirectory(t *testing.T) {
 	insurer := e.created(t, a, insurers, map[string]any{"name": "Sura"})
 	line := e.created(t, a, lines, map[string]any{"name": "Autos", "riskSchemaKey": "auto"})
 	product := e.created(t, a, products, map[string]any{"name": "Plan", "insurerId": insurer, "lineOfBusinessId": line})
+	e.created(t, a, agreements, map[string]any{"insurerId": insurer, "lineOfBusinessId": line, "percentage": "10", "validFrom": "2026-01-01", "validTo": "2026-12-31"})
 
 	assert.Empty(t, e.do(t, b, http.MethodGet, insurers, nil).body["items"])
+	assert.Empty(t, e.do(t, b, http.MethodGet, agreements, nil).body["items"])
 	assert.Equal(t, http.StatusNotFound, e.do(t, b, http.MethodPut, insurers+"/"+insurer, map[string]any{"name": "Robada", "active": true, "version": 1}).status)
 	assert.Equal(t, http.StatusUnprocessableEntity, e.do(t, b, http.MethodPost, products, map[string]any{"name": "Plan", "insurerId": insurer, "lineOfBusinessId": line}).status)
 
@@ -283,6 +288,20 @@ func TestTenantIsolationAndDirectory(t *testing.T) {
 	_, err = e.mod.Directory.ResolvePolicyRef(ctxB, ref)
 	require.ErrorIs(t, err, contracts.ErrInvalidReference, "otro tenant no resuelve")
 
+	countAll := []string{
+		`SELECT count(*) FROM catalog.insurers`, `SELECT count(*) FROM catalog.lines_of_business`,
+		`SELECT count(*) FROM catalog.products`, `SELECT count(*) FROM catalog.commission_agreements`,
+	}
+	require.NoError(t, database.WithTenantTx(ctxA, func(tx pgx.Tx) error {
+		for _, q := range countAll {
+			var n int
+			if err := tx.QueryRow(ctxA, q).Scan(&n); err != nil {
+				return err
+			}
+			assert.Equal(t, 1, n, "A ve su fila: "+q)
+		}
+		return nil
+	}))
 	require.NoError(t, database.WithTenantTx(ctxB, func(tx pgx.Tx) error {
 		for _, q := range []string{
 			`SELECT count(*) FROM catalog.insurers`, `SELECT count(*) FROM catalog.lines_of_business`,

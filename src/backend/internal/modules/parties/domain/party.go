@@ -64,6 +64,8 @@ var (
 	nitWeights   = []int{3, 7, 13, 17, 19, 23, 29, 37, 41, 43, 47, 53, 59, 67, 71}
 )
 
+const minDocumentForLast4 = 8
+
 // DocumentID es un documento de identidad validado y normalizado. Dato Restringido: no se registra
 // en logs (LogValue lo redacta) ni se guarda en el agregado.
 type DocumentID struct {
@@ -111,10 +113,10 @@ func (d DocumentID) Type() DocumentType { return d.docType }
 // Number devuelve el número normalizado. Solo para cifrarlo o calcular su blind index.
 func (d DocumentID) Number() string { return d.number }
 
-// Last4 devuelve los últimos 4 caracteres, lo único que se muestra sin revelar. Un documento de 4
-// caracteres o menos no muestra nada: sería el número completo.
+// Last4 devuelve los últimos 4 caracteres, lo único que se muestra sin revelar. Un documento de menos
+// de 8 no muestra nada: 4 caracteres serían gran parte del número y facilitarían adivinar el resto.
 func (d DocumentID) Last4() string {
-	if len(d.number) <= 4 {
+	if len(d.number) < minDocumentForLast4 {
 		return ""
 	}
 	return d.number[len(d.number)-4:]

@@ -22,7 +22,7 @@ const MESSAGES: Readonly<Record<string, string>> = {
   "catalog.risk_data.invalid":
     "Revisa los datos del bien asegurado: no cumplen lo que exige el ramo.",
   "catalog.commission_agreement.overlap": "Ya hay un acuerdo para ese ámbito en esas fechas.",
-  "catalog.commission_agreement.invalid_percentage": "El porcentaje debe estar entre 0 y 100.",
+  "kernel.percentage.invalid": "El porcentaje debe estar entre 0 y 100.",
   "policies.policy.concurrent_update":
     "Otra persona cambió esta póliza. Recarga e inténtalo de nuevo.",
   "policies.policy.invalid_transition": "La póliza no permite esta operación en su estado actual.",
@@ -42,6 +42,8 @@ const MESSAGES: Readonly<Record<string, string>> = {
   "policies.endorsement.outside_coverage_period": "La fecha del endoso está fuera de la vigencia.",
   "policies.endorsement.policy_not_active": "Los endosos aplican a pólizas vigentes o en mora.",
   "policies.endorsement.negative_premium": "La prima o los impuestos quedarían negativos.",
+  "policies.endorsement.holder_change_not_allowed":
+    "Un endoso no puede cambiar el tomador de la póliza.",
   "policies.endorsement.not_pending": "Este endoso ya fue resuelto.",
 };
 

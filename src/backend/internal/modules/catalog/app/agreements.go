@@ -38,7 +38,7 @@ func asInvalidReference(err error) error {
 
 // ListAgreements lista acuerdos de comisión.
 func (s *Service) ListAgreements(ctx context.Context, q PageQuery) (Page[domain.CommissionAgreement], error) {
-	return list(ctx, s, authz.AgreementRead, q, func(a domain.CommissionAgreement) uuid.UUID { return a.ID }, Repository.ListAgreements)
+	return list(ctx, s, authz.AgreementRead, q, func(a domain.CommissionAgreement) uuid.UUID { return a.ID() }, Repository.ListAgreements)
 }
 
 // CreateAgreementCommand registra un acuerdo de comisión.
@@ -61,7 +61,11 @@ func (s *Service) CreateAgreement(ctx context.Context, cmd CreateAgreementComman
 	if err != nil {
 		return domain.CommissionAgreement{}, err
 	}
-	agreement, err := domain.NewCommissionAgreement(id, cmd.InsurerID, cmd.LineOfBusinessID, cmd.ProductID, cmd.Basis, cmd.Percentage, cmd.ValidFrom, cmd.ValidTo)
+	pct, err := kernel.NewPercentage(cmd.Percentage)
+	if err != nil {
+		return domain.CommissionAgreement{}, err
+	}
+	agreement, err := domain.NewCommissionAgreement(id, cmd.InsurerID, cmd.LineOfBusinessID, cmd.ProductID, cmd.Basis, pct, cmd.ValidFrom, cmd.ValidTo)
 	if err != nil {
 		return domain.CommissionAgreement{}, err
 	}
@@ -82,7 +86,7 @@ func (s *Service) CreateAgreement(ctx context.Context, cmd CreateAgreementComman
 			return err
 		}
 		return uow.Audit(ctx, entry("catalog.commission_agreement.created", "catalog.commission_agreement", id, map[string]string{
-			"basis": string(agreement.Basis), "percentage": agreement.Percentage.String(),
+			"basis": string(cmd.Basis), "percentage": pct.String(),
 		}))
 	})
 	return agreement, err
@@ -98,27 +102,40 @@ type UpdateAgreementCommand struct {
 	Version    int32
 }
 
-// UpdateAgreement cambia los términos y audita el valor anterior y el nuevo.
+// UpdateAgreement cambia los términos y audita los valores anteriores y nuevos.
 func (s *Service) UpdateAgreement(ctx context.Context, cmd UpdateAgreementCommand) (domain.CommissionAgreement, error) {
 	if err := authz.Require(ctx, authz.AgreementManage); err != nil {
 		return domain.CommissionAgreement{}, err
 	}
+	pct, err := kernel.NewPercentage(cmd.Percentage)
+	if err != nil {
+		return domain.CommissionAgreement{}, err
+	}
 	var out domain.CommissionAgreement
-	err := s.Store.WithinTenant(ctx, func(ctx context.Context, uow UnitOfWork) error {
+	err = s.Store.WithinTenant(ctx, func(ctx context.Context, uow UnitOfWork) error {
 		current, err := uow.Catalog().GetAgreement(ctx, cmd.ID)
 		if err != nil {
 			return err
 		}
-		out, err = current.Changed(cmd.Basis, cmd.Percentage, cmd.ValidFrom, cmd.ValidTo, cmd.Version)
+		out, err = current.Changed(cmd.Basis, pct, cmd.ValidFrom, cmd.ValidTo, cmd.Version)
 		if err != nil {
 			return err
 		}
 		if err := uow.Catalog().UpdateAgreement(ctx, out); err != nil {
 			return err
 		}
-		out.Version++
+		// La versión siguiente es la que quedó en la BD tras la concurrencia optimista.
+		stored, err := uow.Catalog().GetAgreement(ctx, cmd.ID)
+		if err != nil {
+			return err
+		}
+		before, after := current.Snapshot(), stored.Snapshot()
+		out = stored
 		return uow.Audit(ctx, entry("catalog.commission_agreement.updated", "catalog.commission_agreement", cmd.ID, map[string]string{
-			"previousPercentage": current.Percentage.String(), "percentage": out.Percentage.String(), "basis": string(out.Basis),
+			"previousPercentage": before.Percentage.String(), "percentage": after.Percentage.String(),
+			"previousBasis": string(before.Basis), "basis": string(after.Basis),
+			"previousValidFrom": before.Validity.From().String(), "validFrom": after.Validity.From().String(),
+			"previousValidTo": before.Validity.To().String(), "validTo": after.Validity.To().String(),
 		}))
 	})
 	return out, err

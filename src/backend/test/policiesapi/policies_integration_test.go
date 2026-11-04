@@ -25,11 +25,15 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/marvinrepremarca/seguros/internal/modules/catalog"
+	cataloghttp "github.com/marvinrepremarca/seguros/internal/modules/catalog/adapters/http"
 	identity "github.com/marvinrepremarca/seguros/internal/modules/identity/contracts"
 	"github.com/marvinrepremarca/seguros/internal/modules/parties"
+	partieshttp "github.com/marvinrepremarca/seguros/internal/modules/parties/adapters/http"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies"
+	policieshttp "github.com/marvinrepremarca/seguros/internal/modules/policies/adapters/http"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies/adapters/postgres"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies/app"
+	"github.com/marvinrepremarca/seguros/internal/modules/policies/domain"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/authz"
 	"github.com/marvinrepremarca/seguros/internal/platform/crypto"
@@ -39,6 +43,7 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 	"github.com/marvinrepremarca/seguros/internal/platform/outbox"
 	"github.com/marvinrepremarca/seguros/internal/platform/reqctx"
+	"github.com/marvinrepremarca/seguros/test/contracttest"
 	"github.com/marvinrepremarca/seguros/test/pgtest"
 )
 
@@ -196,6 +201,7 @@ func (e *env) do(t *testing.T, who *authz.Principal, method, path string, body a
 	}
 	rec := httptest.NewRecorder()
 	e.router.ServeHTTP(rec, req)
+	contracttest.New(t, policieshttp.GetSpec, partieshttp.GetSpec, cataloghttp.GetSpec).Check(t, req, rec)
 	out := resp{status: rec.Code, body: map[string]any{}}
 	if rec.Body.Len() > 0 {
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out.body), rec.Body.String())
@@ -500,6 +506,14 @@ func TestEndorsementFlow(t *testing.T) {
 	})
 	assert.Equal(t, "policies.policy.invalid_party", unknownParty.body["type"])
 
+	holderSwap := e.do(t, w.ops, http.MethodPost, path(req.version(t), "issue"), map[string]any{
+		"number": "END-1", "netPremiumDelta": "0", "taxesDelta": "0",
+		"removeParties": []any{map[string]any{"partyId": w.holder, "role": "holder"}},
+		"addParties":    []any{map[string]any{"partyId": w.insured, "role": "holder"}},
+	})
+	assert.Equal(t, http.StatusUnprocessableEntity, holderSwap.status)
+	assert.Equal(t, "policies.endorsement.holder_change_not_allowed", holderSwap.body["type"], "eludiría el control de KYC")
+
 	issued := e.do(t, w.ops, http.MethodPost, path(req.version(t), "issue"), map[string]any{
 		"number": "END-1", "netPremiumDelta": "-100000", "taxesDelta": "-19000",
 		"coverageChanges": []any{map[string]any{"coverageId": coverage["id"], "sumInsured": "60000000"}},
@@ -598,6 +612,7 @@ func TestPermissionsAndOwnership(t *testing.T) {
 		{"sin sesión lista", nil, http.MethodGet, base, nil, http.StatusUnauthorized},
 		{"sin sesión expide", nil, http.MethodPost, at(id, 1, "issue"), map[string]any{"policyNumber": "X"}, http.StatusUnauthorized},
 		{"admin no ve pólizas", admin, http.MethodGet, base, nil, http.StatusForbidden},
+		{"admin no ve una póliza", admin, http.MethodGet, base + "/" + id, nil, http.StatusForbidden},
 		{"asesor no crea", agent, http.MethodPost, base, w.terms(), http.StatusForbidden},
 		{"asesor no expide", agent, http.MethodPost, at(id, 1, "issue"), map[string]any{"policyNumber": "X"}, http.StatusForbidden},
 		{"asesor no cancela", agent, http.MethodPost, at(id, 1, "cancel"), map[string]any{"cause": "other", "effectiveDate": "2026-06-01", "unearnedPremium": "0"}, http.StatusForbidden},
@@ -618,6 +633,7 @@ func TestTenantIsolation(t *testing.T) {
 	a, b := e.world(t), e.world(t)
 	p := e.issued(t, a)
 	id := p.str(t, "id")
+	require.Equal(t, http.StatusCreated, e.do(t, a.ops, http.MethodPost, at(id, p.version(t), "endorsements"), map[string]any{"type": "other", "description": "Algo", "effectiveDate": "2026-06-01"}).status)
 
 	assert.Equal(t, http.StatusNotFound, e.do(t, b.ops, http.MethodGet, base+"/"+id, nil).status)
 	assert.Equal(t, http.StatusNotFound, e.do(t, b.ops, http.MethodPost, at(id, p.version(t), "cancel"), map[string]any{"cause": "other", "effectiveDate": "2026-06-01", "unearnedPremium": "0"}).status)
@@ -628,12 +644,24 @@ func TestTenantIsolation(t *testing.T) {
 	foreign["parties"] = []any{map[string]any{"partyId": a.holder, "role": "holder"}, map[string]any{"partyId": b.insured, "role": "insured"}}
 	assert.Equal(t, "policies.policy.invalid_party", e.do(t, b.ops, http.MethodPost, base, foreign).body["type"], "un tercero de otro tenant no existe")
 
+	countAll := []string{
+		`SELECT count(*) FROM policies.policies`, `SELECT count(*) FROM policies.policy_parties`, `SELECT count(*) FROM policies.coverages`,
+		`SELECT count(*) FROM policies.insured_items`, `SELECT count(*) FROM policies.endorsements`,
+	}
+	own := reqctx.WithTenantID(context.Background(), a.tenant)
+	require.NoError(t, database.WithTenantTx(own, func(tx pgx.Tx) error {
+		for _, q := range countAll {
+			var n int
+			if err := tx.QueryRow(own, q).Scan(&n); err != nil {
+				return err
+			}
+			assert.Positive(t, n, "A ve sus filas: "+q)
+		}
+		return nil
+	}))
 	ctx := reqctx.WithTenantID(context.Background(), b.tenant)
 	require.NoError(t, database.WithTenantTx(ctx, func(tx pgx.Tx) error {
-		for _, q := range []string{
-			`SELECT count(*) FROM policies.policies`, `SELECT count(*) FROM policies.policy_parties`, `SELECT count(*) FROM policies.coverages`,
-			`SELECT count(*) FROM policies.insured_items`, `SELECT count(*) FROM policies.endorsements`,
-		} {
+		for _, q := range countAll {
 			var n int
 			if err := tx.QueryRow(ctx, q).Scan(&n); err != nil {
 				return err
@@ -685,4 +713,59 @@ func setPeriodEnd(id uuid.UUID, end string) error {
 	defer superMu.Unlock()
 	_, err := super.Exec(context.Background(), `UPDATE policies.policies SET effective_to = $1::date WHERE id = $2`, end, id)
 	return err
+}
+
+// Las transiciones que aún no tienen endpoint (las disparan Billing y Renewals en la Fase 3) también
+// se guardan y se leen bien; y una póliza en mora se puede endosar y cancelar por la API.
+func TestTransitionsWithoutEndpointPersist(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	w := e.world(t)
+	store := postgres.NewStore(database, audit.NewRecorder(e.clock), outbox.NewWriter(e.clock))
+	ctx := reqctx.WithTenantID(context.Background(), w.tenant)
+	apply := func(id string, fn func(*domain.Policy) error) {
+		t.Helper()
+		require.NoError(t, store.WithinTenant(ctx, func(ctx context.Context, uow app.UnitOfWork) error {
+			p, err := uow.Policies().Get(ctx, domain.PolicyID(uuid.MustParse(id)))
+			if err != nil {
+				return err
+			}
+			if err := fn(p); err != nil {
+				return err
+			}
+			return uow.Policies().Save(ctx, p)
+		}))
+	}
+	statusOf := func(id string) any { return e.do(t, w.ops, http.MethodGet, base+"/"+id, nil).body["status"] }
+	now := e.clock.Now()
+
+	first := e.issued(t, w).str(t, "id")
+	apply(first, func(p *domain.Policy) error { return p.MarkInArrears(now) })
+	assert.Equal(t, "in_arrears", statusOf(first))
+	apply(first, func(p *domain.Policy) error { return p.Reinstate(now) })
+	assert.Equal(t, "active", statusOf(first))
+	apply(first, func(p *domain.Policy) error { return p.MarkInArrears(now) })
+
+	cur := e.do(t, w.ops, http.MethodGet, base+"/"+first, nil)
+	endorsed := e.do(t, w.ops, http.MethodPost, at(first, cur.version(t), "endorsements"), map[string]any{"type": "other", "description": "En mora", "effectiveDate": "2026-06-01"})
+	require.Equal(t, http.StatusCreated, endorsed.status, endorsed.body)
+	cancelled := e.do(t, w.ops, http.MethodPost, at(first, endorsed.version(t), "cancel"), map[string]any{"cause": "arrears", "effectiveDate": "2026-06-30", "unearnedPremium": "0"})
+	require.Equal(t, http.StatusOK, cancelled.status, cancelled.body)
+	assert.Equal(t, "cancelled", cancelled.body["status"])
+
+	end, err := kernel.ParseDate("2027-01-01")
+	require.NoError(t, err)
+	renewed := e.issued(t, w).str(t, "id")
+	replacement := e.issued(t, w).str(t, "id")
+	apply(renewed, func(p *domain.Policy) error { return p.Expire(end, now) })
+	assert.Equal(t, "expired", statusOf(renewed))
+	apply(renewed, func(p *domain.Policy) error {
+		return p.MarkRenewed(domain.PolicyID(uuid.MustParse(replacement)), now)
+	})
+	assert.Equal(t, "renewed", statusOf(renewed))
+
+	lost := e.issued(t, w).str(t, "id")
+	apply(lost, func(p *domain.Policy) error { return p.Expire(end, now) })
+	apply(lost, func(p *domain.Policy) error { return p.MarkNotRenewed(now) })
+	assert.Equal(t, "not_renewed", statusOf(lost))
 }

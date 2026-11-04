@@ -47,10 +47,15 @@ func TestItem(t *testing.T) {
 func TestCommissionAgreement(t *testing.T) {
 	t.Parallel()
 	from, to := date(t, "2026-01-01"), date(t, "2026-12-31")
-	pct := decimal.RequireFromString("12.5")
+	percent := func(v string) kernel.Percentage {
+		p, err := kernel.NewPercentage(decimal.RequireFromString(v))
+		require.NoError(t, err)
+		return p
+	}
+	pct := percent("12.5")
 	a, err := domain.NewCommissionAgreement(uuid.New(), uuid.New(), uuid.New(), uuid.NullUUID{}, "", pct, from, to)
 	require.NoError(t, err)
-	assert.Equal(t, domain.BasisPaidPremium, a.Basis, "base por defecto (N3)")
+	assert.Equal(t, domain.BasisPaidPremium, a.Snapshot().Basis, "base por defecto (N3)")
 
 	cases := []struct {
 		name  string
@@ -60,9 +65,6 @@ func TestCommissionAgreement(t *testing.T) {
 		to    kernel.Date
 		err   error
 	}{
-		{"negativo", domain.BasisPaidPremium, "-1", from, to, domain.ErrInvalidPercentage},
-		{"mayor a 100", domain.BasisPaidPremium, "100.000001", from, to, domain.ErrInvalidPercentage},
-		{"7 decimales", domain.BasisPaidPremium, "1.1234567", from, to, domain.ErrInvalidPercentage},
 		{"base inválida", domain.Basis("x"), "1", from, to, domain.ErrInvalidBasis},
 		{"vigencia invertida", domain.BasisWrittenPremium, "1", to, from, kernel.ErrInvalidDateRange},
 		{"100 es válido", domain.BasisWrittenPremium, "100", from, to, nil},
@@ -71,7 +73,7 @@ func TestCommissionAgreement(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			t.Parallel()
-			_, err := domain.NewCommissionAgreement(uuid.New(), uuid.New(), uuid.New(), uuid.NullUUID{}, c.basis, decimal.RequireFromString(c.pct), c.from, c.to)
+			_, err := domain.NewCommissionAgreement(uuid.New(), uuid.New(), uuid.New(), uuid.NullUUID{}, c.basis, percent(c.pct), c.from, c.to)
 			if c.err != nil {
 				require.ErrorIs(t, err, c.err)
 				return
@@ -80,10 +82,10 @@ func TestCommissionAgreement(t *testing.T) {
 		})
 	}
 
-	changed, err := a.Changed(domain.BasisWrittenPremium, decimal.RequireFromString("10"), from, to, 1)
+	changed, err := a.Changed(domain.BasisWrittenPremium, percent("10"), from, to, 1)
 	require.NoError(t, err)
-	assert.Equal(t, domain.BasisWrittenPremium, changed.Basis)
-	assert.Equal(t, domain.BasisPaidPremium, a.Basis, "inmutable")
+	assert.Equal(t, domain.BasisWrittenPremium, changed.Snapshot().Basis)
+	assert.Equal(t, domain.BasisPaidPremium, a.Snapshot().Basis, "inmutable")
 	_, err = a.Changed(domain.BasisWrittenPremium, pct, from, to, 9)
 	require.ErrorIs(t, err, domain.ErrConcurrentUpdate)
 }

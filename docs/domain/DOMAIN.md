@@ -37,7 +37,7 @@
 - Invariantes:
   - Documento: `Person` usa CC, CE o PPT; `Organization` usa NIT con dígito de verificación válido.
   - Una sola `Party` por `(tenant, tipo, número)`: una segunda da `parties.party.document_taken`.
-- El número de documento es **Restringido**: cifrado, con blind index, ligado al ID de la `Party`; la UI y las respuestas solo muestran los últimos 4 dígitos. Revelarlo exige `parties.document.reveal` y se audita. Nunca va en URLs: la búsqueda por documento es `POST`.
+- El número de documento es **Restringido**: cifrado, con blind index, ligado al ID de la `Party`; la UI y las respuestas solo muestran los últimos 4 caracteres, y ninguno en documentos de menos de 8. Revelarlo exige `parties.document.reveal` y se audita. Nunca va en URLs: la búsqueda por documento es `POST`.
 - Habeas data: cada autorización o revocación es un `Consent` nuevo con fecha, finalidad y versión del texto. Consulta y rectificación están aquí; exporte y supresión llegan con `Compliance` (Fase 5). El consentimiento no bloquea la expedición.
 
 ### Catalog
@@ -56,7 +56,7 @@
   - Antes de expedirse (`EnCotizacion`, `EnTramite`) los datos se pueden ajustar; después solo cambian por endoso.
   - No se emite (`Vigente`) si el `KycCheck` del tomador no está aprobado **cuando** `module.compliance` está ON (DECISIONS N4, sin excepciones). Si el flag no se puede evaluar, la emisión se bloquea con `policies.issue.compliance_unavailable` (ADR 0012).
   - Expedir exige el `PolicyNumber` que asignó la aseguradora.
-  - Un endoso solo aplica a póliza `Vigente` o `EnMora`; su fecha efectiva está dentro de la vigencia. Estados: `Solicitado → Emitido | Rechazado` (DECISIONS N9). Al emitirse aplica variación de prima e impuestos (resultado ≥ 0), sumas aseguradas, partes y datos de bienes; debe quedar un `PolicyHolder` y ≥1 `Insured`.
+  - Un endoso solo aplica a póliza `Vigente` o `EnMora`; su fecha efectiva está dentro de la vigencia. Estados: `Solicitado → Emitido | Rechazado` (DECISIONS N9). Al emitirse aplica variación de prima e impuestos (resultado ≥ 0), sumas aseguradas, partes y datos de bienes; debe quedar ≥1 `Insured`. Un endoso **no cambia el `PolicyHolder`** (eludiría el KYC de N4).
   - La cancelación registra lo que expidió la aseguradora: causa (solicitud del cliente, venta del bien, mora, revocación de la aseguradora, otra), fecha efectiva dentro de la vigencia y prima no devengada informada, entre 0 y la prima neta (DECISIONS T7). Un endoso `Solicitado` no impide cancelar, pero ya no se puede emitir.
   - La renovación crea una **nueva** `Policy` con `RenewedFromPolicyId`; nunca muta la anterior.
 - Máquina de estados:
@@ -108,11 +108,16 @@ Cualquier otra transición devuelve el error de dominio `ErrInvalidPolicyTransit
 | `PolicyIssued` | Policies | Billing, Commissions, Renewals, Notifications, Reporting |
 | `PolicyEndorsed` | Policies | Billing, Commissions |
 | `PolicyCancelled` | Policies | Billing (anula cuotas pendientes, registra devolución informada), Commissions (clawback), Renewals |
+| `PolicyExpired` | Policies (job diario) | Renewals |
+| `PolicyRenewed` | Policies | Renewals, Reporting |
+| `PolicyFellIntoArrears` / `PolicyReinstated` | Policies | Notifications, Reporting |
 | `PolicyExpiring(daysLeft)` | Renewals (job) | Notifications, Crm |
 | `InstallmentOverdue` | Billing | Policies, Notifications |
 | `PaymentApplied` | Billing | Commissions, Policies (reinstate) |
 | `ClaimReported` / `ClaimStatusChanged` | Claims | Notifications, Reporting |
 | `KycCheckCompleted` | Compliance | Policies |
+
+En la Fase 2 solo emiten `PolicyIssued`, `PolicyEndorsed`, `PolicyCancelled` y `PolicyExpired`: los demás eventos de póliza llegan con quien dispara su transición (Billing y Renewals, Fase 3). Los métodos del agregado ya existen y están probados.
 
 Todo consumidor verifica el flag del módulo para el tenant del evento y es **idempotente** (clave = `EventId`).
 

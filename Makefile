@@ -49,8 +49,9 @@ arch: ## go-arch-lint (capas) + prueba de fronteras entre módulos
 test: ## Pruebas unitarias con -race
 	cd $(BACKEND) && go test -race -count=1 ./...
 
+# -p 1: cada paquete levanta su PostgreSQL; en paralelo saturan el reenvío de puertos de Docker Desktop.
 test-integration: ## Pruebas de integración (testcontainers; requiere Docker)
-	cd $(BACKEND) && go test -race -count=1 -tags=integration ./...
+	cd $(BACKEND) && go test -race -count=1 -p 1 -tags=integration ./...
 
 check: fmt-check lint arch test ## Verificación completa del backend
 

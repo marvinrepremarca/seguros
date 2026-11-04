@@ -104,10 +104,11 @@ func toProduct(p domain.InsuranceProduct) Product {
 	return Product{Id: p.ID, Name: p.Name, Active: p.Active, Version: p.Version, InsurerId: p.InsurerID, LineOfBusinessId: p.LineOfBusinessID}
 }
 
-func toAgreement(a domain.CommissionAgreement) CommissionAgreement {
+func toAgreement(agreement domain.CommissionAgreement) CommissionAgreement {
+	a := agreement.Snapshot()
 	out := CommissionAgreement{
-		Id: a.ID, InsurerId: a.InsurerID, LineOfBusinessId: a.LineOfBusinessID, Basis: CommissionBasis(a.Basis),
-		Percentage: a.Percentage, ValidFrom: a.Validity.From(), ValidTo: a.Validity.To(), Version: a.Version,
+		Id: a.ID, InsurerId: a.InsurerID, LineOfBusinessId: a.LineID, Basis: CommissionBasis(a.Basis),
+		Percentage: a.Percentage.Decimal(), ValidFrom: a.Validity.From(), ValidTo: a.Validity.To(), Version: a.Version,
 	}
 	if a.ProductID.Valid {
 		out.ProductId = &a.ProductID.UUID

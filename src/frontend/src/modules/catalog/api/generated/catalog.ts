@@ -276,10 +276,15 @@ export type listInsurersResponse403 = {
   status: 403
 }
 
+export type listInsurersResponse422 = {
+  data: ProblemResponse
+  status: 422
+}
+
 export type listInsurersResponseSuccess = (listInsurersResponse200) & {
   headers: Headers;
 };
-export type listInsurersResponseError = (listInsurersResponse400 | listInsurersResponse401 | listInsurersResponse403) & {
+export type listInsurersResponseError = (listInsurersResponse400 | listInsurersResponse401 | listInsurersResponse403 | listInsurersResponse422) & {
   headers: Headers;
 };
 
@@ -655,10 +660,15 @@ export type listLinesOfBusinessResponse403 = {
   status: 403
 }
 
+export type listLinesOfBusinessResponse422 = {
+  data: ProblemResponse
+  status: 422
+}
+
 export type listLinesOfBusinessResponseSuccess = (listLinesOfBusinessResponse200) & {
   headers: Headers;
 };
-export type listLinesOfBusinessResponseError = (listLinesOfBusinessResponse400 | listLinesOfBusinessResponse401 | listLinesOfBusinessResponse403) & {
+export type listLinesOfBusinessResponseError = (listLinesOfBusinessResponse400 | listLinesOfBusinessResponse401 | listLinesOfBusinessResponse403 | listLinesOfBusinessResponse422) & {
   headers: Headers;
 };
 
@@ -1034,10 +1044,15 @@ export type listProductsResponse403 = {
   status: 403
 }
 
+export type listProductsResponse422 = {
+  data: ProblemResponse
+  status: 422
+}
+
 export type listProductsResponseSuccess = (listProductsResponse200) & {
   headers: Headers;
 };
-export type listProductsResponseError = (listProductsResponse400 | listProductsResponse401 | listProductsResponse403) & {
+export type listProductsResponseError = (listProductsResponse400 | listProductsResponse401 | listProductsResponse403 | listProductsResponse422) & {
   headers: Headers;
 };
 
@@ -1538,10 +1553,15 @@ export type listCommissionAgreementsResponse403 = {
   status: 403
 }
 
+export type listCommissionAgreementsResponse422 = {
+  data: ProblemResponse
+  status: 422
+}
+
 export type listCommissionAgreementsResponseSuccess = (listCommissionAgreementsResponse200) & {
   headers: Headers;
 };
-export type listCommissionAgreementsResponseError = (listCommissionAgreementsResponse400 | listCommissionAgreementsResponse401 | listCommissionAgreementsResponse403) & {
+export type listCommissionAgreementsResponseError = (listCommissionAgreementsResponse400 | listCommissionAgreementsResponse401 | listCommissionAgreementsResponse403 | listCommissionAgreementsResponse422) & {
   headers: Headers;
 };
 

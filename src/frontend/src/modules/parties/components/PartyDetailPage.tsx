@@ -48,7 +48,7 @@ export function PartyDetailPage({ partyId }: { partyId: string }) {
       <h1 id="party-title" className="text-2xl font-semibold">
         {party.data.name}
       </h1>
-      <DocumentSection party={party.data} />
+      <DocumentSection key={party.data.id} party={party.data} />
       <EditSection party={party.data} />
       <ConsentsSection partyId={partyId} />
     </section>
@@ -62,9 +62,9 @@ function DocumentSection({ party }: { party: Party }) {
     mutationFn: async () => {
       const res = await revealPartyDocument(party.id);
       if (res.status !== 200) throw new Error("no revelado");
-      return res.data.documentNumber;
+      // El número solo vive en este estado: no queda en la caché de la mutación.
+      setNumber(res.data.documentNumber);
     },
-    onSuccess: setNumber,
   });
   // El dato Restringido se oculta solo: no permanece visible en una pantalla desatendida.
   useEffect(() => {
@@ -81,7 +81,8 @@ function DocumentSection({ party }: { party: Party }) {
     <div className="space-y-2">
       <h2 className="text-lg font-semibold">Documento</h2>
       <p>
-        {party.documentType} {number ?? `•••• ${party.documentLast4}`}
+        {party.documentType}{" "}
+        {number ?? (party.documentLast4 ? `•••• ${party.documentLast4}` : "••••")}
       </p>
       <ErrorMessage message={problemMessage(reveal.error)} />
       {canReveal && number === null && (

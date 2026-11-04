@@ -11,11 +11,13 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
 	"github.com/marvinrepremarca/seguros/internal/platform/httpx"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
+	"github.com/marvinrepremarca/seguros/internal/platform/reqctx"
 )
 
 const spaIndex = `<!doctype html><html><head>` +
@@ -148,4 +150,22 @@ func TestNewSPAHandlerFailsWithBrokenBuild(t *testing.T) {
 	require.Error(t, err, "sin index.html")
 	_, err = httpx.NewSPAHandler(fstest.MapFS{"index.html": {Data: []byte("<html></html>")}}, logger)
 	require.ErrorContains(t, err, "marcador de nonce")
+}
+
+func TestRateLimitByUser(t *testing.T) {
+	t.Parallel()
+	ok := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	h := httpx.RateLimitByUser(func(p string) bool { return strings.HasSuffix(p, "/reveal") }, 2, time.Hour)(ok)
+	status := func(ctx context.Context, path string) int {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequestWithContext(ctx, http.MethodPost, path, nil))
+		return rec.Code
+	}
+	ana := reqctx.WithUserID(context.Background(), kernel.UserID(uuid.Must(uuid.NewV7())))
+	luis := reqctx.WithUserID(context.Background(), kernel.UserID(uuid.Must(uuid.NewV7())))
+	assert.Equal(t, http.StatusOK, status(ana, "/x/reveal"))
+	assert.Equal(t, http.StatusOK, status(ana, "/x/reveal"))
+	assert.Equal(t, http.StatusTooManyRequests, status(ana, "/x/reveal"))
+	assert.Equal(t, http.StatusOK, status(luis, "/x/reveal"), "el contador es por usuario")
+	assert.Equal(t, http.StatusOK, status(ana, "/otra"), "las demás rutas no cuentan")
 }

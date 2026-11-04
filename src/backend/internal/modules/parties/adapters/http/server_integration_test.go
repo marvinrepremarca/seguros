@@ -21,6 +21,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/marvinrepremarca/seguros/internal/modules/parties"
+	partieshttp "github.com/marvinrepremarca/seguros/internal/modules/parties/adapters/http"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/authz"
 	"github.com/marvinrepremarca/seguros/internal/platform/crypto"
@@ -28,6 +29,7 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/platform/httpx"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 	"github.com/marvinrepremarca/seguros/internal/platform/reqctx"
+	"github.com/marvinrepremarca/seguros/test/contracttest"
 	"github.com/marvinrepremarca/seguros/test/pgtest"
 )
 
@@ -120,6 +122,7 @@ func (e *env) do(t *testing.T, who *authz.Principal, method, path string, body a
 	}
 	rec := httptest.NewRecorder()
 	e.router.ServeHTTP(rec, req)
+	contracttest.New(t, partieshttp.GetSpec).Check(t, req, rec)
 	out := resp{status: rec.Code, body: map[string]any{}}
 	if rec.Body.Len() > 0 {
 		require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &out.body), rec.Body.String())
@@ -399,7 +402,22 @@ func TestPartiesRLS(t *testing.T) {
 	t.Parallel()
 	e := newEnv(t)
 	a := newTenant()
-	require.Equal(t, http.StatusCreated, e.do(t, e.as(a, authz.RoleOperations), http.MethodPost, base, person(uniqueCC())).status)
+	ops := e.as(a, authz.RoleOperations)
+	id := field(t, e.do(t, ops, http.MethodPost, base, person(uniqueCC())), "id")
+	require.Equal(t, http.StatusCreated, e.do(t, ops, http.MethodPost, base+"/"+id+"/consents", map[string]any{
+		"status": "granted", "purpose": "Gestión de pólizas", "textVersion": "v1", "consentDate": kernel.Today(kernel.SystemClock{}).String(),
+	}).status)
+	own := reqctx.WithTenantID(context.Background(), a)
+	require.NoError(t, database.WithTenantTx(own, func(tx pgx.Tx) error {
+		for _, table := range []string{"parties", "consents"} {
+			var n int
+			if err := tx.QueryRow(own, `SELECT count(*) FROM parties.`+table).Scan(&n); err != nil { //nolint:gosec // nombres fijos
+				return err
+			}
+			assert.Equal(t, 1, n, "A ve su fila en "+table)
+		}
+		return nil
+	}))
 	other := reqctx.WithTenantID(context.Background(), newTenant())
 	require.NoError(t, database.WithTenantTx(other, func(tx pgx.Tx) error {
 		for _, table := range []string{"parties", "consents"} {

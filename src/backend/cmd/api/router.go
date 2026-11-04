@@ -4,6 +4,7 @@ import (
 	"errors"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -33,6 +34,12 @@ type routerDeps struct {
 	SPA http.Handler
 }
 
+// isDocumentLookup indica las rutas que leen o confirman un número de documento.
+func isDocumentLookup(path string) bool {
+	return strings.HasPrefix(path, "/api/v1/parties/parties/") &&
+		(strings.HasSuffix(path, "/document/reveal") || strings.HasSuffix(path, "/search-by-document"))
+}
+
 // buildRouter compone el router de la API. Orden de middlewares (rules/architecture.md §API):
 // plataforma (recover, request-id/otel, cabeceras, límite de body) → sesión/autenticación →
 // CSRF → rate limit → rutas de cada módulo, cuyas operaciones aplican su x-permission.
@@ -49,6 +56,8 @@ func buildRouter(d routerDeps) (*chi.Mux, error) {
 		// Búsqueda de personas: más estricta (rules/security.md §Rate limiting).
 		r.Use(httpx.RateLimitByIP("/api/v1/parties/parties/search-by-document", 60, time.Minute, d.ClientIPHdr))
 		r.Use(d.Identity.Middlewares()...)
+		// Datos Restringidos: por usuario, para frenar la extracción masiva de documentos.
+		r.Use(httpx.RateLimitByUser(isDocumentLookup, 30, time.Minute))
 		mountErr = errors.Join(d.Identity.Server.Mount(r), d.FeatureMgmt.Mount(r), d.Parties.Mount(r), d.Catalog.Mount(r), d.Policies.Mount(r))
 	})
 	if mountErr != nil {
