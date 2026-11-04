@@ -28,6 +28,10 @@ func (h *RegisterConsentHandler) Handle(ctx context.Context, cmd RegisterConsent
 	if err := authz.Require(ctx, authz.ConsentCreate); err != nil {
 		return domain.Consent{}, err
 	}
+	scope, err := readScope(ctx)
+	if err != nil {
+		return domain.Consent{}, err
+	}
 	id, err := uuid.NewV7()
 	if err != nil {
 		return domain.Consent{}, fmt.Errorf("parties: %w", err)
@@ -37,7 +41,7 @@ func (h *RegisterConsentHandler) Handle(ctx context.Context, cmd RegisterConsent
 		return domain.Consent{}, err
 	}
 	err = h.Store.WithinTenant(ctx, func(ctx context.Context, uow UnitOfWork) error {
-		if _, err := uow.Parties().Get(ctx, cmd.PartyID); err != nil {
+		if _, err := getInScope(ctx, uow.Parties(), cmd.PartyID, scope); err != nil {
 			return err
 		}
 		if err := uow.Parties().InsertConsent(ctx, consent); err != nil {

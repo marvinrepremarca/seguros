@@ -107,7 +107,9 @@ function DocumentSection({ party }: { party: Party }) {
 }
 
 function EditSection({ party }: { party: Party }) {
-  const canEdit = usePermission(permissions.partyUpdate);
+  const canEditAll = usePermission(permissions.partyUpdate);
+  const canEditOwn = usePermission(permissions.partyUpdateOwn);
+  const canEdit = canEditAll || canEditOwn;
   const queryClient = useQueryClient();
   const form = useForm({
     resolver: zodResolver(partyEditSchema),

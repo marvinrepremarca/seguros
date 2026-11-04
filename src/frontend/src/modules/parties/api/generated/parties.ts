@@ -5,6 +5,7 @@
  * Clientes de la agencia (tomadores, asegurados, beneficiarios) y sus autorizaciones de
  * tratamiento de datos (habeas data). El número de documento es dato Restringido: nunca viaja en
  * URLs; las respuestas solo incluyen sus últimos 4 caracteres y revelarlo se audita.
+ * `authenticated` se resuelve en el caso de uso: un asesor solo alcanza a sus clientes (DECISIONS N10).
  *
  * OpenAPI spec version: 1.0.0
  */

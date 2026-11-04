@@ -44,3 +44,12 @@ type PartiesParty struct {
 	UpdatedBy          uuid.NullUUID
 	Version            int32
 }
+
+type PartiesPolicyScope struct {
+	TenantID      uuid.UUID
+	PolicyID      uuid.UUID
+	AgentID       uuid.NullUUID
+	PartyIds      []uuid.UUID
+	PolicyVersion int32
+	UpdatedAt     time.Time
+}

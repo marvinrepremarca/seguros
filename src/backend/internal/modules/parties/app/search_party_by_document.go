@@ -5,7 +5,6 @@ import (
 	"strconv"
 
 	"github.com/marvinrepremarca/seguros/internal/modules/parties/domain"
-	"github.com/marvinrepremarca/seguros/internal/platform/authz"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 )
 
@@ -14,7 +13,8 @@ type SearchByDocumentHandler struct{ Deps }
 
 // Handle busca por blind index. Toda búsqueda queda auditada, también la que no encuentra nada.
 func (h *SearchByDocumentHandler) Handle(ctx context.Context, in DocumentInput) (domain.PartySnapshot, error) {
-	if err := authz.Require(ctx, authz.PartyRead); err != nil {
+	scope, err := readScope(ctx)
+	if err != nil {
 		return domain.PartySnapshot{}, err
 	}
 	doc, err := domain.NewDocumentID(in.Type, in.Number)
@@ -31,15 +31,25 @@ func (h *SearchByDocumentHandler) Handle(ctx context.Context, in DocumentInput) 
 		if err != nil && !isNotFound(err) {
 			return err
 		}
-		resource := domain.PartyID{}
+		resource, outOfScope := domain.PartyID{}, false
 		if err == nil {
-			found, resource = p, p.ID()
+			resource = p.ID()
+			found = p
+			if scope.Valid {
+				visible, err := uow.Parties().IsVisibleTo(ctx, p.ID(), scope.UUID)
+				if err != nil {
+					return err
+				}
+				if !visible { // cliente de otro asesor: responde como inexistente y queda auditado
+					found, outOfScope = nil, true
+				}
+			}
 		}
 		// Sin coincidencia no hay recurso: el evento registra el intento (y nunca el número).
 		entry := partyEntry("parties.party.document_searched", resource, map[string]string{
-			"documentType": string(doc.Type()), "found": strconv.FormatBool(found != nil),
+			"documentType": string(doc.Type()), "found": strconv.FormatBool(found != nil), "outOfScope": strconv.FormatBool(outOfScope),
 		})
-		if found == nil {
+		if err != nil {
 			entry.ResourceID = ""
 		}
 		return uow.Audit(ctx, entry) // la transacción debe confirmar aunque no se encuentre

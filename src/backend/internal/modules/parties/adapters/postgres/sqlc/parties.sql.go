@@ -210,6 +210,29 @@ func (q *Queries) InsertParty(ctx context.Context, arg InsertPartyParams) error 
 	return err
 }
 
+const isPartyVisibleTo = `-- name: IsPartyVisibleTo :one
+SELECT EXISTS (
+    SELECT 1 FROM parties.parties p
+    WHERE p.tenant_id = $1 AND p.id = $2
+      AND (p.created_by = $3::uuid
+           OR EXISTS (SELECT 1 FROM parties.policy_scopes s
+                      WHERE s.tenant_id = p.tenant_id AND s.agent_id = $3::uuid AND p.id = ANY (s.party_ids)))
+)::boolean AS visible
+`
+
+type IsPartyVisibleToParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+	Agent    uuid.UUID
+}
+
+func (q *Queries) IsPartyVisibleTo(ctx context.Context, arg IsPartyVisibleToParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isPartyVisibleTo, arg.TenantID, arg.ID, arg.Agent)
+	var visible bool
+	err := row.Scan(&visible)
+	return visible, err
+}
+
 const listConsents = `-- name: ListConsents :many
 SELECT id, status, purpose, text_version, consent_date, recorded_at
 FROM parties.consents
@@ -260,19 +283,25 @@ func (q *Queries) ListConsents(ctx context.Context, arg ListConsentsParams) ([]L
 }
 
 const listParties = `-- name: ListParties :many
-SELECT id, kind, name, document_type, document_last4, email, phone, address, city, created_at, updated_at, version
-FROM parties.parties
-WHERE tenant_id = $1
-  AND ($2::uuid IS NULL OR id < $2::uuid)
-  AND ($3::text IS NULL OR name ILIKE $3::text ESCAPE '\')
-ORDER BY id DESC
-LIMIT $4
+SELECT p.id, p.kind, p.name, p.document_type, p.document_last4, p.email, p.phone, p.address, p.city, p.created_at, p.updated_at, p.version
+FROM parties.parties p
+WHERE p.tenant_id = $1
+  AND ($2::uuid IS NULL OR p.id < $2::uuid)
+  AND ($3::text IS NULL OR p.name ILIKE $3::text ESCAPE '\')
+  AND ($4::uuid IS NULL
+       OR p.created_by = $4::uuid
+       OR EXISTS (SELECT 1 FROM parties.policy_scopes s
+                  WHERE s.tenant_id = p.tenant_id AND s.agent_id = $4::uuid
+                    AND p.id = ANY (s.party_ids)))
+ORDER BY p.id DESC
+LIMIT $5
 `
 
 type ListPartiesParams struct {
 	TenantID    uuid.UUID
 	Before      uuid.NullUUID
 	NamePattern pgtype.Text
+	VisibleTo   uuid.NullUUID
 	PageSize    int32
 }
 
@@ -296,6 +325,7 @@ func (q *Queries) ListParties(ctx context.Context, arg ListPartiesParams) ([]Lis
 		arg.TenantID,
 		arg.Before,
 		arg.NamePattern,
+		arg.VisibleTo,
 		arg.PageSize,
 	)
 	if err != nil {
@@ -414,4 +444,34 @@ func (q *Queries) UpdateParty(ctx context.Context, arg UpdatePartyParams) (int64
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const upsertPolicyScope = `-- name: UpsertPolicyScope :exec
+INSERT INTO parties.policy_scopes (tenant_id, policy_id, agent_id, party_ids, policy_version, updated_at)
+VALUES ($1, $2, $3, $4, $5, $6)
+ON CONFLICT (tenant_id, policy_id) DO UPDATE
+SET agent_id = EXCLUDED.agent_id, party_ids = EXCLUDED.party_ids,
+    policy_version = EXCLUDED.policy_version, updated_at = EXCLUDED.updated_at
+WHERE parties.policy_scopes.policy_version < EXCLUDED.policy_version
+`
+
+type UpsertPolicyScopeParams struct {
+	TenantID      uuid.UUID
+	PolicyID      uuid.UUID
+	AgentID       uuid.NullUUID
+	PartyIds      []uuid.UUID
+	PolicyVersion int32
+	UpdatedAt     time.Time
+}
+
+func (q *Queries) UpsertPolicyScope(ctx context.Context, arg UpsertPolicyScopeParams) error {
+	_, err := q.db.Exec(ctx, upsertPolicyScope,
+		arg.TenantID,
+		arg.PolicyID,
+		arg.AgentID,
+		arg.PartyIds,
+		arg.PolicyVersion,
+		arg.UpdatedAt,
+	)
+	return err
 }

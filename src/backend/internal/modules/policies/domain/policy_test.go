@@ -330,10 +330,14 @@ func TestIssueEndorsementAppliesEffects(t *testing.T) {
 	assert.True(t, before.Terms.Coverages[0].SumInsured.Equal(dt.Money(t, "50000000")), "la copia anterior no cambia")
 
 	events := p.PullEvents()
-	require.Len(t, events, 1)
+	require.Len(t, events, 2, "el endoso y el cambio de partes")
 	endorsed, ok := events[0].(domain.PolicyEndorsed)
 	require.True(t, ok)
 	assert.True(t, endorsed.NetPremiumDelta.Equal(dt.Money(t, "-100000")))
+	changed, ok := events[1].(domain.PolicyPartiesChanged)
+	require.True(t, ok)
+	assert.Equal(t, before.Version+1, changed.Version)
+	assert.Contains(t, changed.PartyIDs, newParty)
 
 	require.ErrorIs(t, p.IssueEndorsement(id, "END-2", dt.Money(t, "0"), dt.Money(t, "0"), domain.EndorsementEffects{}, dt.Now()), domain.ErrEndorsementNotPending)
 	require.ErrorIs(t, p.RejectEndorsement(id, "ya emitido", dt.Now()), domain.ErrEndorsementNotPending)
@@ -408,4 +412,30 @@ func TestEndorsementResolutionGates(t *testing.T) {
 	s := active.Snapshot()
 	assert.Equal(t, domain.EndorsementRejected, s.Endorsements[0].Status)
 	assert.True(t, s.Terms.NetPremium.Equal(dt.Money(t, "1000000")), "rechazar no cambia la póliza")
+}
+
+func TestPartiesChangedEvents(t *testing.T) {
+	t.Parallel()
+	terms := dt.ValidTerms(t)
+	agent := uuid.New()
+	terms.AgentID = uuid.NullUUID{UUID: agent, Valid: true}
+	p, err := domain.NewPolicy(domain.PolicyID(uuid.Must(uuid.NewV7())), terms, dt.Now())
+	require.NoError(t, err)
+	events := p.PullEvents()
+	require.Len(t, events, 1)
+	created, ok := events[0].(domain.PolicyPartiesChanged)
+	require.True(t, ok)
+	assert.Equal(t, int32(1), created.Version)
+	assert.Equal(t, agent, created.AgentID.UUID)
+	assert.Len(t, created.PartyIDs, 1, "tomador y asegurado son el mismo tercero: sin repetidos")
+
+	require.NoError(t, p.UpdateTerms(dt.ValidTerms(t), dt.Now()))
+	updated, ok := p.PullEvents()[0].(domain.PolicyPartiesChanged)
+	require.True(t, ok)
+	assert.Equal(t, int32(2), updated.Version)
+	assert.False(t, updated.AgentID.Valid)
+
+	sameParties, id := requested(t, domain.StatusActive)
+	require.NoError(t, sameParties.IssueEndorsement(id, "END-1", dt.Money(t, "0"), dt.Money(t, "0"), domain.EndorsementEffects{}, dt.Now()))
+	assert.Len(t, sameParties.PullEvents(), 1, "sin cambio de partes no hay evento de partes")
 }

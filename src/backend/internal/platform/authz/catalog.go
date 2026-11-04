@@ -38,12 +38,15 @@ const (
 	FeatureFlagRead   Permission = "featuremgmt.flag.read"
 	FeatureFlagUpdate Permission = "featuremgmt.flag.update"
 
-	PartyRead      Permission = "parties.party.read"
-	PartyCreate    Permission = "parties.party.create"
-	PartyUpdate    Permission = "parties.party.update"
-	DocumentReveal Permission = "parties.document.reveal"
-	ConsentRead    Permission = "parties.consent.read"
-	ConsentCreate  Permission = "parties.consent.create"
+	PartyRead       Permission = "parties.party.read"
+	PartyReadOwn    Permission = "parties.party.read-own"
+	PartyCreate     Permission = "parties.party.create"
+	PartyUpdate     Permission = "parties.party.update"
+	PartyUpdateOwn  Permission = "parties.party.update-own"
+	DocumentRectify Permission = "parties.document.rectify"
+	DocumentReveal  Permission = "parties.document.reveal"
+	ConsentRead     Permission = "parties.consent.read"
+	ConsentCreate   Permission = "parties.consent.create"
 
 	CatalogRead     Permission = "catalog.item.read"
 	CatalogManage   Permission = "catalog.item.manage"
@@ -63,11 +66,11 @@ func DefaultGrants() map[Role][]Permission {
 	return map[Role][]Permission{
 		RoleTenantAdmin:       {FeatureFlagRead, FeatureFlagUpdate, CatalogRead, CatalogManage, AgreementRead, AgreementManage},
 		RoleManager:           {FeatureFlagRead, PartyRead, DocumentReveal, ConsentRead, CatalogRead, AgreementRead, AgreementManage, PolicyRead},
-		RoleSalesAgent:        {PartyRead, PartyCreate, PartyUpdate, ConsentRead, ConsentCreate, CatalogRead, PolicyReadOwn},
-		RoleOperations:        {PartyRead, PartyCreate, PartyUpdate, DocumentReveal, ConsentRead, ConsentCreate, CatalogRead, PolicyRead, PolicyManage, PolicyCancel, EndorsementManage},
+		RoleSalesAgent:        {PartyReadOwn, PartyCreate, PartyUpdateOwn, ConsentRead, ConsentCreate, CatalogRead, PolicyReadOwn},
+		RoleOperations:        {PartyRead, PartyCreate, PartyUpdate, DocumentRectify, DocumentReveal, ConsentRead, ConsentCreate, CatalogRead, PolicyRead, PolicyManage, PolicyCancel, EndorsementManage},
 		RoleClaimsAnalyst:     {PartyRead, CatalogRead, PolicyRead},
 		RoleCollections:       {PartyRead, CatalogRead, PolicyRead},
 		RoleAccounting:        {PartyRead, CatalogRead, AgreementRead, PolicyRead},
-		RoleComplianceOfficer: {PartyRead, DocumentReveal, ConsentRead, ConsentCreate, CatalogRead, PolicyRead},
+		RoleComplianceOfficer: {PartyRead, PartyUpdate, DocumentRectify, DocumentReveal, ConsentRead, ConsentCreate, CatalogRead, PolicyRead},
 	}
 }

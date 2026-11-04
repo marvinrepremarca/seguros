@@ -23,12 +23,17 @@ FROM parties.parties
 WHERE tenant_id = @tenant_id AND id = @id;
 
 -- name: ListParties :many
-SELECT id, kind, name, document_type, document_last4, email, phone, address, city, created_at, updated_at, version
-FROM parties.parties
-WHERE tenant_id = @tenant_id
-  AND (sqlc.narg('before')::uuid IS NULL OR id < sqlc.narg('before')::uuid)
-  AND (sqlc.narg('name_pattern')::text IS NULL OR name ILIKE sqlc.narg('name_pattern')::text ESCAPE '\')
-ORDER BY id DESC
+SELECT p.id, p.kind, p.name, p.document_type, p.document_last4, p.email, p.phone, p.address, p.city, p.created_at, p.updated_at, p.version
+FROM parties.parties p
+WHERE p.tenant_id = @tenant_id
+  AND (sqlc.narg('before')::uuid IS NULL OR p.id < sqlc.narg('before')::uuid)
+  AND (sqlc.narg('name_pattern')::text IS NULL OR p.name ILIKE sqlc.narg('name_pattern')::text ESCAPE '\')
+  AND (sqlc.narg('visible_to')::uuid IS NULL
+       OR p.created_by = sqlc.narg('visible_to')::uuid
+       OR EXISTS (SELECT 1 FROM parties.policy_scopes s
+                  WHERE s.tenant_id = p.tenant_id AND s.agent_id = sqlc.narg('visible_to')::uuid
+                    AND p.id = ANY (s.party_ids)))
+ORDER BY p.id DESC
 LIMIT @page_size;
 
 -- name: ListPartySummaries :many
@@ -55,3 +60,20 @@ FROM parties.consents
 WHERE tenant_id = @tenant_id AND party_id = @party_id
 ORDER BY id DESC
 LIMIT 500;
+
+-- name: IsPartyVisibleTo :one
+SELECT EXISTS (
+    SELECT 1 FROM parties.parties p
+    WHERE p.tenant_id = @tenant_id AND p.id = @id
+      AND (p.created_by = @agent::uuid
+           OR EXISTS (SELECT 1 FROM parties.policy_scopes s
+                      WHERE s.tenant_id = p.tenant_id AND s.agent_id = @agent::uuid AND p.id = ANY (s.party_ids)))
+)::boolean AS visible;
+
+-- name: UpsertPolicyScope :exec
+INSERT INTO parties.policy_scopes (tenant_id, policy_id, agent_id, party_ids, policy_version, updated_at)
+VALUES (@tenant_id, @policy_id, @agent_id, @party_ids, @policy_version, @updated_at)
+ON CONFLICT (tenant_id, policy_id) DO UPDATE
+SET agent_id = EXCLUDED.agent_id, party_ids = EXCLUDED.party_ids,
+    policy_version = EXCLUDED.policy_version, updated_at = EXCLUDED.updated_at
+WHERE parties.policy_scopes.policy_version < EXCLUDED.policy_version;

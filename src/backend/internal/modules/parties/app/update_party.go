@@ -28,8 +28,15 @@ type UpdatePartyHandler struct{ Deps }
 
 // Handle aplica la rectificación con concurrencia optimista y la audita sin datos personales.
 func (h *UpdatePartyHandler) Handle(ctx context.Context, cmd UpdatePartyCommand) (domain.PartySnapshot, error) {
-	if err := authz.Require(ctx, authz.PartyUpdate); err != nil {
+	scope, err := scopeFor(ctx, authz.PartyUpdate, authz.PartyUpdateOwn)
+	if err != nil {
 		return domain.PartySnapshot{}, err
+	}
+	// Cambiar el documento cambia la identidad del cliente: tiene permiso propio (DECISIONS N10).
+	if cmd.Document != nil {
+		if err := authz.Require(ctx, authz.DocumentRectify); err != nil {
+			return domain.PartySnapshot{}, err
+		}
 	}
 	var doc *domain.DocumentID
 	var sealed *SealedDocument
@@ -45,8 +52,8 @@ func (h *UpdatePartyHandler) Handle(ctx context.Context, cmd UpdatePartyCommand)
 		doc, sealed = &parsed, &s
 	}
 	var out domain.PartySnapshot
-	err := h.Store.WithinTenant(ctx, func(ctx context.Context, uow UnitOfWork) error {
-		party, err := uow.Parties().Get(ctx, cmd.ID)
+	err = h.Store.WithinTenant(ctx, func(ctx context.Context, uow UnitOfWork) error {
+		party, err := getInScope(ctx, uow.Parties(), cmd.ID, scope)
 		if err != nil {
 			return err
 		}
@@ -71,5 +78,8 @@ func (h *UpdatePartyHandler) Handle(ctx context.Context, cmd UpdatePartyCommand)
 		out = updated.Snapshot()
 		return nil
 	})
+	if err != nil && cmd.Document != nil {
+		return out, h.withDuplicateAudit(ctx, err, cmd.Document.Type)
+	}
 	return out, err
 }

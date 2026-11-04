@@ -6,7 +6,8 @@ const MESSAGES: Readonly<Record<string, string>> = {
   "platform.bad_request": "Revisa los datos: hay campos con un formato inválido.",
   "platform.rate_limited": "Demasiadas solicitudes. Espera un momento e inténtalo de nuevo.",
   "kernel.date_range.invalid": "La fecha final debe ser posterior a la inicial.",
-  "parties.party.document_taken": "Ya existe un cliente con ese documento.",
+  "parties.party.document_taken":
+    "Ya existe un cliente con ese documento. Si no lo ves, pide acceso a Operaciones o a tu gerente.",
   "parties.party.invalid_document": "El número de documento no es válido para su tipo.",
   "parties.party.document_kind_mismatch": "Una organización usa NIT; una persona, CC, CE o PPT.",
   "parties.party.invalid_contact": "Revisa el correo y los datos de contacto.",

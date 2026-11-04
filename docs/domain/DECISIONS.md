@@ -17,6 +17,7 @@
 | N7 | Fin de vigencia | **`EffectiveTo` es el último día cubierto.** Vigencia = `[EffectiveFrom, EffectiveTo]`, ambos inclusive. | ✅ 2026-11-03 | Endosos y cancelaciones valen hasta `EffectiveTo` inclusive. El job diario marca `Vencida` a partir de `EffectiveTo + 1` (zona `America/Bogota`). |
 | N8 | Valores de prima | **Prima neta e impuestos/gastos por separado**, tal como los informa la aseguradora; el sistema no los calcula. Total = neta + impuestos. | ✅ 2026-11-03 | `Policy.netPremium` y `Policy.taxes`. Los eventos llevan ambos. La base de cuotas y de comisión se decide en la Fase 3. |
 | N9 | Servicio postventa (Flujo 5) | **Endoso con estados:** `Solicitado → Emitido \| Rechazado`. Prima, sumas aseguradas, partes y bienes cambian solo al emitirse. | ✅ 2026-11-03 | Certificados y duplicados quedan fuera hasta `Documents` (Fase 5). |
+| N10 | Clientes del asesor | **Un `SalesAgent` solo alcanza a sus clientes:** los que registró y las partes de las pólizas donde es el asesor. Si un documento ya existe, recibe el aviso sin datos del cliente y debe pedir acceso. No corrige el número de documento. | ✅ 2026-11-04 | Permisos `parties.party.read-own`, `parties.party.update-own` y `parties.document.rectify` (Operations, ComplianceOfficer). Proyección `parties.policy_scopes` desde `PolicyPartiesChanged`: el acceso por póliza es eventual (segundos). |
 
 ## 2. Decisiones de producto (SaaS)
 

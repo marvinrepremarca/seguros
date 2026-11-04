@@ -51,7 +51,7 @@ func RateLimitByIP(prefix string, requests int, window time.Duration, trustedHea
 // RateLimitByUser limita por usuario autenticado las rutas que cumplan match (va después de la
 // autenticación). Sin usuario no aplica: esas peticiones las rechaza la autorización. El contador es
 // por réplica hasta mover el rate limit a Valkey.
-func RateLimitByUser(match func(path string) bool, requests int, window time.Duration) func(http.Handler) http.Handler {
+func RateLimitByUser(match func(*http.Request) bool, requests int, window time.Duration) func(http.Handler) http.Handler {
 	limiter := httprate.LimitBy(requests, window,
 		func(r *http.Request) (string, error) {
 			user, _ := reqctx.UserID(r.Context())
@@ -64,7 +64,7 @@ func RateLimitByUser(match func(path string) bool, requests int, window time.Dur
 	return func(next http.Handler) http.Handler {
 		limited := limiter(next)
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if _, ok := reqctx.UserID(r.Context()); ok && match(r.URL.Path) {
+			if _, ok := reqctx.UserID(r.Context()); ok && match(r) {
 				limited.ServeHTTP(w, r)
 				return
 			}

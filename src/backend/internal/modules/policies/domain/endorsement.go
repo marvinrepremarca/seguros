@@ -133,6 +133,9 @@ func (p *Policy) IssueEndorsement(id uuid.UUID, number string, netDelta, taxesDe
 	e.Status, e.Number, e.NetPremiumDelta, e.TaxesDelta, e.Effects, e.ResolvedAt = EndorsementIssued, number, &netDelta, &taxesDelta, effects, &at
 	p.updatedAt = at
 	p.events = append(p.events, PolicyEndorsed{PolicyID: p.id, EndorsementID: id, NetPremiumDelta: netDelta, TaxesDelta: taxesDelta, EffectiveDate: e.EffectiveDate})
+	if len(effects.AddParties)+len(effects.RemoveParties) > 0 {
+		p.events = append(p.events, p.partiesChanged(p.version+1))
+	}
 	return nil
 }
 
@@ -214,6 +217,15 @@ func (p *Policy) RejectEndorsement(id uuid.UUID, reason string, now time.Time) e
 // Event es un evento de dominio de la póliza.
 type Event interface{ policyEvent() }
 
+// PolicyPartiesChanged: se creó la póliza o cambiaron sus partes o su asesor. Version es la que queda
+// guardada tras este cambio.
+type PolicyPartiesChanged struct {
+	PolicyID PolicyID
+	Version  int32
+	AgentID  uuid.NullUUID
+	PartyIDs []uuid.UUID
+}
+
 // PolicyIssued: la aseguradora expidió la póliza.
 type PolicyIssued struct{ Policy Snapshot }
 
@@ -247,6 +259,7 @@ type PolicyFellIntoArrears struct{ PolicyID PolicyID }
 // PolicyReinstated: la póliza salió de mora.
 type PolicyReinstated struct{ PolicyID PolicyID }
 
+func (PolicyPartiesChanged) policyEvent()  {}
 func (PolicyIssued) policyEvent()          {}
 func (PolicyEndorsed) policyEvent()        {}
 func (PolicyCancelled) policyEvent()       {}

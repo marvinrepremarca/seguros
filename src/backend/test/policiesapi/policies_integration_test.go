@@ -28,11 +28,13 @@ import (
 	cataloghttp "github.com/marvinrepremarca/seguros/internal/modules/catalog/adapters/http"
 	identity "github.com/marvinrepremarca/seguros/internal/modules/identity/contracts"
 	"github.com/marvinrepremarca/seguros/internal/modules/parties"
+	partiesevents "github.com/marvinrepremarca/seguros/internal/modules/parties/adapters/events"
 	partieshttp "github.com/marvinrepremarca/seguros/internal/modules/parties/adapters/http"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies"
 	policieshttp "github.com/marvinrepremarca/seguros/internal/modules/policies/adapters/http"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies/adapters/postgres"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies/app"
+	policycontracts "github.com/marvinrepremarca/seguros/internal/modules/policies/contracts"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies/domain"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/authz"
@@ -768,4 +770,131 @@ func TestTransitionsWithoutEndpointPersist(t *testing.T) {
 	apply(lost, func(p *domain.Policy) error { return p.Expire(end, now) })
 	apply(lost, func(p *domain.Policy) error { return p.MarkNotRenewed(now) })
 	assert.Equal(t, "not_renewed", statusOf(lost))
+}
+
+// deliverScopeEvents entrega al consumidor de Parties lo que Policies dejó en el outbox, como el worker.
+func deliverScopeEvents(t *testing.T, tenant kernel.TenantID) {
+	t.Helper()
+	superMu.Lock()
+	rows, err := super.Query(context.Background(), `SELECT id, payload FROM messaging.outbox WHERE tenant_id = $1 AND topic = 'policies.policy_parties_changed' ORDER BY id`, uuid.UUID(tenant))
+	require.NoError(t, err)
+	var events []outbox.Event
+	for rows.Next() {
+		var e outbox.Event
+		require.NoError(t, rows.Scan(&e.ID, &e.Payload))
+		e.TenantID, e.OccurredAt = tenant, time.Now().UTC() //nolint:forbidigo // instante informativo de la proyección
+		events = append(events, e)
+	}
+	rows.Close()
+	superMu.Unlock()
+	ctx := reqctx.WithTenantID(context.Background(), tenant)
+	consumer := partiesevents.PolicyScope()
+	for _, e := range events {
+		require.NoError(t, database.WithTenantTx(ctx, func(tx pgx.Tx) error { return consumer.Handle(ctx, tx, e) }))
+	}
+}
+
+// DECISIONS N10: su cliente es quien registró o una parte de sus pólizas.
+func TestAgentOnlyReachesOwnClients(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	w := e.world(t)
+	agent := e.as(w.tenant, authz.RoleSalesAgent)
+	other := e.as(w.tenant, authz.RoleSalesAgent)
+	e.users.list = []identity.User{{ID: uuid.UUID(agent.UserID), DisplayName: "Asesora"}}
+	const parties = "/api/v1/parties/parties"
+	client := func(who *authz.Principal, id string) int {
+		return e.do(t, who, http.MethodGet, parties+"/"+id, nil).status
+	}
+	listed := func(who *authz.Principal) int {
+		items, ok := e.do(t, who, http.MethodGet, parties, nil).body["items"].([]any)
+		require.True(t, ok)
+		return len(items)
+	}
+
+	// Sin póliza: los clientes que registró Operaciones no son suyos.
+	assert.Equal(t, http.StatusNotFound, client(agent, w.holder))
+	assert.Zero(t, listed(agent))
+
+	// Registra uno: lo ve y lo edita; el otro asesor no.
+	number := fmt.Sprintf("1%09d", uuid.New().ID()%1_000_000_000)
+	mine := e.do(t, agent, http.MethodPost, parties, map[string]any{"kind": "person", "name": "Cliente propio", "documentType": "CC", "documentNumber": number})
+	require.Equal(t, http.StatusCreated, mine.status, mine.body)
+	mineID := mine.str(t, "id")
+	assert.Equal(t, http.StatusOK, client(agent, mineID))
+	assert.Equal(t, 1, listed(agent))
+	assert.Equal(t, http.StatusNotFound, client(other, mineID))
+	assert.Equal(t, http.StatusOK, e.do(t, agent, http.MethodPut, parties+"/"+mineID, map[string]any{"name": "Cliente editado", "version": 1}).status)
+	assert.Equal(t, http.StatusNotFound, e.do(t, other, http.MethodPut, parties+"/"+mineID, map[string]any{"name": "Robado", "version": 2}).status)
+	consent := map[string]any{"status": "granted", "purpose": "Gestión", "textVersion": "v1", "consentDate": kernel.Today(kernel.SystemClock{}).String()}
+	assert.Equal(t, http.StatusNotFound, e.do(t, other, http.MethodGet, parties+"/"+mineID+"/consents", nil).status)
+	assert.Equal(t, http.StatusNotFound, e.do(t, other, http.MethodPost, parties+"/"+mineID+"/consents", consent).status)
+
+	// No corrige el documento, ni siquiera de sus clientes.
+	rectify := map[string]any{"name": "Cliente editado", "version": 2, "document": map[string]any{"documentType": "CC", "documentNumber": "12345678"}}
+	assert.Equal(t, http.StatusForbidden, e.do(t, agent, http.MethodPut, parties+"/"+mineID, rectify).status)
+
+	// El documento de otro asesor: aviso sin datos, búsqueda sin resultado, y ambos auditados.
+	dup := e.do(t, other, http.MethodPost, parties, map[string]any{"kind": "person", "name": "Duplicado", "documentType": "CC", "documentNumber": number})
+	assert.Equal(t, http.StatusConflict, dup.status)
+	assert.Equal(t, "parties.party.document_taken", dup.body["type"])
+	assert.NotContains(t, fmt.Sprint(dup.body), "Cliente")
+	assert.Len(t, auditDetails(t, w.tenant, "parties.party.duplicate_rejected"), 1)
+	search := map[string]any{"documentType": "CC", "documentNumber": number}
+	assert.Equal(t, http.StatusNotFound, e.do(t, other, http.MethodPost, parties+"/search-by-document", search).status)
+	assert.Equal(t, http.StatusOK, e.do(t, agent, http.MethodPost, parties+"/search-by-document", search).status)
+	searches := auditDetails(t, w.tenant, "parties.party.document_searched")
+	require.Len(t, searches, 2)
+	assert.Equal(t, "true", searches[0]["outOfScope"])
+	assert.Equal(t, "false", searches[1]["outOfScope"])
+
+	// Asignado como asesor de una póliza, alcanza a sus partes cuando llega el evento.
+	terms := w.terms()
+	terms["agentId"] = uuid.UUID(agent.UserID).String()
+	policy := e.do(t, w.ops, http.MethodPost, base, terms)
+	require.Equal(t, http.StatusCreated, policy.status, policy.body)
+	assert.Equal(t, http.StatusNotFound, client(agent, w.holder), "antes de procesar el evento")
+	deliverScopeEvents(t, w.tenant)
+	assert.Equal(t, http.StatusOK, client(agent, w.holder))
+	assert.Equal(t, http.StatusOK, client(agent, w.insured))
+	assert.Equal(t, 3, listed(agent))
+	assert.Equal(t, http.StatusNotFound, client(other, w.holder))
+
+	// Una entrega repetida no retrocede; si le quitan la póliza, pierde el alcance.
+	deliverScopeEvents(t, w.tenant)
+	assert.Equal(t, http.StatusOK, client(agent, w.holder))
+	terms["agentId"] = nil
+	delete(terms, "agentId")
+	updated := e.do(t, w.ops, http.MethodPut, fmt.Sprintf("%s/%s?version=%d", base, policy.str(t, "id"), policy.version(t)), terms)
+	require.Equal(t, http.StatusOK, updated.status, updated.body)
+	deliverScopeEvents(t, w.tenant)
+	assert.Equal(t, http.StatusNotFound, client(agent, w.holder))
+	assert.Equal(t, http.StatusOK, client(agent, mineID), "conserva lo que registró")
+
+	// Operaciones sigue alcanzando a todos y puede corregir el documento.
+	rectify["version"] = 2
+	assert.Equal(t, http.StatusOK, e.do(t, w.ops, http.MethodPut, parties+"/"+mineID, rectify).status)
+}
+
+// El consumidor descarta versiones viejas aunque lleguen después de la nueva.
+func TestPolicyScopeIgnoresOutOfOrderEvents(t *testing.T) {
+	t.Parallel()
+	tenant, policyID, agent, party := newTenant(), uuid.New(), uuid.New(), uuid.New()
+	ctx := reqctx.WithTenantID(context.Background(), tenant)
+	consumer := partiesevents.PolicyScope()
+	deliver := func(version int32, agentID *uuid.UUID) {
+		payload, err := json.Marshal(policycontracts.PolicyPartiesChanged{PolicyID: policyID, PolicyVersion: version, AgentID: agentID, PartyIDs: []uuid.UUID{party}})
+		require.NoError(t, err)
+		event := outbox.Event{ID: uuid.New(), TenantID: tenant, OccurredAt: time.Now().UTC(), Payload: payload} //nolint:forbidigo // instante informativo
+		require.NoError(t, database.WithTenantTx(ctx, func(tx pgx.Tx) error { return consumer.Handle(ctx, tx, event) }))
+	}
+	deliver(3, nil)
+	deliver(2, &agent)
+	var stored uuid.NullUUID
+	var version int32
+	require.NoError(t, database.WithTenantTx(ctx, func(tx pgx.Tx) error {
+		return tx.QueryRow(ctx, `SELECT agent_id, policy_version FROM parties.policy_scopes WHERE policy_id = $1`, policyID).Scan(&stored, &version)
+	}))
+	assert.False(t, stored.Valid, "la versión 2 llegó tarde: se descarta")
+	assert.Equal(t, int32(3), version)
 }

@@ -16,6 +16,7 @@ import (
 	"golang.org/x/sync/errgroup"
 
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
+	"github.com/marvinrepremarca/seguros/internal/modules/parties"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies"
 	"github.com/marvinrepremarca/seguros/internal/modules/tenancy"
 	tenancycontracts "github.com/marvinrepremarca/seguros/internal/modules/tenancy/contracts"
@@ -111,7 +112,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	for _, c := range featuremgmt.Consumers(invalidator) {
+	for _, c := range append(featuremgmt.Consumers(invalidator), parties.Consumers()...) {
 		if err := dispatcher.Register(c); err != nil {
 			return err
 		}

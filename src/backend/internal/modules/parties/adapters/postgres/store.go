@@ -142,9 +142,17 @@ func (r *repository) GetDocument(ctx context.Context, id domain.PartyID) (domain
 	return domain.DocumentType(row.DocumentType), row.DocumentCiphertext, nil
 }
 
+func (r *repository) IsVisibleTo(ctx context.Context, id domain.PartyID, agent uuid.UUID) (bool, error) {
+	visible, err := r.q.IsPartyVisibleTo(ctx, partiessqlc.IsPartyVisibleToParams{TenantID: r.tenant, ID: uuid.UUID(id), Agent: agent})
+	if err != nil {
+		return false, fmt.Errorf("parties: verificando alcance: %w", err)
+	}
+	return visible, nil
+}
+
 func (r *repository) List(ctx context.Context, f app.ListFilter) ([]*domain.Party, error) {
 	rows, err := r.q.ListParties(ctx, partiessqlc.ListPartiesParams{
-		TenantID: r.tenant, Before: f.Before, NamePattern: text(f.NamePattern), PageSize: f.Limit,
+		TenantID: r.tenant, Before: f.Before, NamePattern: text(f.NamePattern), VisibleTo: f.VisibleTo, PageSize: f.Limit,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("parties: listando terceros: %w", err)

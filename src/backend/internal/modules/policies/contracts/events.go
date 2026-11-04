@@ -6,6 +6,7 @@ import "github.com/google/uuid"
 
 // Tópicos de los eventos de policies.
 const (
+	TopicPolicyPartiesChanged  = "policies.policy_parties_changed"
 	TopicPolicyIssued          = "policies.policy_issued"
 	TopicPolicyEndorsed        = "policies.policy_endorsed"
 	TopicPolicyCancelled       = "policies.policy_cancelled"
@@ -14,6 +15,15 @@ const (
 	TopicPolicyFellIntoArrears = "policies.policy_fell_into_arrears"
 	TopicPolicyReinstated      = "policies.policy_reinstated"
 )
+
+// PolicyPartiesChanged se publica al crear la póliza y cuando cambian sus partes o su asesor. Lleva el
+// conjunto completo: PolicyVersion permite descartar entregas viejas o fuera de orden.
+type PolicyPartiesChanged struct {
+	PolicyID      uuid.UUID   `json:"policyId"`
+	PolicyVersion int32       `json:"policyVersion"`
+	AgentID       *uuid.UUID  `json:"agentId,omitempty"`
+	PartyIDs      []uuid.UUID `json:"partyIds"`
+}
 
 // PolicyIssued se publica cuando la aseguradora expide la póliza.
 type PolicyIssued struct {

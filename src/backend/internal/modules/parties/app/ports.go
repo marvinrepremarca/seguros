@@ -3,6 +3,7 @@ package app
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/google/uuid"
@@ -10,7 +11,9 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/modules/parties/contracts"
 	"github.com/marvinrepremarca/seguros/internal/modules/parties/domain"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
+	"github.com/marvinrepremarca/seguros/internal/platform/authz"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
+	"github.com/marvinrepremarca/seguros/internal/platform/reqctx"
 )
 
 // documentField es el campo cifrado del número de documento (AAD y derivación del blind index).
@@ -34,6 +37,7 @@ type ListFilter struct {
 	NamePattern string // patrón ILIKE ya escapado; vacío = todos
 	Before      uuid.NullUUID
 	Limit       int32
+	VisibleTo   uuid.NullUUID // solo los clientes de este asesor; sin valor = todos
 }
 
 // PartyRepository persiste terceros del tenant del contexto.
@@ -45,6 +49,8 @@ type PartyRepository interface {
 	// GetByBlindIndex devuelve domain.ErrNotFound si no hay coincidencia.
 	GetByBlindIndex(ctx context.Context, docType domain.DocumentType, blindIndex []byte) (*domain.Party, error)
 	GetDocument(ctx context.Context, id domain.PartyID) (domain.DocumentType, []byte, error)
+	// IsVisibleTo indica si el tercero es cliente del asesor: lo registró o es parte de sus pólizas.
+	IsVisibleTo(ctx context.Context, id domain.PartyID, agent uuid.UUID) (bool, error)
 	List(ctx context.Context, f ListFilter) ([]*domain.Party, error)
 	// Update aplica concurrencia optimista; doc nil conserva el documento guardado.
 	Update(ctx context.Context, p *domain.Party, doc *SealedDocument) error
@@ -96,4 +102,61 @@ func partyEntry(action string, id domain.PartyID, details map[string]string) aud
 		Action: action, ResourceType: "parties.party", ResourceID: id.String(),
 		Outcome: audit.OutcomeSuccess, Details: details,
 	}
+}
+
+// scopeFor resuelve el alcance del usuario: con full, todos los clientes (sin valor); con own, solo los
+// suyos (DECISIONS N10). El contrato declara `authenticated` porque son permisos alternativos.
+func scopeFor(ctx context.Context, full, own authz.Permission) (uuid.NullUUID, error) {
+	err := authz.Require(ctx, full)
+	if err == nil {
+		return uuid.NullUUID{}, nil
+	}
+	if !errors.Is(err, authz.ErrForbidden) {
+		return uuid.NullUUID{}, err
+	}
+	if err := authz.Require(ctx, own); err != nil {
+		return uuid.NullUUID{}, err
+	}
+	user, ok := reqctx.UserID(ctx)
+	if !ok {
+		return uuid.NullUUID{}, authz.ErrUnauthenticated
+	}
+	return uuid.NullUUID{UUID: uuid.UUID(user), Valid: true}, nil
+}
+
+func readScope(ctx context.Context) (uuid.NullUUID, error) {
+	return scopeFor(ctx, authz.PartyRead, authz.PartyReadOwn)
+}
+
+// getInScope carga el tercero; uno fuera del alcance responde como inexistente (no revela que existe).
+func getInScope(ctx context.Context, repo PartyRepository, id domain.PartyID, scope uuid.NullUUID) (*domain.Party, error) {
+	p, err := repo.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	if scope.Valid {
+		visible, err := repo.IsVisibleTo(ctx, id, scope.UUID)
+		if err != nil {
+			return nil, err
+		}
+		if !visible {
+			return nil, domain.ErrNotFound
+		}
+	}
+	return p, nil
+}
+
+// withDuplicateAudit deja rastro de un documento repetido: la respuesta confirma que el número existe,
+// y la transacción del cambio ya se revirtió.
+func (d Deps) withDuplicateAudit(ctx context.Context, err error, docType domain.DocumentType) error {
+	if !errors.Is(err, domain.ErrDocumentTaken) {
+		return err
+	}
+	auditErr := d.Store.WithinTenant(ctx, func(ctx context.Context, uow UnitOfWork) error {
+		return uow.Audit(ctx, audit.Entry{
+			Action: "parties.party.duplicate_rejected", ResourceType: "parties.party", Outcome: audit.OutcomeDenied,
+			Details: map[string]string{"documentType": string(docType)},
+		})
+	})
+	return errors.Join(err, auditErr)
 }

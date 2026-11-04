@@ -34,10 +34,19 @@ type routerDeps struct {
 	SPA http.Handler
 }
 
-// isDocumentLookup indica las rutas que leen o confirman un número de documento.
-func isDocumentLookup(path string) bool {
-	return strings.HasPrefix(path, "/api/v1/parties/parties/") &&
-		(strings.HasSuffix(path, "/document/reveal") || strings.HasSuffix(path, "/search-by-document"))
+// isDocumentLookup indica las rutas que leen o confirman un número de documento: revelarlo, buscarlo,
+// y registrar o rectificar un tercero (un documento repetido responde 409).
+func isDocumentLookup(r *http.Request) bool {
+	const parties = "/api/v1/parties/parties"
+	p := r.URL.Path
+	switch {
+	case r.Method == http.MethodPost && (p == parties || strings.HasSuffix(p, "/document/reveal") || strings.HasSuffix(p, "/search-by-document")):
+		return strings.HasPrefix(p, parties)
+	case r.Method == http.MethodPut:
+		return strings.HasPrefix(p, parties+"/")
+	default:
+		return false
+	}
 }
 
 // buildRouter compone el router de la API. Orden de middlewares (rules/architecture.md §API):

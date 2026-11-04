@@ -14,10 +14,12 @@ type Querier interface {
 	GetPartyDocument(ctx context.Context, arg GetPartyDocumentParams) (GetPartyDocumentRow, error)
 	InsertConsent(ctx context.Context, arg InsertConsentParams) error
 	InsertParty(ctx context.Context, arg InsertPartyParams) error
+	IsPartyVisibleTo(ctx context.Context, arg IsPartyVisibleToParams) (bool, error)
 	ListConsents(ctx context.Context, arg ListConsentsParams) ([]ListConsentsRow, error)
 	ListParties(ctx context.Context, arg ListPartiesParams) ([]ListPartiesRow, error)
 	ListPartySummaries(ctx context.Context, arg ListPartySummariesParams) ([]ListPartySummariesRow, error)
 	UpdateParty(ctx context.Context, arg UpdatePartyParams) (int64, error)
+	UpsertPolicyScope(ctx context.Context, arg UpsertPolicyScopeParams) error
 }
 
 var _ Querier = (*Queries)(nil)

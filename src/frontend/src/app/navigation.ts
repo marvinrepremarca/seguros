@@ -32,7 +32,11 @@ export const NAV_SECTIONS: readonly NavSection[] = [
     title: "General",
     items: [
       { label: "Inicio", link: { to: "/" } },
-      { label: "Clientes", link: { to: "/clientes" }, permissions: [permissions.partyRead] },
+      {
+        label: "Clientes",
+        link: { to: "/clientes" },
+        permissions: [permissions.partyRead, permissions.partyReadOwn],
+      },
       {
         label: "Pólizas",
         link: { to: "/polizas" },

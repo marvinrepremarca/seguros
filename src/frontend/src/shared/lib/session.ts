@@ -14,6 +14,8 @@ export const permissions = {
   featureFlagRead: "featuremgmt.flag.read",
   featureFlagUpdate: "featuremgmt.flag.update",
   partyRead: "parties.party.read",
+  partyReadOwn: "parties.party.read-own",
+  partyUpdateOwn: "parties.party.update-own",
   partyCreate: "parties.party.create",
   partyUpdate: "parties.party.update",
   documentReveal: "parties.document.reveal",

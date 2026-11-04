@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	partiesevents "github.com/marvinrepremarca/seguros/internal/modules/parties/adapters/events"
 	partieshttp "github.com/marvinrepremarca/seguros/internal/modules/parties/adapters/http"
 	"github.com/marvinrepremarca/seguros/internal/modules/parties/adapters/postgres"
 	"github.com/marvinrepremarca/seguros/internal/modules/parties/app"
@@ -15,7 +16,11 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/platform/authz"
 	"github.com/marvinrepremarca/seguros/internal/platform/db"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
+	"github.com/marvinrepremarca/seguros/internal/platform/outbox"
 )
+
+// Consumers devuelve los consumidores de eventos del módulo (los registra cmd/worker).
+func Consumers() []outbox.Consumer { return []outbox.Consumer{partiesevents.PolicyScope()} }
 
 // Deps son las dependencias del módulo.
 type Deps struct {

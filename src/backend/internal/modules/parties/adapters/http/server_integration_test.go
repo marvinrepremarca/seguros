@@ -244,6 +244,7 @@ func TestPermissions(t *testing.T) {
 	}{
 		{"sin sesión", nil, http.MethodGet, base, nil, http.StatusUnauthorized},
 		{"admin no lista", admin, http.MethodGet, base, nil, http.StatusForbidden},
+		{"asesor no ve clientes ajenos", sales, http.MethodGet, base + "/" + id, nil, http.StatusNotFound},
 		{"asesor no revela", sales, http.MethodPost, base + "/" + id + "/document/reveal", nil, http.StatusForbidden},
 		{"cartera no crea", collections, http.MethodPost, base, person(uniqueCC()), http.StatusForbidden},
 		{"cartera no rectifica", collections, http.MethodPut, base + "/" + id, map[string]any{"name": "Otro", "version": 1}, http.StatusForbidden},

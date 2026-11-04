@@ -275,7 +275,19 @@ func NewPolicy(id PolicyID, terms Terms, now time.Time) (*Policy, error) {
 	if err := terms.validate(); err != nil {
 		return nil, err
 	}
-	return &Policy{id: id, status: StatusInQuotation, terms: terms, createdAt: now.UTC(), updatedAt: now.UTC(), version: 1}, nil
+	p := &Policy{id: id, status: StatusInQuotation, terms: terms, createdAt: now.UTC(), updatedAt: now.UTC(), version: 1}
+	p.events = append(p.events, p.partiesChanged(p.version))
+	return p, nil
+}
+
+func (p *Policy) partiesChanged(version int32) PolicyPartiesChanged {
+	ids := make([]uuid.UUID, 0, len(p.terms.Parties))
+	for _, party := range p.terms.Parties {
+		if !slices.Contains(ids, party.PartyID) {
+			ids = append(ids, party.PartyID)
+		}
+	}
+	return PolicyPartiesChanged{PolicyID: p.id, Version: version, AgentID: p.terms.AgentID, PartyIDs: ids}
 }
 
 // Snapshot es el estado persistido.
@@ -374,6 +386,7 @@ func (p *Policy) UpdateTerms(terms Terms, now time.Time) error {
 	}
 	p.terms = terms
 	p.updatedAt = now.UTC()
+	p.events = append(p.events, p.partiesChanged(p.version+1))
 	return nil
 }
 

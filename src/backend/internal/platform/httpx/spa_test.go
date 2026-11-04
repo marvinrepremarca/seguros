@@ -155,7 +155,7 @@ func TestNewSPAHandlerFailsWithBrokenBuild(t *testing.T) {
 func TestRateLimitByUser(t *testing.T) {
 	t.Parallel()
 	ok := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
-	h := httpx.RateLimitByUser(func(p string) bool { return strings.HasSuffix(p, "/reveal") }, 2, time.Hour)(ok)
+	h := httpx.RateLimitByUser(func(r *http.Request) bool { return strings.HasSuffix(r.URL.Path, "/reveal") }, 2, time.Hour)(ok)
 	status := func(ctx context.Context, path string) int {
 		rec := httptest.NewRecorder()
 		h.ServeHTTP(rec, httptest.NewRequestWithContext(ctx, http.MethodPost, path, nil))

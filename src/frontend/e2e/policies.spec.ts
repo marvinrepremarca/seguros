@@ -172,3 +172,41 @@ test("un asesor no ve acciones de operación ni pólizas ajenas", async ({ page 
   await expect(page.getByRole("link", { name: "Nueva póliza" })).toHaveCount(0);
   await expect(page.getByText("No hay pólizas para mostrar.")).toBeVisible();
 });
+
+test("un asesor solo ve los clientes que registró", async ({ browser }) => {
+  const suffix = String(Date.now()).slice(-8);
+  const register = async (page: Page, name: string, cc: string) => {
+    await goTo(page, "Clientes");
+    await page.getByRole("link", { name: "Nuevo cliente" }).click();
+    await page.getByLabel("Nombre o razón social").fill(name);
+    await page.getByLabel("Número de documento").fill(cc);
+    await page.getByRole("button", { name: "Guardar cliente" }).click();
+  };
+
+  const opsContext = await browser.newContext();
+  const ops = await opsContext.newPage();
+  await login(ops, "ops.dev");
+  const foreign = `Ajeno ${suffix}`;
+  const foreignCC = `2${suffix}1`;
+  await register(ops, foreign, foreignCC);
+  await expect(ops.getByRole("heading", { level: 1, name: foreign })).toBeVisible();
+  await opsContext.close();
+
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  await login(page, "sales.dev");
+  const own = `Propio ${suffix}`;
+  await register(page, own, `3${suffix}1`);
+  await expect(page.getByRole("heading", { level: 1, name: own })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Mostrar documento" })).toHaveCount(0);
+
+  await goTo(page, "Clientes");
+  await expect(page.getByRole("link", { name: own })).toBeVisible();
+  await expect(page.getByRole("link", { name: foreign })).toHaveCount(0);
+
+  // El documento de otro asesor: aviso sin datos del cliente.
+  await register(page, `Duplicado ${suffix}`, foreignCC);
+  await expect(page.getByRole("alert")).toContainText("Ya existe un cliente con ese documento");
+  await expect(page.getByText(foreign)).toHaveCount(0);
+  await context.close();
+});

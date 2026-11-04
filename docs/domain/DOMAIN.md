@@ -38,6 +38,7 @@
   - Documento: `Person` usa CC, CE o PPT; `Organization` usa NIT con dígito de verificación válido.
   - Una sola `Party` por `(tenant, tipo, número)`: una segunda da `parties.party.document_taken`.
 - El número de documento es **Restringido**: cifrado, con blind index, ligado al ID de la `Party`; la UI y las respuestas solo muestran los últimos 4 caracteres, y ninguno en documentos de menos de 8. Revelarlo exige `parties.document.reveal` y se audita. Nunca va en URLs: la búsqueda por documento es `POST`.
+- Alcance del asesor (DECISIONS N10): un cliente fuera de su alcance responde 404, también en la búsqueda por documento, que queda auditada. Un documento repetido responde 409 sin datos y se audita.
 - Habeas data: cada autorización o revocación es un `Consent` nuevo con fecha, finalidad y versión del texto. Consulta y rectificación están aquí; exporte y supresión llegan con `Compliance` (Fase 5). El consentimiento no bloquea la expedición.
 
 ### Catalog
@@ -105,6 +106,7 @@ Cualquier otra transición devuelve el error de dominio `ErrInvalidPolicyTransit
 | Evento (Contracts) | Publica | Consumen |
 |---|---|---|
 | `QuoteAccepted` | Quoting | Policies, Crm |
+| `PolicyPartiesChanged` | Policies | Parties (alcance del asesor) |
 | `PolicyIssued` | Policies | Billing, Commissions, Renewals, Notifications, Reporting |
 | `PolicyEndorsed` | Policies | Billing, Commissions |
 | `PolicyCancelled` | Policies | Billing (anula cuotas pendientes, registra devolución informada), Commissions (clawback), Renewals |
@@ -127,7 +129,7 @@ Todo consumidor verifica el flag del módulo para el tenant del evento y es **id
 |---|---|
 | `TenantAdmin` | Configuración, usuarios, flags del tenant |
 | `Manager` | Todo lectura; aprobación de overrides; comisiones; acuerdos de comisión |
-| `SalesAgent` | Leads y cotizaciones propias; pólizas propias (lectura); registra y actualiza clientes |
+| `SalesAgent` | Leads y cotizaciones propias; pólizas propias (lectura); registra clientes y actualiza los suyos, sin cambiar el documento (DECISIONS N10) |
 | `Operations` | Expedición, endosos, renovaciones, cancelaciones |
 | `ClaimsAnalyst` | Siniestros (incluye datos de salud) |
 | `Collections` | Cuotas, pagos, gestión de cobro |

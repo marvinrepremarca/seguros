@@ -6,6 +6,7 @@ info:
     Clientes de la agencia (tomadores, asegurados, beneficiarios) y sus autorizaciones de
     tratamiento de datos (habeas data). El número de documento es dato Restringido: nunca viaja en
     URLs; las respuestas solo incluyen sus últimos 4 caracteres y revelarlo se audita.
+    `authenticated` se resuelve en el caso de uso: un asesor solo alcanza a sus clientes (DECISIONS N10).
 servers:
   - url: /
 paths:
@@ -13,7 +14,7 @@ paths:
     get:
       operationId: listParties
       summary: Lista terceros (búsqueda opcional por nombre, paginación keyset).
-      x-permission: parties.party.read
+      x-permission: authenticated
       parameters:
         - { name: q, in: query, schema: { type: string, minLength: 2, maxLength: 100 } }
         - { name: cursor, in: query, schema: { type: string, maxLength: 64 } }
@@ -52,7 +53,7 @@ paths:
     post:
       operationId: searchPartyByDocument
       summary: Busca por documento exacto (POST para que el número no quede en la URL). Se audita.
-      x-permission: parties.party.read
+      x-permission: authenticated
       requestBody:
         required: true
         content:
@@ -74,7 +75,7 @@ paths:
       - { name: partyId, in: path, required: true, schema: { type: string, format: uuid } }
     get:
       operationId: getParty
-      x-permission: parties.party.read
+      x-permission: authenticated
       responses:
         "200":
           description: Tercero.
@@ -87,7 +88,7 @@ paths:
     put:
       operationId: updateParty
       summary: Rectifica los datos de un tercero (concurrencia optimista por version).
-      x-permission: parties.party.update
+      x-permission: authenticated
       requestBody:
         required: true
         content:

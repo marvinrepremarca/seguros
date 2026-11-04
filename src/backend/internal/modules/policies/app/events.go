@@ -32,6 +32,10 @@ func nullable(id uuid.NullUUID) *uuid.UUID {
 
 func toContract(e domain.Event) (string, any, error) {
 	switch ev := e.(type) {
+	case domain.PolicyPartiesChanged:
+		return contracts.TopicPolicyPartiesChanged, contracts.PolicyPartiesChanged{
+			PolicyID: uuid.UUID(ev.PolicyID), PolicyVersion: ev.Version, AgentID: nullable(ev.AgentID), PartyIDs: ev.PartyIDs,
+		}, nil
 	case domain.PolicyIssued:
 		t := ev.Policy.Terms
 		holder := uuid.Nil

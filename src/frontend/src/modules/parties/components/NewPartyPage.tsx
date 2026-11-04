@@ -1,5 +1,5 @@
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useNavigate } from "@tanstack/react-router";
 import { useForm } from "react-hook-form";
 
@@ -25,6 +25,7 @@ function toRequest(v: PartyFormValues): CreatePartyRequest {
 
 export function NewPartyPage() {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const form = useForm({
     resolver: zodResolver(partyFormSchema),
     defaultValues: {
@@ -44,8 +45,9 @@ export function NewPartyPage() {
       if (res.status !== 201) throw new Error("no creado");
       return res.data;
     },
-    onSuccess: (party) => {
-      void navigate({ to: "/clientes/$partyId", params: { partyId: party.id } });
+    onSuccess: async (party) => {
+      await queryClient.invalidateQueries({ queryKey: ["parties"] });
+      await navigate({ to: "/clientes/$partyId", params: { partyId: party.id } });
     },
   });
   const { errors } = form.formState;

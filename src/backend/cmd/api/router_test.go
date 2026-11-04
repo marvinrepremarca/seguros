@@ -174,3 +174,25 @@ func TestEveryRouteRequiresSessionUnlessWhitelisted(t *testing.T) {
 		assert.Contains(t, seen, p, "la lista blanca no debe tener rutas inexistentes")
 	}
 }
+
+func TestIsDocumentLookup(t *testing.T) {
+	t.Parallel()
+	const base = "/api/v1/parties/parties"
+	cases := []struct {
+		method, path string
+		want         bool
+	}{
+		{http.MethodPost, base, true},
+		{http.MethodPost, base + "/search-by-document", true},
+		{http.MethodPost, base + "/id/document/reveal", true},
+		{http.MethodPut, base + "/id", true},
+		{http.MethodGet, base, false},
+		{http.MethodGet, base + "/id", false},
+		{http.MethodPost, base + "/id/consents", false},
+		{http.MethodPost, "/api/v1/policies/policies", false},
+	}
+	for _, c := range cases {
+		req := httptest.NewRequestWithContext(t.Context(), c.method, c.path, nil)
+		assert.Equal(t, c.want, isDocumentLookup(req), "%s %s", c.method, c.path)
+	}
+}
