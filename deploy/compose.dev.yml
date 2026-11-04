@@ -93,6 +93,7 @@ services:
       KC_HOSTNAME_BACKCHANNEL_DYNAMIC: "true"
       # Placeholders de realm-dev.json:
       KC_BFF_CLIENT_SECRET: ${KC_BFF_CLIENT_SECRET:?ejecuta make dev-env}
+      KC_DIRECTORY_CLIENT_SECRET: ${KC_DIRECTORY_CLIENT_SECRET:?ejecuta make dev-env}
       KC_TEST_USER_PASSWORD: ${KC_TEST_USER_PASSWORD:?ejecuta make dev-env}
     volumes:
       - ${LOCAL_WORKSPACE_FOLDER:-..}/deploy/keycloak/realm-dev.json:/opt/keycloak/data/import/realm-dev.json:ro

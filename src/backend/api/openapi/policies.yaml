@@ -291,11 +291,12 @@ components:
     SignedAmount: { type: string, format: decimal, pattern: '^-?\d{1,15}(\.\d{1,4})?$' }
     Agent:
       type: object
-      required: [id, displayName]
+      required: [id, displayName, active]
       additionalProperties: false
       properties:
         id: { type: string, format: uuid }
         displayName: { type: string }
+        active: { type: boolean, description: "Habilitado y con rol de asesor: solo a estos se les asigna." }
     PolicyPartyInput:
       type: object
       required: [partyId, role]

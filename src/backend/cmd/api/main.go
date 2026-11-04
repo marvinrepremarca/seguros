@@ -24,6 +24,7 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/modules/catalog"
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity"
+	"github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/keycloak"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/oidc"
 	"github.com/marvinrepremarca/seguros/internal/modules/parties"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies"
@@ -109,11 +110,15 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	agentsSource, err := keycloak.New(cfg.Auth)
+	if err != nil {
+		return err
+	}
 	tenants := tenancy.New(database, clock)
 	recorder := audit.NewRecorder(clock)
 	identityMod, err := identity.New(identity.Deps{
 		DB: database, Clock: clock, Audit: recorder, Tenants: tenants.Directory,
-		Policy: policy, Provider: provider,
+		Policy: policy, Provider: provider, ActiveAgents: agentsSource,
 		SessionStore: session.NewValkeyStore(valkeyClient, "bff:sess:", clock),
 		AuthTxStore:  session.NewValkeyStore(valkeyClient, "bff:authtx:", clock),
 		Auth:         cfg.Auth, Logger: logger,

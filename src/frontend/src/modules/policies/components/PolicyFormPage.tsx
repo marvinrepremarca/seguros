@@ -326,11 +326,13 @@ function PolicyForm({ deps, policy }: { deps: PolicyDeps; policy?: Policy }) {
               {(p) => (
                 <Select {...p} {...form.register("agentId")}>
                   <option value="">Sin asesor</option>
-                  {agents.data?.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.displayName}
-                    </option>
-                  ))}
+                  {agents.data
+                    ?.filter((a) => a.active || a.id === policy?.agentId)
+                    .map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.displayName}
+                      </option>
+                    ))}
                 </Select>
               )}
             </Field>

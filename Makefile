@@ -91,6 +91,7 @@ dev-env: ## Crea/completa deploy/.env con secretos aleatorios locales
 
 dev-up: dev-env ## Levanta dependencias de desarrollo (crea deploy/.env si falta)
 	$(COMPOSE) up -d --wait
+	deploy/scripts/dev-keycloak.sh
 
 dev-status: ## Estado de las dependencias de desarrollo
 	$(COMPOSE) ps

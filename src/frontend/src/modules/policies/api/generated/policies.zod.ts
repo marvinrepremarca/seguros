@@ -157,7 +157,8 @@ export const CreatePolicyResponse = zod.object({
 export const ListAgentsResponse = zod.object({
   "items": zod.array(zod.object({
   "id": zod.uuid(),
-  "displayName": zod.string()
+  "displayName": zod.string(),
+  "active": zod.boolean().describe('Habilitado y con rol de asesor: solo a estos se les asigna.')
 }))
 })
 

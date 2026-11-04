@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/alexedwards/scs/v2"
@@ -41,6 +42,8 @@ type IdentityProvider interface {
 	AuthCodeURL(state, nonce, verifier string) string
 	Exchange(ctx context.Context, code, verifier, nonce string) (app.VerifiedIdentity, error)
 	LogoutURL(idTokenHint string) string
+	// Refresh confirma la sesión; app.ErrSessionRevoked si el proveedor ya no la reconoce.
+	Refresh(ctx context.Context, refreshToken string) (app.VerifiedIdentity, error)
 }
 
 // LoginCompleter es el caso de uso que completa el login.
@@ -50,6 +53,7 @@ type LoginCompleter interface {
 
 // Options configura el servidor BFF.
 type Options struct {
+	Clock     kernel.Clock
 	Provider  IdentityProvider
 	Login     LoginCompleter
 	Tenants   tenancy.Directory
@@ -206,6 +210,8 @@ func (s *Server) LoginCallback(ctx context.Context, req LoginCallbackRequestObje
 	}
 	s.opts.Sessions.Put(ctx, keyPrincipal, string(raw))
 	s.opts.Sessions.Put(ctx, keyCSRF, csrf)
+	s.opts.Sessions.Put(ctx, keyRefresh, id.RefreshToken)
+	s.opts.Sessions.Put(ctx, keyRevalidatedAt, s.opts.Clock.Now().UTC().Format(time.RFC3339Nano))
 	return redirectPage(returnTo)
 }
 

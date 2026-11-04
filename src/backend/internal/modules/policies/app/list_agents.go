@@ -13,7 +13,7 @@ func (s *Service) ListAgents(ctx context.Context) ([]identity.User, error) {
 	if err := authz.Require(ctx, authz.PolicyManage); err != nil {
 		return nil, err
 	}
-	users, err := s.Users.Users(ctx)
+	users, err := s.Users.Agents(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("policies: consultando asesores: %w", err)
 	}

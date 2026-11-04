@@ -40,10 +40,11 @@ func env(kv map[string]string) config.LookupFunc {
 // sin sobrescribir las que la prueba fije.
 func apiEnv(kv map[string]string) config.LookupFunc {
 	full := map[string]string{
-		"SEGUROS_OIDC_ISSUER":        "http://localhost:8081/realms/seguros-dev",
-		"SEGUROS_OIDC_CLIENT_SECRET": sentinel,
-		"SEGUROS_PUBLIC_URL":         "http://localhost:5173",
-		"SEGUROS_VALKEY_URL":         "redis://:" + sentinel + "@localhost:6379/0",
+		"SEGUROS_OIDC_ISSUER":                  "http://localhost:8081/realms/seguros-dev",
+		"SEGUROS_OIDC_CLIENT_SECRET":           sentinel,
+		"SEGUROS_OIDC_DIRECTORY_CLIENT_SECRET": sentinel,
+		"SEGUROS_PUBLIC_URL":                   "http://localhost:5173",
+		"SEGUROS_VALKEY_URL":                   "redis://:" + sentinel + "@localhost:6379/0",
 	}
 	for k, v := range kv {
 		full[k] = v

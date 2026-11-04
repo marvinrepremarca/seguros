@@ -4,11 +4,18 @@ package app
 
 import (
 	"context"
+	"errors"
+
+	"github.com/google/uuid"
 
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/domain"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 )
+
+// ErrSessionRevoked indica que el proveedor ya no reconoce la sesión: usuario deshabilitado, sesión
+// cerrada o refresh token vencido.
+var ErrSessionRevoked = errors.New("identity: sesión revocada en el proveedor")
 
 // UserRepository persiste el agregado User dentro de una unidad de trabajo.
 type UserRepository interface {
@@ -40,4 +47,23 @@ type VerifiedIdentity struct {
 	Roles         []string
 	Organizations []string
 	AuthMethods   []string
+	// RefreshToken permite revalidar la sesión. Solo vive en la sesión del servidor.
+	RefreshToken string
+}
+
+// TenantUser es un usuario local del tenant del contexto.
+type TenantUser struct {
+	ID          uuid.UUID
+	Subject     string
+	DisplayName string
+}
+
+// TenantUsers lista los usuarios locales del tenant del contexto (bajo RLS).
+type TenantUsers interface {
+	TenantUsers(ctx context.Context) ([]TenantUser, error)
+}
+
+// ActiveAgents devuelve los sujetos del proveedor habilitados y con rol de asesor.
+type ActiveAgents interface {
+	ActiveAgentSubjects(ctx context.Context) (map[string]bool, error)
 }

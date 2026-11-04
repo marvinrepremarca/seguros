@@ -51,6 +51,11 @@ type Server struct {
 	now   func() time.Time
 	mu    sync.Mutex
 	codes map[string]grant
+	// refresh: refresh token → claims vigentes del usuario.
+	refresh     map[string]string
+	current     map[string]Claims
+	revoked     map[string]bool
+	unavailable bool
 }
 
 // Start levanta el proveedor. now fija el reloj de emisión de tokens.
@@ -59,7 +64,7 @@ func Start(clientID, clientSecret string, now func() time.Time) (*Server, error)
 	if err != nil {
 		return nil, fmt.Errorf("oidctest: generando llave: %w", err)
 	}
-	s := &Server{ClientID: clientID, ClientSecret: clientSecret, key: key, now: now, codes: map[string]grant{}}
+	s := &Server{ClientID: clientID, ClientSecret: clientSecret, key: key, now: now, codes: map[string]grant{}, refresh: map[string]string{}, current: map[string]Claims{}, revoked: map[string]bool{}}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /.well-known/openid-configuration", s.discovery)
 	mux.HandleFunc("GET /jwks", s.jwks)
@@ -119,6 +124,10 @@ func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": "invalid_client"})
 		return
 	}
+	if r.PostForm.Get("grant_type") == "refresh_token" {
+		s.refreshToken(w, r.PostForm.Get("refresh_token"))
+		return
+	}
 	s.mu.Lock()
 	g, found := s.codes[r.PostForm.Get("code")]
 	delete(s.codes, r.PostForm.Get("code")) // un código se canjea una sola vez
@@ -134,9 +143,58 @@ func (s *Server) token(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "server_error"})
 		return
 	}
+	refresh := RandomString()
+	s.mu.Lock()
+	s.refresh[refresh] = g.claims.Subject
+	s.current[g.claims.Subject] = g.claims
+	s.mu.Unlock()
 	writeJSON(w, http.StatusOK, map[string]any{
-		"access_token": RandomString(), "token_type": "Bearer", "expires_in": 300, "id_token": idToken,
+		"access_token": RandomString(), "token_type": "Bearer", "expires_in": 300, "id_token": idToken, "refresh_token": refresh,
 	})
+}
+
+func (s *Server) refreshToken(w http.ResponseWriter, token string) {
+	s.mu.Lock()
+	subject, known := s.refresh[token]
+	claims, unavailable, revoked := s.current[subject], s.unavailable, s.revoked[subject]
+	s.mu.Unlock()
+	switch {
+	case unavailable:
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"error": "temporarily_unavailable"})
+		return
+	case !known || revoked:
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid_grant"})
+		return
+	}
+	idToken, err := s.sign(grant{claims: claims})
+	if err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": "server_error"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"access_token": RandomString(), "token_type": "Bearer", "expires_in": 300, "id_token": idToken, "refresh_token": token,
+	})
+}
+
+// Revoke simula un usuario deshabilitado o con la sesión cerrada.
+func (s *Server) Revoke(subject string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.revoked[subject] = true
+}
+
+// SetClaims cambia los datos del usuario (roles, organización) que verá la próxima renovación.
+func (s *Server) SetClaims(c Claims) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.current[c.Subject] = c
+}
+
+// SetUnavailable simula una caída del proveedor.
+func (s *Server) SetUnavailable(v bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.unavailable = v
 }
 
 func (s *Server) sign(g grant) (string, error) {

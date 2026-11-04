@@ -10,11 +10,13 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
+	"slices"
 	"time"
 
 	"github.com/alexedwards/scs/v2"
 	"github.com/google/uuid"
 
+	"github.com/marvinrepremarca/seguros/internal/modules/identity/app"
 	tenancy "github.com/marvinrepremarca/seguros/internal/modules/tenancy/contracts"
 	"github.com/marvinrepremarca/seguros/internal/platform/authz"
 	"github.com/marvinrepremarca/seguros/internal/platform/httpx"
@@ -32,12 +34,14 @@ const (
 
 // Claves dentro de la sesión.
 const (
-	keyPrincipal = "principal"
-	keyCSRF      = "csrf"
-	keyState     = "state"
-	keyNonce     = "nonce"
-	keyVerifier  = "verifier"
-	keyReturnTo  = "returnTo"
+	keyPrincipal     = "principal"
+	keyCSRF          = "csrf"
+	keyState         = "state"
+	keyNonce         = "nonce"
+	keyVerifier      = "verifier"
+	keyReturnTo      = "returnTo"
+	keyRefresh       = "refresh"
+	keyRevalidatedAt = "revalidatedAt"
 )
 
 // CodeCSRF es el código del error de CSRF (403).
@@ -80,17 +84,45 @@ type storedPrincipal struct {
 	DisplayName string    `json:"n"`
 }
 
+// defaultRevalidateInterval es el plazo máximo para aplicar una baja o un cambio de rol.
+const defaultRevalidateInterval = 5 * time.Minute
+
+// revalidateGrace es cuántos intervalos se tolera sin respuesta del proveedor antes de cerrar la
+// sesión: un corte breve de Keycloak no expulsa a todos, pero tampoco deja el control desactivado.
+const revalidateGrace = 3
+
+// revalidateTimeout acota la espera de la petición por el proveedor.
+const revalidateTimeout = 5 * time.Second
+
+// AuthenticatorOptions configura el autenticador.
+type AuthenticatorOptions struct {
+	Sessions *scs.SessionManager
+	Tenants  tenancy.Directory
+	Policy   *authz.Policy
+	Provider IdentityProvider
+	Clock    kernel.Clock
+	Interval time.Duration
+	Logger   *slog.Logger
+}
+
 // Authenticator resuelve el principal de cada petición a partir de la sesión.
 type Authenticator struct {
 	sessions *scs.SessionManager
 	tenants  tenancy.Directory
 	policy   *authz.Policy
+	provider IdentityProvider
+	clock    kernel.Clock
+	interval time.Duration
 	logger   *slog.Logger
 }
 
 // NewAuthenticator construye el autenticador.
-func NewAuthenticator(sessions *scs.SessionManager, tenants tenancy.Directory, policy *authz.Policy, logger *slog.Logger) *Authenticator {
-	return &Authenticator{sessions: sessions, tenants: tenants, policy: policy, logger: logger}
+func NewAuthenticator(o AuthenticatorOptions) *Authenticator {
+	interval := o.Interval
+	if interval <= 0 {
+		interval = defaultRevalidateInterval
+	}
+	return &Authenticator{sessions: o.Sessions, tenants: o.Tenants, policy: o.Policy, provider: o.Provider, clock: o.Clock, interval: interval, logger: o.Logger}
 }
 
 // Middleware pone en el contexto el principal de la sesión. En cada petición revalida que el
@@ -117,11 +149,96 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 			httpx.WriteError(w, r, a.logger, err)
 			return
 		}
+		sp, ok = a.revalidate(ctx, sp)
+		if !ok {
+			if derr := a.sessions.Destroy(ctx); derr != nil {
+				a.logger.WarnContext(ctx, "destruyendo sesión revocada", "error", derr)
+			}
+			next.ServeHTTP(w, r)
+			return
+		}
 		p := authz.NewPrincipal(kernel.UserID(sp.UserID), tenant.ID, authz.ParseRoles(sp.Roles), a.policy)
 		ctx = reqctx.WithTenantPlan(authz.WithPrincipal(ctx, p), tenant.Plan)
 		ensureCSRFCookie(w, r, a.sessions.GetString(ctx, keyCSRF))
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+// revalidate confirma la sesión con el proveedor cada intervalo y aplica los roles vigentes. Devuelve
+// false si la sesión debe cerrarse: usuario deshabilitado, fuera de la organización, sin roles, con un
+// rol nuevo que exige MFA (el login es quien la verifica) o proveedor sin responder más allá de la gracia.
+func (a *Authenticator) revalidate(ctx context.Context, sp storedPrincipal) (storedPrincipal, bool) {
+	token := a.sessions.GetString(ctx, keyRefresh)
+	if token == "" {
+		return sp, false
+	}
+	now := a.clock.Now()
+	// Texto, no time.Time: la sesión se serializa con gob y no registra ese tipo.
+	last, err := time.Parse(time.RFC3339Nano, a.sessions.GetString(ctx, keyRevalidatedAt))
+	if err != nil {
+		last = time.Time{} // sin fecha válida se revalida ya
+	}
+	age := now.Sub(last)
+	if age < a.interval {
+		return sp, true
+	}
+	cctx, cancel := context.WithTimeout(ctx, revalidateTimeout)
+	defer cancel()
+	id, err := a.provider.Refresh(cctx, token)
+	switch {
+	case errors.Is(err, app.ErrSessionRevoked):
+		a.logger.InfoContext(ctx, "sesión revocada en el proveedor")
+		return sp, false
+	case err != nil:
+		a.logger.WarnContext(ctx, "no se pudo revalidar la sesión", "error", err)
+		return sp, age < revalidateGrace*a.interval
+	}
+	if !a.inTenantOrganization(ctx, id.Organizations, sp.TenantID) {
+		return sp, false
+	}
+	roles := authz.ParseRoles(id.Roles)
+	if len(roles) == 0 || gainsMFARole(authz.ParseRoles(sp.Roles), roles) {
+		return sp, false
+	}
+	names := make([]string, len(roles))
+	for i, r := range roles {
+		names[i] = string(r)
+	}
+	sp.Roles = names
+	raw, err := json.Marshal(sp)
+	if err != nil {
+		a.logger.ErrorContext(ctx, "guardando la sesión revalidada", "error", err)
+		return sp, false
+	}
+	a.sessions.Put(ctx, keyPrincipal, string(raw))
+	a.sessions.Put(ctx, keyRevalidatedAt, now.UTC().Format(time.RFC3339Nano))
+	if id.RefreshToken != "" {
+		a.sessions.Put(ctx, keyRefresh, id.RefreshToken)
+	}
+	return sp, true
+}
+
+// inTenantOrganization indica si alguna organización del usuario sigue vinculada al tenant de la sesión.
+func (a *Authenticator) inTenantOrganization(ctx context.Context, orgs []string, tenant uuid.UUID) bool {
+	for _, org := range orgs {
+		info, err := a.tenants.ResolveByOrgAlias(ctx, org)
+		if err != nil {
+			continue
+		}
+		if uuid.UUID(info.ID) == tenant {
+			return true
+		}
+	}
+	return false
+}
+
+func gainsMFARole(before, after []authz.Role) bool {
+	for _, r := range authz.MFARoles() {
+		if slices.Contains(after, r) && !slices.Contains(before, r) {
+			return true
+		}
+	}
+	return false
 }
 
 func (a *Authenticator) load(ctx context.Context) (storedPrincipal, bool) {

@@ -105,6 +105,12 @@ type Auth struct {
 	MFARequired     bool
 	SessionIdle     time.Duration
 	SessionLifetime time.Duration
+	// SessionRevalidate cada cuánto se confirma la sesión contra el proveedor: una baja o un cambio
+	// de rol en Keycloak se aplica en este plazo.
+	SessionRevalidate time.Duration
+	// DirectoryClientID/Secret: cuenta de servicio de solo lectura para saber qué asesores siguen activos.
+	DirectoryClientID     string
+	DirectoryClientSecret Secret
 }
 
 // Crypto configura el cifrado de campos (platform/crypto).
@@ -467,14 +473,17 @@ func (r *reader) bool(key string, def bool) bool {
 
 func (r *reader) auth() Auth {
 	return Auth{
-		Issuer:          r.required("SEGUROS_OIDC_ISSUER"),
-		DiscoveryURL:    r.str("SEGUROS_OIDC_DISCOVERY_URL", ""),
-		ClientID:        r.str("SEGUROS_OIDC_CLIENT_ID", "seguros-bff"),
-		ClientSecret:    NewSecret(r.required("SEGUROS_OIDC_CLIENT_SECRET")),
-		PublicURL:       strings.TrimRight(r.required("SEGUROS_PUBLIC_URL"), "/"),
-		MFARequired:     r.bool("SEGUROS_AUTH_MFA_REQUIRED", true),
-		SessionIdle:     r.duration("SEGUROS_SESSION_IDLE_TIMEOUT", 30*time.Minute),
-		SessionLifetime: r.duration("SEGUROS_SESSION_LIFETIME", 8*time.Hour),
+		Issuer:                r.required("SEGUROS_OIDC_ISSUER"),
+		DiscoveryURL:          r.str("SEGUROS_OIDC_DISCOVERY_URL", ""),
+		ClientID:              r.str("SEGUROS_OIDC_CLIENT_ID", "seguros-bff"),
+		ClientSecret:          NewSecret(r.required("SEGUROS_OIDC_CLIENT_SECRET")),
+		PublicURL:             strings.TrimRight(r.required("SEGUROS_PUBLIC_URL"), "/"),
+		MFARequired:           r.bool("SEGUROS_AUTH_MFA_REQUIRED", true),
+		SessionIdle:           r.duration("SEGUROS_SESSION_IDLE_TIMEOUT", 30*time.Minute),
+		SessionLifetime:       r.duration("SEGUROS_SESSION_LIFETIME", 8*time.Hour),
+		SessionRevalidate:     r.duration("SEGUROS_SESSION_REVALIDATE_INTERVAL", 5*time.Minute),
+		DirectoryClientID:     r.str("SEGUROS_OIDC_DIRECTORY_CLIENT_ID", "seguros-directory"),
+		DirectoryClientSecret: NewSecret(r.required("SEGUROS_OIDC_DIRECTORY_CLIENT_SECRET")),
 	}
 }
 

@@ -29,6 +29,8 @@ type Deps struct {
 	Tenants  tenancy.Directory
 	Policy   *authz.Policy
 	Provider identityhttp.IdentityProvider
+	// ActiveAgents dice qué asesores siguen activos (cuenta de servicio de Keycloak).
+	ActiveAgents app.ActiveAgents
 	// SessionStore guarda las sesiones (Valkey en producción; memoria en pruebas).
 	SessionStore scs.Store
 	// AuthTxStore guarda las transacciones de login.
@@ -58,15 +60,18 @@ func New(d Deps) (*Module, error) {
 	store := postgres.NewStore(d.DB, d.Audit)
 	login := app.NewCompleteLoginHandler(d.Tenants, store, d.Clock, d.Auth.MFARequired)
 	return &Module{
-		Directory: store,
+		Directory: &app.AgentDirectory{Users: store, Active: d.ActiveAgents},
 		Server: identityhttp.NewServer(identityhttp.Options{
 			Provider: d.Provider, Login: login, Tenants: d.Tenants, Policy: d.Policy,
 			Sessions: sessions, AuthTx: identityhttp.NewAuthTxManager(d.AuthTxStore), Guard: guard,
-			PublicURL: d.Auth.PublicURL, Logger: d.Logger,
+			PublicURL: d.Auth.PublicURL, Clock: d.Clock, Logger: d.Logger,
 		}),
-		Sessions:      sessions,
-		authenticator: identityhttp.NewAuthenticator(sessions, d.Tenants, d.Policy, d.Logger),
-		publicURL:     d.Auth.PublicURL,
+		Sessions: sessions,
+		authenticator: identityhttp.NewAuthenticator(identityhttp.AuthenticatorOptions{
+			Sessions: sessions, Tenants: d.Tenants, Policy: d.Policy, Provider: d.Provider,
+			Clock: d.Clock, Interval: d.Auth.SessionRevalidate, Logger: d.Logger,
+		}),
+		publicURL: d.Auth.PublicURL,
 	}, nil
 }
 

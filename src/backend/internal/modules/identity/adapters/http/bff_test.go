@@ -31,15 +31,23 @@ import (
 	"github.com/marvinrepremarca/seguros/test/oidctest"
 )
 
-const publicURL = "https://app.example.test"
+const (
+	publicURL       = "https://app.example.test"
+	revalidateEvery = 5 * time.Minute
+)
 
 type fakeTenants struct {
 	mu     sync.Mutex
 	tenant tenancy.TenantInfo
 }
 
-func (f *fakeTenants) ResolveByOrgAlias(context.Context, string) (tenancy.TenantInfo, error) {
-	return tenancy.TenantInfo{}, nil
+func (f *fakeTenants) ResolveByOrgAlias(_ context.Context, alias string) (tenancy.TenantInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if alias != "agencia-x" {
+		return tenancy.TenantInfo{}, tenancy.ErrTenantNotFound
+	}
+	return f.tenant, nil
 }
 
 func (f *fakeTenants) Get(_ context.Context, id kernel.TenantID) (tenancy.TenantInfo, error) {
@@ -73,6 +81,7 @@ type env struct {
 	router  http.Handler
 	tenants *fakeTenants
 	login   *fakeLogin
+	clock   *kernel.FakeClock
 }
 
 func newEnv(t *testing.T) *env {
@@ -97,17 +106,20 @@ func newEnv(t *testing.T) *env {
 		Roles: []authz.Role{authz.RoleManager}, DisplayName: "Ana",
 	}}
 	logger := slog.New(slog.DiscardHandler)
+	clock := kernel.NewFakeClock(time.Now().UTC()) //nolint:forbidigo // solo decide cuándo revalidar; go-oidc usa el reloj real
 	sessions := identityhttp.NewSessionManager(identityhttp.SessionOptions{Store: memstore.New(), IdleTimeout: 30 * time.Minute, Lifetime: 8 * time.Hour})
 	srv := identityhttp.NewServer(identityhttp.Options{
 		Provider: provider, Login: login, Tenants: tenants, Policy: policy, Sessions: sessions,
-		AuthTx: identityhttp.NewAuthTxManager(memstore.New()), Guard: guard, PublicURL: publicURL, Logger: logger,
+		AuthTx: identityhttp.NewAuthTxManager(memstore.New()), Guard: guard, PublicURL: publicURL, Clock: clock, Logger: logger,
 	})
 	root := httpx.NewRouter(httpx.RouterOptions{Logger: logger, Clock: kernel.SystemClock{}, MaxBodyBytes: 1 << 20})
 	root.Group(func(r chi.Router) {
-		r.Use(sessions.LoadAndSave, identityhttp.NewAuthenticator(sessions, tenants, policy, logger).Middleware, identityhttp.CSRF(sessions, publicURL))
+		r.Use(sessions.LoadAndSave, identityhttp.NewAuthenticator(identityhttp.AuthenticatorOptions{
+			Sessions: sessions, Tenants: tenants, Policy: policy, Provider: provider, Clock: clock, Interval: revalidateEvery, Logger: logger,
+		}).Middleware, identityhttp.CSRF(sessions, publicURL))
 		require.NoError(t, srv.Mount(r))
 	})
-	return &env{op: op, router: root, tenants: tenants, login: login}
+	return &env{op: op, router: root, tenants: tenants, login: login, clock: clock}
 }
 
 // browser guarda cookies manualmente: las cookies __Host- son Secure y httptest usa http.
@@ -380,4 +392,96 @@ func TestSanitizeReturnTo(t *testing.T) {
 	for in, want := range tests {
 		assert.Equal(t, want, identityhttp.SanitizeReturnTo(in), "entrada %q", in)
 	}
+}
+
+func meRoles(t *testing.T, e *env, b *browser) (int, []string) {
+	t.Helper()
+	res := b.do(t, e.router, http.MethodGet, "/bff/me", nil)
+	if res.Code != http.StatusOK {
+		return res.Code, nil
+	}
+	var me struct {
+		Roles []string `json:"roles"`
+	}
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&me))
+	return res.Code, me.Roles
+}
+
+// Una baja o un cambio en Keycloak se aplica como máximo en un intervalo de revalidación.
+func TestSessionIsRevalidatedWithTheProvider(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		change func(*env)
+		status int
+		roles  []string
+	}{
+		{"usuario deshabilitado", func(e *env) { e.op.Revoke("kc-1") }, http.StatusUnauthorized, nil},
+		{"sale de la organización", func(e *env) {
+			c := claims()
+			c.Organizations = []string{"otra-agencia"}
+			e.op.SetClaims(c)
+		}, http.StatusUnauthorized, nil},
+		{"se queda sin roles", func(e *env) {
+			c := claims()
+			c.Roles = nil
+			e.op.SetClaims(c)
+		}, http.StatusUnauthorized, nil},
+		{"pasa a un rol sin MFA nueva", func(e *env) {
+			c := claims()
+			c.Roles = []string{"Manager", "Operations"}
+			e.op.SetClaims(c)
+		}, http.StatusOK, []string{"Manager", "Operations"}},
+		{"gana un rol que exige MFA: debe volver a entrar", func(e *env) {
+			c := claims()
+			c.Roles = []string{"Manager", "Accounting"}
+			e.op.SetClaims(c)
+		}, http.StatusUnauthorized, nil},
+		{"pierde un rol", func(e *env) {
+			c := claims()
+			c.Roles = []string{"SalesAgent"}
+			e.op.SetClaims(c)
+		}, http.StatusOK, []string{"SalesAgent"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			e := newEnv(t)
+			b := newBrowser()
+			e.loginFlow(t, b, "/", claims())
+			c.change(e)
+
+			e.clock.Advance(revalidateEvery - time.Second)
+			status, roles := meRoles(t, e, b)
+			assert.Equal(t, http.StatusOK, status, "dentro del intervalo no se consulta al proveedor")
+			assert.Equal(t, []string{"Manager"}, roles)
+
+			e.clock.Advance(time.Second)
+			status, roles = meRoles(t, e, b)
+			assert.Equal(t, c.status, status)
+			assert.Equal(t, c.roles, roles)
+		})
+	}
+}
+
+func TestProviderOutageIsToleratedOnlyWithinTheGrace(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	b := newBrowser()
+	e.loginFlow(t, b, "/", claims())
+	e.op.SetUnavailable(true)
+
+	e.clock.Advance(2 * revalidateEvery)
+	status, _ := meRoles(t, e, b)
+	assert.Equal(t, http.StatusOK, status, "un corte breve no expulsa a todos")
+
+	e.op.SetUnavailable(false)
+	e.clock.Advance(time.Second)
+	status, _ = meRoles(t, e, b)
+	require.Equal(t, http.StatusOK, status, "se recupera y reinicia el plazo")
+
+	e.op.SetUnavailable(true)
+	e.clock.Advance(3 * revalidateEvery)
+	status, _ = meRoles(t, e, b)
+	assert.Equal(t, http.StatusUnauthorized, status, "sin confirmación más allá de la gracia se cierra la sesión")
 }

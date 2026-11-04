@@ -206,7 +206,7 @@ func (s *Server) ListAgents(ctx context.Context, _ ListAgentsRequestObject) (Lis
 	}
 	items := make([]Agent, 0, len(users))
 	for _, u := range users {
-		items = append(items, Agent{Id: u.ID, DisplayName: u.DisplayName})
+		items = append(items, Agent{Id: u.ID, DisplayName: u.DisplayName, Active: u.Active})
 	}
 	return ListAgents200JSONResponse{Items: items}, nil
 }

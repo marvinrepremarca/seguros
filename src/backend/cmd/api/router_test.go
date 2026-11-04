@@ -45,6 +45,9 @@ func (noProvider) Exchange(context.Context, string, string, string) (app.Verifie
 	return app.VerifiedIdentity{}, oidc.ErrInvalidToken
 }
 func (noProvider) LogoutURL(string) string { return "https://idp.example/logout" }
+func (noProvider) Refresh(context.Context, string) (app.VerifiedIdentity, error) {
+	return app.VerifiedIdentity{}, app.ErrSessionRevoked
+}
 
 type noTenants struct{}
 

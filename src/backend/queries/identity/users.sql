@@ -16,4 +16,4 @@ SET email = @email, display_name = @display_name, last_login_at = @last_login_at
 WHERE tenant_id = @tenant_id AND id = @id AND version = @version;
 
 -- name: ListUsers :many
-SELECT id, display_name FROM identity.users WHERE tenant_id = @tenant_id ORDER BY display_name, id LIMIT 500;
+SELECT id, idp_subject, display_name FROM identity.users WHERE tenant_id = @tenant_id ORDER BY display_name, id LIMIT 500;

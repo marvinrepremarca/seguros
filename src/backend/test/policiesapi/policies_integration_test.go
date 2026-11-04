@@ -103,7 +103,7 @@ func (f *flagControl) Resolve(context.Context, kernel.TenantID, string, flags.Ke
 
 type users struct{ list []identity.User }
 
-func (u *users) Users(context.Context) ([]identity.User, error) { return u.list, nil }
+func (u *users) Agents(context.Context) ([]identity.User, error) { return u.list, nil }
 
 type approvedKyc struct{ ok bool }
 
@@ -565,7 +565,7 @@ func TestValidationAgainstOtherModules(t *testing.T) {
 		{"datos de riesgo inválidos", mutate("items", []any{map[string]any{"description": "Moto", "riskData": map[string]any{"plate": "x"}}}), http.StatusUnprocessableEntity, "catalog.risk_data.invalid"},
 		{"datos de salud rechazados", mutate("items", []any{map[string]any{"description": "Vida", "riskData": map[string]any{"plate": "ABC123", "brand": "M", "model": "3", "year": 2024, "health": "x"}}}), http.StatusUnprocessableEntity, "catalog.risk_data.invalid"},
 		{"vigencia invertida", mutate("effectiveTo", "2025-01-01"), http.StatusUnprocessableEntity, "kernel.date_range.invalid"},
-		{"asesor de otra agencia", mutate("agentId", uuid.NewString()), http.StatusUnprocessableEntity, "policies.policy.invalid_reference"},
+		{"asesor de otra agencia", mutate("agentId", uuid.NewString()), http.StatusUnprocessableEntity, "policies.policy.invalid_agent"},
 		{"prima como número", mutate("netPremium", 1000), http.StatusBadRequest, "platform.bad_request"},
 		{"prima negativa", mutate("netPremium", "-1"), http.StatusBadRequest, "platform.bad_request"},
 		{"tenant en el cuerpo", mutate("tenantId", uuid.NewString()), http.StatusBadRequest, "platform.bad_request"},
@@ -585,7 +585,7 @@ func TestPermissionsAndOwnership(t *testing.T) {
 	w := e.world(t)
 	agent := e.as(w.tenant, authz.RoleSalesAgent)
 	otherAgent := e.as(w.tenant, authz.RoleSalesAgent)
-	e.users.list = []identity.User{{ID: uuid.UUID(agent.UserID), DisplayName: "Asesora"}}
+	e.users.list = []identity.User{{ID: uuid.UUID(agent.UserID), DisplayName: "Asesora", Active: true}}
 
 	mine := w.terms()
 	mine["agentId"] = uuid.UUID(agent.UserID).String()
@@ -801,7 +801,7 @@ func TestAgentOnlyReachesOwnClients(t *testing.T) {
 	w := e.world(t)
 	agent := e.as(w.tenant, authz.RoleSalesAgent)
 	other := e.as(w.tenant, authz.RoleSalesAgent)
-	e.users.list = []identity.User{{ID: uuid.UUID(agent.UserID), DisplayName: "Asesora"}}
+	e.users.list = []identity.User{{ID: uuid.UUID(agent.UserID), DisplayName: "Asesora", Active: true}}
 	const parties = "/api/v1/parties/parties"
 	client := func(who *authz.Principal, id string) int {
 		return e.do(t, who, http.MethodGet, parties+"/"+id, nil).status

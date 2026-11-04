@@ -12,6 +12,7 @@ get() { grep -E "^$1=" deploy/.env | cut -d= -f2-; }
 
 make -s migrate-up >/dev/null
 make -s dev-seed >/dev/null 2>&1 # idempotente: falla si el tenant ya existe
+deploy/scripts/dev-keycloak.sh
 
 pids=()
 cleanup() { for p in "${pids[@]}"; do kill "$p" 2>/dev/null || true; done; }
@@ -30,7 +31,7 @@ pnpm -C "$frontend" exec vite build >/dev/null
 
 # La API sirve la SPA compilada con su CSP real (Vite no la aplica), en el puerto que el realm de
 # Keycloak admite como redirect: todos los flujos, incluido el login, corren bajo esa CSP.
-(cd src/backend && SEGUROS_HTTP_ADDR=:5173 SEGUROS_SPA_DIR="$root/$frontend/dist" \
+(cd src/backend && SEGUROS_SESSION_REVALIDATE_INTERVAL=3s SEGUROS_HTTP_ADDR=:5173 SEGUROS_SPA_DIR="$root/$frontend/dist" \
   "$root/deploy/scripts/with-dev-env.sh" "${TMPDIR:-/tmp}/seguros-api-e2e") &
 pids+=($!)
 for _ in $(seq 1 60); do
@@ -40,4 +41,5 @@ done
 curl -sf http://localhost:5173/health/ready >/dev/null || { echo "la API no arrancó" >&2; exit 1; }
 
 E2E_FULL=1 E2E_SPA_CSP=1 E2E_BASE_URL=http://localhost:5173 E2E_PASSWORD="$(get KC_TEST_USER_PASSWORD)" \
+  E2E_KC_ADMIN_PASSWORD="$(get KC_BOOTSTRAP_ADMIN_PASSWORD)" \
   pnpm -C "$frontend" exec playwright test "$@"

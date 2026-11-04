@@ -95,6 +95,8 @@ export type SignedAmount = string;
 export interface Agent {
   id: string;
   displayName: string;
+  /** Habilitado y con rol de asesor: solo a estos se les asigna. */
+  active: boolean;
 }
 
 export interface PolicyPartyInput {

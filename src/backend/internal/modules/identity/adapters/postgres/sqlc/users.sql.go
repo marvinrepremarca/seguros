@@ -82,11 +82,12 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) error {
 }
 
 const listUsers = `-- name: ListUsers :many
-SELECT id, display_name FROM identity.users WHERE tenant_id = $1 ORDER BY display_name, id LIMIT 500
+SELECT id, idp_subject, display_name FROM identity.users WHERE tenant_id = $1 ORDER BY display_name, id LIMIT 500
 `
 
 type ListUsersRow struct {
 	ID          uuid.UUID
+	IdpSubject  string
 	DisplayName string
 }
 
@@ -99,7 +100,7 @@ func (q *Queries) ListUsers(ctx context.Context, tenantID uuid.UUID) ([]ListUser
 	items := []ListUsersRow{}
 	for rows.Next() {
 		var i ListUsersRow
-		if err := rows.Scan(&i.ID, &i.DisplayName); err != nil {
+		if err := rows.Scan(&i.ID, &i.IdpSubject, &i.DisplayName); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

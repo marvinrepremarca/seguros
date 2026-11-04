@@ -25,6 +25,7 @@ var (
 	ErrInvalidPremium          = kernel.NewError(kernel.KindValidation, "policies.policy.invalid_premium", "prima e impuestos no negativos y en la misma moneda")
 	ErrInvalidPaymentForm      = kernel.NewError(kernel.KindValidation, "policies.policy.invalid_payment_form", "forma de pago desconocida")
 	ErrInvalidReference        = kernel.NewError(kernel.KindValidation, "policies.policy.invalid_reference", "referencia inválida")
+	ErrInvalidAgent            = kernel.NewError(kernel.KindValidation, "policies.policy.invalid_agent", "el asesor no pertenece a la agencia o no está activo")
 	ErrInvalidHolder           = kernel.NewError(kernel.KindValidation, "policies.policy.invalid_holder", "debe tener exactamente un tomador")
 	ErrInsuredRequired         = kernel.NewError(kernel.KindValidation, "policies.policy.insured_required", "debe tener al menos un asegurado")
 	ErrInvalidParty            = kernel.NewError(kernel.KindValidation, "policies.policy.invalid_party", "parte inválida o repetida")
