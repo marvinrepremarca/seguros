@@ -23,6 +23,7 @@ type Handlers struct {
 	List     *app.ListPartiesHandler
 	Search   *app.SearchByDocumentHandler
 	Reveal   *app.RevealDocumentHandler
+	Assign   *app.AssignResponsibleHandler
 	Register *app.RegisterConsentHandler
 	Consents *app.ListConsentsHandler
 }
@@ -91,8 +92,13 @@ func optional(s string) *string {
 }
 
 func toParty(s domain.PartySnapshot) Party {
+	var responsible *uuid.UUID
+	if s.Responsible.Valid {
+		responsible = &s.Responsible.UUID
+	}
 	return Party{
-		Id: uuid.UUID(s.ID), Kind: PartyKind(s.Kind), Name: s.Name, DocumentType: DocumentType(s.DocumentType), DocumentLast4: s.DocumentLast4,
+		ResponsibleAgentId: responsible,
+		Id:                 uuid.UUID(s.ID), Kind: PartyKind(s.Kind), Name: s.Name, DocumentType: DocumentType(s.DocumentType), DocumentLast4: s.DocumentLast4,
 		Email: optional(s.Contact.Email), Phone: optional(s.Contact.Phone), Address: optional(s.Contact.Address), City: optional(s.Contact.City),
 		Version: s.Version, CreatedAt: s.CreatedAt, UpdatedAt: s.UpdatedAt,
 	}
@@ -168,6 +174,17 @@ func (s *Server) UpdateParty(ctx context.Context, req UpdatePartyRequestObject) 
 		return nil, err
 	}
 	return UpdateParty200JSONResponse(toParty(out)), nil
+}
+
+// AssignPartyResponsible implementa StrictServerInterface.
+func (s *Server) AssignPartyResponsible(ctx context.Context, req AssignPartyResponsibleRequestObject) (AssignPartyResponsibleResponseObject, error) {
+	out, err := s.h.Assign.Handle(ctx, app.AssignResponsibleCommand{
+		ID: domain.PartyID(req.PartyId), Version: req.Body.Version, AgentID: req.Body.AgentId, Reason: req.Body.Reason,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return AssignPartyResponsible200JSONResponse(toParty(out)), nil
 }
 
 // RevealPartyDocument implementa StrictServerInterface.

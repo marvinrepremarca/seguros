@@ -108,6 +108,17 @@ export interface UpdatePartyRequest {
   document?: DocumentInput;
 }
 
+export interface AssignResponsibleRequest {
+  agentId: string;
+  /**
+     * @minLength 3
+     * @maxLength 200
+     */
+  reason: string;
+  /** @minimum 1 */
+  version: number;
+}
+
 export interface Party {
   id: string;
   kind: PartyKind;
@@ -118,6 +129,7 @@ export interface Party {
   phone?: string;
   address?: string;
   city?: string;
+  responsibleAgentId?: string;
   version: number;
   createdAt: string;
   updatedAt: string;
@@ -861,6 +873,144 @@ export const useUpdateParty = <TError = ProblemResponse,
         TContext
       > => {
       return useMutation(getUpdatePartyMutationOptions(options), queryClient);
+    }
+
+export type assignPartyResponsibleResponse200 = {
+  data: Party
+  status: 200
+}
+
+export type assignPartyResponsibleResponse400 = {
+  data: ProblemResponse
+  status: 400
+}
+
+export type assignPartyResponsibleResponse401 = {
+  data: ProblemResponse
+  status: 401
+}
+
+export type assignPartyResponsibleResponse403 = {
+  data: ProblemResponse
+  status: 403
+}
+
+export type assignPartyResponsibleResponse404 = {
+  data: ProblemResponse
+  status: 404
+}
+
+export type assignPartyResponsibleResponse409 = {
+  data: ProblemResponse
+  status: 409
+}
+
+export type assignPartyResponsibleResponse422 = {
+  data: ProblemResponse
+  status: 422
+}
+
+export type assignPartyResponsibleResponse503 = {
+  data: ProblemResponse
+  status: 503
+}
+
+export type assignPartyResponsibleResponseSuccess = (assignPartyResponsibleResponse200) & {
+  headers: Headers;
+};
+export type assignPartyResponsibleResponseError = (assignPartyResponsibleResponse400 | assignPartyResponsibleResponse401 | assignPartyResponsibleResponse403 | assignPartyResponsibleResponse404 | assignPartyResponsibleResponse409 | assignPartyResponsibleResponse422 | assignPartyResponsibleResponse503) & {
+  headers: Headers;
+};
+
+export type assignPartyResponsibleResponse = (assignPartyResponsibleResponseSuccess | assignPartyResponsibleResponseError)
+
+export const getAssignPartyResponsibleUrl = (partyId: string,) => {
+
+
+
+
+  return `/api/v1/parties/parties/${partyId}/responsible-agent`
+}
+
+/**
+ * @summary Traspasa el cliente a otro asesor activo. Queda auditado con motivo.
+ */
+export const assignPartyResponsible = async (partyId: string,
+    assignResponsibleRequest: AssignResponsibleRequest, options?: Parameters<typeof apiClient>[1]): Promise<assignPartyResponsibleResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiClient<assignPartyResponsibleResponse>(getAssignPartyResponsibleUrl(partyId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(assignResponsibleRequest)
+  }
+);}
+
+
+
+
+
+export const getAssignPartyResponsibleMutationKey = () => ['assignPartyResponsible'] as const;
+
+export const getAssignPartyResponsibleMutationOptions = <TError = ProblemResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof assignPartyResponsible>>, TError,AssignPartyResponsibleMutationVariables, TContext>, request?: SecondParameter<typeof apiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof assignPartyResponsible>>, TError,AssignPartyResponsibleMutationVariables, TContext> => {
+
+const mutationKey = getAssignPartyResponsibleMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof assignPartyResponsible>>, AssignPartyResponsibleMutationVariables> = (props) => {
+          const {partyId,data} = props ?? {};
+
+          return  assignPartyResponsible(partyId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AssignPartyResponsibleMutationResult = NonNullable<Awaited<ReturnType<typeof assignPartyResponsible>>>
+    export type AssignPartyResponsibleMutationBody = AssignResponsibleRequest
+    export type AssignPartyResponsibleMutationError = ProblemResponse
+    export type AssignPartyResponsibleMutationVariables = {partyId: string;data: AssignResponsibleRequest}
+
+    /**
+ * @summary Traspasa el cliente a otro asesor activo. Queda auditado con motivo.
+ */
+export const useAssignPartyResponsible = <TError = ProblemResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof assignPartyResponsible>>, TError,AssignPartyResponsibleMutationVariables, TContext>, request?: SecondParameter<typeof apiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof assignPartyResponsible>>,
+        TError,
+        AssignPartyResponsibleMutationVariables,
+        TContext
+      > => {
+      return useMutation(getAssignPartyResponsibleMutationOptions(options), queryClient);
     }
 
 export type revealPartyDocumentResponse200 = {

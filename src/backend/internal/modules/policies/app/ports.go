@@ -51,6 +51,10 @@ type PolicyRepository interface {
 	// si el número de póliza ya existe en esa aseguradora.
 	Save(ctx context.Context, p *domain.Policy) error
 	List(ctx context.Context, f ListFilter) ([]Summary, error)
+	// AppendAgentHistory agrega una fila al historial de asesores (append-only).
+	AppendAgentHistory(ctx context.Context, e domain.PolicyAgentChanged) error
+	// ReassignableByAgent lista pólizas no terminadas del asesor.
+	ReassignableByAgent(ctx context.Context, agent uuid.UUID, limit int32) ([]domain.PolicyID, error)
 }
 
 // UnitOfWork agrupa repositorio, auditoría y outbox en una transacción con RLS.

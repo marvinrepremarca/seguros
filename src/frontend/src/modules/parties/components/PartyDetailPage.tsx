@@ -17,14 +17,23 @@ import {
   updateParty,
   type Party,
 } from "../api/generated/parties";
+import type { AgentsQuery } from "../deps";
 import {
   consentFormSchema,
   partyEditSchema,
   type ConsentFormValues,
   type PartyEditValues,
 } from "../schemas";
+import { ResponsibleAgentSection } from "./ResponsibleAgentSection";
 
-export function PartyDetailPage({ partyId }: { partyId: string }) {
+export function PartyDetailPage({
+  partyId,
+  agentsQuery,
+}: {
+  partyId: string;
+  agentsQuery: AgentsQuery;
+}) {
+  const canAssign = usePermission(permissions.partyAssign);
   const party = useQuery({
     queryKey: ["parties", "detail", partyId],
     queryFn: async () => {
@@ -50,6 +59,7 @@ export function PartyDetailPage({ partyId }: { partyId: string }) {
       </h1>
       <DocumentSection key={party.data.id} party={party.data} />
       <EditSection party={party.data} />
+      {canAssign && <ResponsibleAgentSection party={party.data} agentsQuery={agentsQuery} />}
       <ConsentsSection partyId={partyId} />
     </section>
   );

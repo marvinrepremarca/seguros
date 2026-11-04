@@ -262,6 +262,22 @@ func (s *Server) IssuePolicy(ctx context.Context, req IssuePolicyRequestObject) 
 	return respond[IssuePolicyResponseObject](v, err, func(p PolicyJSONResponse) IssuePolicyResponseObject { return IssuePolicy200JSONResponse{p} })
 }
 
+// ReassignPolicyAgent implementa StrictServerInterface.
+func (s *Server) ReassignPolicyAgent(ctx context.Context, req ReassignPolicyAgentRequestObject) (ReassignPolicyAgentResponseObject, error) {
+	v, err := s.svc.ReassignAgent(ctx, domain.PolicyID(req.PolicyId), req.Params.Version, req.Body.AgentId, req.Body.Reason)
+	return respond[ReassignPolicyAgentResponseObject](v, err, func(p PolicyJSONResponse) ReassignPolicyAgentResponseObject {
+		return ReassignPolicyAgent200JSONResponse{p}
+	})
+}
+
+// TransferPortfolio implementa StrictServerInterface.
+func (s *Server) TransferPortfolio(ctx context.Context, req TransferPortfolioRequestObject) (TransferPortfolioResponseObject, error) {
+	if err := s.svc.TransferPortfolio(ctx, req.Body.FromAgentId, req.Body.ToAgentId, req.Body.Reason); err != nil {
+		return nil, err
+	}
+	return TransferPortfolio202Response{}, nil
+}
+
 // RejectPolicy implementa StrictServerInterface.
 func (s *Server) RejectPolicy(ctx context.Context, req RejectPolicyRequestObject) (RejectPolicyResponseObject, error) {
 	v, err := s.svc.Reject(ctx, domain.PolicyID(req.PolicyId), req.Params.Version, req.Body.Reason)

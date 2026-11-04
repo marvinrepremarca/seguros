@@ -7,6 +7,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	identity "github.com/marvinrepremarca/seguros/internal/modules/identity/contracts"
 	partiesevents "github.com/marvinrepremarca/seguros/internal/modules/parties/adapters/events"
 	partieshttp "github.com/marvinrepremarca/seguros/internal/modules/parties/adapters/http"
 	"github.com/marvinrepremarca/seguros/internal/modules/parties/adapters/postgres"
@@ -20,13 +21,16 @@ import (
 )
 
 // Consumers devuelve los consumidores de eventos del módulo (los registra cmd/worker).
-func Consumers() []outbox.Consumer { return []outbox.Consumer{partiesevents.PolicyScope()} }
+func Consumers(recorder *audit.Recorder) []outbox.Consumer {
+	return []outbox.Consumer{partiesevents.PolicyScope(), partiesevents.PortfolioTransfer(recorder)}
+}
 
 // Deps son las dependencias del módulo.
 type Deps struct {
 	DB     *db.DB
 	Audit  *audit.Recorder
 	Cipher app.Cipher
+	Agents identity.Directory
 	Policy *authz.Policy
 	Clock  kernel.Clock
 	Logger *slog.Logger
@@ -40,14 +44,14 @@ type Module struct {
 
 // New compone el módulo.
 func New(d Deps) *Module {
-	deps := app.Deps{Store: postgres.NewStore(d.DB, d.Audit), Cipher: d.Cipher, Clock: d.Clock}
+	deps := app.Deps{Store: postgres.NewStore(d.DB, d.Audit), Cipher: d.Cipher, Agents: d.Agents, Clock: d.Clock}
 	return &Module{
 		Directory: &app.Directory{Deps: deps},
 		server: partieshttp.NewServer(partieshttp.Handlers{
 			Create: &app.CreatePartyHandler{Deps: deps}, Update: &app.UpdatePartyHandler{Deps: deps},
 			Get: &app.GetPartyHandler{Deps: deps}, List: &app.ListPartiesHandler{Deps: deps},
 			Search: &app.SearchByDocumentHandler{Deps: deps}, Reveal: &app.RevealDocumentHandler{Deps: deps},
-			Register: &app.RegisterConsentHandler{Deps: deps}, Consents: &app.ListConsentsHandler{Deps: deps},
+			Assign: &app.AssignResponsibleHandler{Deps: deps}, Register: &app.RegisterConsentHandler{Deps: deps}, Consents: &app.ListConsentsHandler{Deps: deps},
 		}, d.Policy, d.Logger),
 	}
 }

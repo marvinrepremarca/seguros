@@ -17,6 +17,7 @@ import { Route as AppClientesPartyIdRouteImport } from './routes/_app/clientes/$
 import { Route as AppClientesNuevoRouteImport } from './routes/_app/clientes/nuevo'
 import { Route as AppConfiguracionCatalogoRouteImport } from './routes/_app/configuracion/catalogo'
 import { Route as AppConfiguracionFuncionalidadesRouteImport } from './routes/_app/configuracion/funcionalidades'
+import { Route as AppConfiguracionTraspasoCarteraRouteImport } from './routes/_app/configuracion/traspaso-cartera'
 import { Route as AppModulosModuloRouteImport } from './routes/_app/modulos/$modulo'
 import { Route as AppPolizasIndexRouteImport } from './routes/_app/polizas/index'
 import { Route as AppPolizasNuevaRouteImport } from './routes/_app/polizas/nueva'
@@ -64,6 +65,12 @@ const AppConfiguracionFuncionalidadesRoute =
     path: '/configuracion/funcionalidades',
     getParentRoute: () => AppRoute,
   } as any)
+const AppConfiguracionTraspasoCarteraRoute =
+  AppConfiguracionTraspasoCarteraRouteImport.update({
+    id: '/configuracion/traspaso-cartera',
+    path: '/configuracion/traspaso-cartera',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppModulosModuloRoute = AppModulosModuloRouteImport.update({
   id: '/modulos/$modulo',
   path: '/modulos/$modulo',
@@ -98,6 +105,7 @@ export interface FileRoutesByFullPath {
   '/clientes/nuevo': typeof AppClientesNuevoRoute
   '/configuracion/catalogo': typeof AppConfiguracionCatalogoRoute
   '/configuracion/funcionalidades': typeof AppConfiguracionFuncionalidadesRoute
+  '/configuracion/traspaso-cartera': typeof AppConfiguracionTraspasoCarteraRoute
   '/modulos/$modulo': typeof AppModulosModuloRoute
   '/polizas/nueva': typeof AppPolizasNuevaRoute
   '/clientes/': typeof AppClientesIndexRoute
@@ -112,6 +120,7 @@ export interface FileRoutesByTo {
   '/clientes/nuevo': typeof AppClientesNuevoRoute
   '/configuracion/catalogo': typeof AppConfiguracionCatalogoRoute
   '/configuracion/funcionalidades': typeof AppConfiguracionFuncionalidadesRoute
+  '/configuracion/traspaso-cartera': typeof AppConfiguracionTraspasoCarteraRoute
   '/modulos/$modulo': typeof AppModulosModuloRoute
   '/polizas/nueva': typeof AppPolizasNuevaRoute
   '/clientes': typeof AppClientesIndexRoute
@@ -128,6 +137,7 @@ export interface FileRoutesById {
   '/_app/clientes/nuevo': typeof AppClientesNuevoRoute
   '/_app/configuracion/catalogo': typeof AppConfiguracionCatalogoRoute
   '/_app/configuracion/funcionalidades': typeof AppConfiguracionFuncionalidadesRoute
+  '/_app/configuracion/traspaso-cartera': typeof AppConfiguracionTraspasoCarteraRoute
   '/_app/modulos/$modulo': typeof AppModulosModuloRoute
   '/_app/polizas/nueva': typeof AppPolizasNuevaRoute
   '/_app/clientes/': typeof AppClientesIndexRoute
@@ -144,6 +154,7 @@ export interface FileRouteTypes {
     | '/clientes/nuevo'
     | '/configuracion/catalogo'
     | '/configuracion/funcionalidades'
+    | '/configuracion/traspaso-cartera'
     | '/modulos/$modulo'
     | '/polizas/nueva'
     | '/clientes/'
@@ -158,6 +169,7 @@ export interface FileRouteTypes {
     | '/clientes/nuevo'
     | '/configuracion/catalogo'
     | '/configuracion/funcionalidades'
+    | '/configuracion/traspaso-cartera'
     | '/modulos/$modulo'
     | '/polizas/nueva'
     | '/clientes'
@@ -173,6 +185,7 @@ export interface FileRouteTypes {
     | '/_app/clientes/nuevo'
     | '/_app/configuracion/catalogo'
     | '/_app/configuracion/funcionalidades'
+    | '/_app/configuracion/traspaso-cartera'
     | '/_app/modulos/$modulo'
     | '/_app/polizas/nueva'
     | '/_app/clientes/'
@@ -244,6 +257,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppConfiguracionFuncionalidadesRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/configuracion/traspaso-cartera': {
+      id: '/_app/configuracion/traspaso-cartera'
+      path: '/configuracion/traspaso-cartera'
+      fullPath: '/configuracion/traspaso-cartera'
+      preLoaderRoute: typeof AppConfiguracionTraspasoCarteraRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/modulos/$modulo': {
       id: '/_app/modulos/$modulo'
       path: '/modulos/$modulo'
@@ -288,6 +308,7 @@ interface AppRouteChildren {
   AppClientesNuevoRoute: typeof AppClientesNuevoRoute
   AppConfiguracionCatalogoRoute: typeof AppConfiguracionCatalogoRoute
   AppConfiguracionFuncionalidadesRoute: typeof AppConfiguracionFuncionalidadesRoute
+  AppConfiguracionTraspasoCarteraRoute: typeof AppConfiguracionTraspasoCarteraRoute
   AppModulosModuloRoute: typeof AppModulosModuloRoute
   AppPolizasNuevaRoute: typeof AppPolizasNuevaRoute
   AppClientesIndexRoute: typeof AppClientesIndexRoute
@@ -302,6 +323,7 @@ const AppRouteChildren: AppRouteChildren = {
   AppClientesNuevoRoute: AppClientesNuevoRoute,
   AppConfiguracionCatalogoRoute: AppConfiguracionCatalogoRoute,
   AppConfiguracionFuncionalidadesRoute: AppConfiguracionFuncionalidadesRoute,
+  AppConfiguracionTraspasoCarteraRoute: AppConfiguracionTraspasoCarteraRoute,
   AppModulosModuloRoute: AppModulosModuloRoute,
   AppPolizasNuevaRoute: AppPolizasNuevaRoute,
   AppClientesIndexRoute: AppClientesIndexRoute,

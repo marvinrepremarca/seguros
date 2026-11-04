@@ -43,6 +43,7 @@ const (
 	PartyCreate     Permission = "parties.party.create"
 	PartyUpdate     Permission = "parties.party.update"
 	PartyUpdateOwn  Permission = "parties.party.update-own"
+	PartyAssign     Permission = "parties.party.assign"
 	DocumentRectify Permission = "parties.document.rectify"
 	DocumentReveal  Permission = "parties.document.reveal"
 	ConsentRead     Permission = "parties.consent.read"
@@ -57,6 +58,7 @@ const (
 	PolicyReadOwn     Permission = "policies.policy.read-own"
 	PolicyManage      Permission = "policies.policy.manage"
 	PolicyCancel      Permission = "policies.policy.cancel"
+	PolicyAssign      Permission = "policies.policy.assign"
 	EndorsementManage Permission = "policies.endorsement.manage"
 )
 
@@ -65,9 +67,9 @@ const (
 func DefaultGrants() map[Role][]Permission {
 	return map[Role][]Permission{
 		RoleTenantAdmin:       {FeatureFlagRead, FeatureFlagUpdate, CatalogRead, CatalogManage, AgreementRead, AgreementManage},
-		RoleManager:           {FeatureFlagRead, PartyRead, DocumentReveal, ConsentRead, CatalogRead, AgreementRead, AgreementManage, PolicyRead},
+		RoleManager:           {FeatureFlagRead, PartyRead, DocumentReveal, ConsentRead, CatalogRead, AgreementRead, AgreementManage, PolicyRead, PartyAssign, PolicyAssign},
 		RoleSalesAgent:        {PartyReadOwn, PartyCreate, PartyUpdateOwn, ConsentRead, ConsentCreate, CatalogRead, PolicyReadOwn},
-		RoleOperations:        {PartyRead, PartyCreate, PartyUpdate, DocumentRectify, DocumentReveal, ConsentRead, ConsentCreate, CatalogRead, PolicyRead, PolicyManage, PolicyCancel, EndorsementManage},
+		RoleOperations:        {PartyRead, PartyCreate, PartyUpdate, DocumentRectify, DocumentReveal, ConsentRead, ConsentCreate, CatalogRead, PolicyRead, PolicyManage, PolicyCancel, EndorsementManage, PartyAssign, PolicyAssign},
 		RoleClaimsAnalyst:     {PartyRead, CatalogRead, PolicyRead},
 		RoleCollections:       {PartyRead, CatalogRead, PolicyRead},
 		RoleAccounting:        {PartyRead, CatalogRead, AgreementRead, PolicyRead},

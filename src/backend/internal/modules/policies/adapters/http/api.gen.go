@@ -421,6 +421,12 @@ type ReasonRequest struct {
 	Reason string `json:"reason"`
 }
 
+// ReassignAgentRequest defines model for ReassignAgentRequest.
+type ReassignAgentRequest struct {
+	AgentId uuid.UUID `json:"agentId"`
+	Reason  string    `json:"reason"`
+}
+
 // RequestEndorsementRequest defines model for RequestEndorsementRequest.
 type RequestEndorsementRequest struct {
 	Description   string          `json:"description"`
@@ -430,6 +436,13 @@ type RequestEndorsementRequest struct {
 
 // SignedAmount defines model for SignedAmount.
 type SignedAmount = decimal.Decimal
+
+// TransferPortfolioRequest defines model for TransferPortfolioRequest.
+type TransferPortfolioRequest struct {
+	FromAgentId uuid.UUID `json:"fromAgentId"`
+	Reason      string    `json:"reason"`
+	ToAgentId   uuid.UUID `json:"toAgentId"`
+}
 
 // Version defines model for Version.
 type Version = int32
@@ -449,6 +462,12 @@ type UpdatePolicyTermsParams struct {
 
 // AcceptPolicyParams defines parameters for AcceptPolicy.
 type AcceptPolicyParams struct {
+	// Version Versión de la póliza que el cliente leyó (concurrencia optimista).
+	Version Version `form:"version" json:"version"`
+}
+
+// ReassignPolicyAgentParams defines parameters for ReassignPolicyAgent.
+type ReassignPolicyAgentParams struct {
 	// Version Versión de la póliza que el cliente leyó (concurrencia optimista).
 	Version Version `form:"version" json:"version"`
 }
@@ -500,6 +519,9 @@ type CreatePolicyJSONRequestBody = PolicyTerms
 // UpdatePolicyTermsJSONRequestBody defines body for UpdatePolicyTerms for application/json ContentType.
 type UpdatePolicyTermsJSONRequestBody = PolicyTerms
 
+// ReassignPolicyAgentJSONRequestBody defines body for ReassignPolicyAgent for application/json ContentType.
+type ReassignPolicyAgentJSONRequestBody = ReassignAgentRequest
+
 // CancelPolicyJSONRequestBody defines body for CancelPolicy for application/json ContentType.
 type CancelPolicyJSONRequestBody = CancelRequest
 
@@ -518,9 +540,12 @@ type IssuePolicyJSONRequestBody IssuePolicyJSONBody
 // RejectPolicyJSONRequestBody defines body for RejectPolicy for application/json ContentType.
 type RejectPolicyJSONRequestBody = ReasonRequest
 
+// TransferPortfolioJSONRequestBody defines body for TransferPortfolio for application/json ContentType.
+type TransferPortfolioJSONRequestBody = TransferPortfolioRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// ListAgents Usuarios de la agencia que se pueden asignar como asesor.
+	// ListAgents Usuarios de la agencia. Solo a los activos se les asigna cartera; requiere manage o assign.
 	// (GET /api/v1/policies/agents)
 	ListAgents(w http.ResponseWriter, r *http.Request)
 
@@ -538,6 +563,9 @@ type ServerInterface interface {
 	// AcceptPolicy El cliente aceptó; pasa a trámite con la aseguradora.
 	// (POST /api/v1/policies/policies/{policyId}/accept)
 	AcceptPolicy(w http.ResponseWriter, r *http.Request, policyId uuid.UUID, params AcceptPolicyParams)
+	// ReassignPolicyAgent Cambia el asesor de la póliza por otro activo. Queda en el historial con motivo.
+	// (POST /api/v1/policies/policies/{policyId}/agent)
+	ReassignPolicyAgent(w http.ResponseWriter, r *http.Request, policyId uuid.UUID, params ReassignPolicyAgentParams)
 	// CancelPolicy Registra la cancelación que expidió la aseguradora.
 	// (POST /api/v1/policies/policies/{policyId}/cancel)
 	CancelPolicy(w http.ResponseWriter, r *http.Request, policyId uuid.UUID, params CancelPolicyParams)
@@ -556,13 +584,16 @@ type ServerInterface interface {
 	// RejectPolicy La aseguradora rechazó la solicitud.
 	// (POST /api/v1/policies/policies/{policyId}/reject)
 	RejectPolicy(w http.ResponseWriter, r *http.Request, policyId uuid.UUID, params RejectPolicyParams)
+	// TransferPortfolio Pide pasar toda la cartera de un asesor a otro. Se procesa en segundo plano.
+	// (POST /api/v1/policies/portfolio-transfers)
+	TransferPortfolio(w http.ResponseWriter, r *http.Request)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
 
-// ListAgents Usuarios de la agencia que se pueden asignar como asesor.
+// ListAgents Usuarios de la agencia. Solo a los activos se les asigna cartera; requiere manage o assign.
 // (GET /api/v1/policies/agents)
 func (_ Unimplemented) ListAgents(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
@@ -593,6 +624,12 @@ func (_ Unimplemented) UpdatePolicyTerms(w http.ResponseWriter, r *http.Request,
 // AcceptPolicy El cliente aceptó; pasa a trámite con la aseguradora.
 // (POST /api/v1/policies/policies/{policyId}/accept)
 func (_ Unimplemented) AcceptPolicy(w http.ResponseWriter, r *http.Request, policyId uuid.UUID, params AcceptPolicyParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// ReassignPolicyAgent Cambia el asesor de la póliza por otro activo. Queda en el historial con motivo.
+// (POST /api/v1/policies/policies/{policyId}/agent)
+func (_ Unimplemented) ReassignPolicyAgent(w http.ResponseWriter, r *http.Request, policyId uuid.UUID, params ReassignPolicyAgentParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -628,6 +665,12 @@ func (_ Unimplemented) IssuePolicy(w http.ResponseWriter, r *http.Request, polic
 // RejectPolicy La aseguradora rechazó la solicitud.
 // (POST /api/v1/policies/policies/{policyId}/reject)
 func (_ Unimplemented) RejectPolicy(w http.ResponseWriter, r *http.Request, policyId uuid.UUID, params RejectPolicyParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// TransferPortfolio Pide pasar toda la cartera de un asesor a otro. Se procesa en segundo plano.
+// (POST /api/v1/policies/portfolio-transfers)
+func (_ Unimplemented) TransferPortfolio(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -828,6 +871,48 @@ func (siw *ServerInterfaceWrapper) AcceptPolicy(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.AcceptPolicy(w, r, policyId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ReassignPolicyAgent operation middleware
+func (siw *ServerInterfaceWrapper) ReassignPolicyAgent(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "policyId" -------------
+	var policyId uuid.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "policyId", chi.URLParam(r, "policyId"), &policyId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "policyId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ReassignPolicyAgentParams
+
+	// ------------- Required query parameter "version" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "version", r.URL.Query(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "version"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "version", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReassignPolicyAgent(w, r, policyId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1107,6 +1192,20 @@ func (siw *ServerInterfaceWrapper) RejectPolicy(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// TransferPortfolio operation middleware
+func (siw *ServerInterfaceWrapper) TransferPortfolio(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TransferPortfolio(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -1230,6 +1329,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/api/v1/policies/agents", wrapper.ListAgents)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/policies/portfolio-transfers", wrapper.TransferPortfolio)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/policies/policies/{policyId}/agent", wrapper.ReassignPolicyAgent)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/policies/policies/{policyId}", wrapper.GetPolicy)
 	})
 	r.Group(func(r chi.Router) {
@@ -1313,6 +1418,20 @@ func (response ListAgents403ApplicationProblemPlusJSONResponse) VisitListAgentsR
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ListAgents503ApplicationProblemPlusJSONResponse Problem
+
+func (response ListAgents503ApplicationProblemPlusJSONResponse) VisitListAgentsResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -1744,6 +1863,130 @@ func (response AcceptPolicy409ApplicationProblemPlusJSONResponse) VisitAcceptPol
 	}
 	w.Header().Set("Content-Type", "application/problem+json")
 	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReassignPolicyAgentRequestObject struct {
+	PolicyId uuid.UUID `json:"policyId"`
+	Params   ReassignPolicyAgentParams
+	Body     *ReassignPolicyAgentJSONRequestBody
+}
+
+type ReassignPolicyAgentResponseObject interface {
+	VisitReassignPolicyAgentResponse(w http.ResponseWriter) error
+}
+
+type ReassignPolicyAgent200JSONResponse struct{ PolicyJSONResponse }
+
+func (response ReassignPolicyAgent200JSONResponse) VisitReassignPolicyAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReassignPolicyAgent400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ReassignPolicyAgent400ApplicationProblemPlusJSONResponse) VisitReassignPolicyAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReassignPolicyAgent401ApplicationProblemPlusJSONResponse Problem
+
+func (response ReassignPolicyAgent401ApplicationProblemPlusJSONResponse) VisitReassignPolicyAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReassignPolicyAgent403ApplicationProblemPlusJSONResponse Problem
+
+func (response ReassignPolicyAgent403ApplicationProblemPlusJSONResponse) VisitReassignPolicyAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReassignPolicyAgent404ApplicationProblemPlusJSONResponse Problem
+
+func (response ReassignPolicyAgent404ApplicationProblemPlusJSONResponse) VisitReassignPolicyAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReassignPolicyAgent409ApplicationProblemPlusJSONResponse Problem
+
+func (response ReassignPolicyAgent409ApplicationProblemPlusJSONResponse) VisitReassignPolicyAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReassignPolicyAgent422ApplicationProblemPlusJSONResponse Problem
+
+func (response ReassignPolicyAgent422ApplicationProblemPlusJSONResponse) VisitReassignPolicyAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReassignPolicyAgent503ApplicationProblemPlusJSONResponse Problem
+
+func (response ReassignPolicyAgent503ApplicationProblemPlusJSONResponse) VisitReassignPolicyAgentResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
 	_, err := buf.WriteTo(w)
 	return err
 }
@@ -2424,9 +2667,97 @@ func (response RejectPolicy422ApplicationProblemPlusJSONResponse) VisitRejectPol
 	return err
 }
 
+type TransferPortfolioRequestObject struct {
+	Body *TransferPortfolioJSONRequestBody
+}
+
+type TransferPortfolioResponseObject interface {
+	VisitTransferPortfolioResponse(w http.ResponseWriter) error
+}
+
+type TransferPortfolio202Response struct {
+}
+
+func (response TransferPortfolio202Response) VisitTransferPortfolioResponse(w http.ResponseWriter) error {
+	w.WriteHeader(202)
+	return nil
+}
+
+type TransferPortfolio400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response TransferPortfolio400ApplicationProblemPlusJSONResponse) VisitTransferPortfolioResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransferPortfolio401ApplicationProblemPlusJSONResponse Problem
+
+func (response TransferPortfolio401ApplicationProblemPlusJSONResponse) VisitTransferPortfolioResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransferPortfolio403ApplicationProblemPlusJSONResponse Problem
+
+func (response TransferPortfolio403ApplicationProblemPlusJSONResponse) VisitTransferPortfolioResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransferPortfolio422ApplicationProblemPlusJSONResponse Problem
+
+func (response TransferPortfolio422ApplicationProblemPlusJSONResponse) VisitTransferPortfolioResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type TransferPortfolio503ApplicationProblemPlusJSONResponse Problem
+
+func (response TransferPortfolio503ApplicationProblemPlusJSONResponse) VisitTransferPortfolioResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
-	// ListAgents Usuarios de la agencia que se pueden asignar como asesor.
+	// ListAgents Usuarios de la agencia. Solo a los activos se les asigna cartera; requiere manage o assign.
 	// (GET /api/v1/policies/agents)
 	ListAgents(ctx context.Context, request ListAgentsRequestObject) (ListAgentsResponseObject, error)
 
@@ -2444,6 +2775,9 @@ type StrictServerInterface interface {
 	// AcceptPolicy El cliente aceptó; pasa a trámite con la aseguradora.
 	// (POST /api/v1/policies/policies/{policyId}/accept)
 	AcceptPolicy(ctx context.Context, request AcceptPolicyRequestObject) (AcceptPolicyResponseObject, error)
+	// ReassignPolicyAgent Cambia el asesor de la póliza por otro activo. Queda en el historial con motivo.
+	// (POST /api/v1/policies/policies/{policyId}/agent)
+	ReassignPolicyAgent(ctx context.Context, request ReassignPolicyAgentRequestObject) (ReassignPolicyAgentResponseObject, error)
 	// CancelPolicy Registra la cancelación que expidió la aseguradora.
 	// (POST /api/v1/policies/policies/{policyId}/cancel)
 	CancelPolicy(ctx context.Context, request CancelPolicyRequestObject) (CancelPolicyResponseObject, error)
@@ -2462,6 +2796,9 @@ type StrictServerInterface interface {
 	// RejectPolicy La aseguradora rechazó la solicitud.
 	// (POST /api/v1/policies/policies/{policyId}/reject)
 	RejectPolicy(ctx context.Context, request RejectPolicyRequestObject) (RejectPolicyResponseObject, error)
+	// TransferPortfolio Pide pasar toda la cartera de un asesor a otro. Se procesa en segundo plano.
+	// (POST /api/v1/policies/portfolio-transfers)
+	TransferPortfolio(ctx context.Context, request TransferPortfolioRequestObject) (TransferPortfolioResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -2664,6 +3001,40 @@ func (sh *strictHandler) AcceptPolicy(w http.ResponseWriter, r *http.Request, po
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(AcceptPolicyResponseObject); ok {
 		if err := validResponse.VisitAcceptPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ReassignPolicyAgent operation middleware
+func (sh *strictHandler) ReassignPolicyAgent(w http.ResponseWriter, r *http.Request, policyId uuid.UUID, params ReassignPolicyAgentParams) {
+	var request ReassignPolicyAgentRequestObject
+
+	request.PolicyId = policyId
+	request.Params = params
+
+	var body ReassignPolicyAgentJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReassignPolicyAgent(ctx, request.(ReassignPolicyAgentRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReassignPolicyAgent")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReassignPolicyAgentResponseObject); ok {
+		if err := validResponse.VisitReassignPolicyAgentResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -2877,59 +3248,94 @@ func (sh *strictHandler) RejectPolicy(w http.ResponseWriter, r *http.Request, po
 	}
 }
 
+// TransferPortfolio operation middleware
+func (sh *strictHandler) TransferPortfolio(w http.ResponseWriter, r *http.Request) {
+	var request TransferPortfolioRequestObject
+
+	var body TransferPortfolioJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.TransferPortfolio(ctx, request.(TransferPortfolioRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "TransferPortfolio")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(TransferPortfolioResponseObject); ok {
+		if err := validResponse.VisitTransferPortfolioResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"8/8FAAD//w==",
+	"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",
+	"AP//",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

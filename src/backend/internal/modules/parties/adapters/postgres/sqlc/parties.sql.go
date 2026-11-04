@@ -16,7 +16,7 @@ import (
 )
 
 const getParty = `-- name: GetParty :one
-SELECT id, kind, name, document_type, document_last4, email, phone, address, city, created_at, updated_at, version
+SELECT id, kind, name, document_type, document_last4, email, phone, address, city, responsible_agent_id, created_at, updated_at, version
 FROM parties.parties
 WHERE tenant_id = $1 AND id = $2
 `
@@ -27,18 +27,19 @@ type GetPartyParams struct {
 }
 
 type GetPartyRow struct {
-	ID            uuid.UUID
-	Kind          string
-	Name          string
-	DocumentType  string
-	DocumentLast4 string
-	Email         pgtype.Text
-	Phone         pgtype.Text
-	Address       pgtype.Text
-	City          pgtype.Text
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	Version       int32
+	ID                 uuid.UUID
+	Kind               string
+	Name               string
+	DocumentType       string
+	DocumentLast4      string
+	Email              pgtype.Text
+	Phone              pgtype.Text
+	Address            pgtype.Text
+	City               pgtype.Text
+	ResponsibleAgentID uuid.NullUUID
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	Version            int32
 }
 
 func (q *Queries) GetParty(ctx context.Context, arg GetPartyParams) (GetPartyRow, error) {
@@ -54,6 +55,7 @@ func (q *Queries) GetParty(ctx context.Context, arg GetPartyParams) (GetPartyRow
 		&i.Phone,
 		&i.Address,
 		&i.City,
+		&i.ResponsibleAgentID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Version,
@@ -62,7 +64,7 @@ func (q *Queries) GetParty(ctx context.Context, arg GetPartyParams) (GetPartyRow
 }
 
 const getPartyByDocument = `-- name: GetPartyByDocument :one
-SELECT id, kind, name, document_type, document_last4, email, phone, address, city, created_at, updated_at, version
+SELECT id, kind, name, document_type, document_last4, email, phone, address, city, responsible_agent_id, created_at, updated_at, version
 FROM parties.parties
 WHERE tenant_id = $1 AND document_type = $2 AND document_bidx = $3
 `
@@ -74,18 +76,19 @@ type GetPartyByDocumentParams struct {
 }
 
 type GetPartyByDocumentRow struct {
-	ID            uuid.UUID
-	Kind          string
-	Name          string
-	DocumentType  string
-	DocumentLast4 string
-	Email         pgtype.Text
-	Phone         pgtype.Text
-	Address       pgtype.Text
-	City          pgtype.Text
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	Version       int32
+	ID                 uuid.UUID
+	Kind               string
+	Name               string
+	DocumentType       string
+	DocumentLast4      string
+	Email              pgtype.Text
+	Phone              pgtype.Text
+	Address            pgtype.Text
+	City               pgtype.Text
+	ResponsibleAgentID uuid.NullUUID
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	Version            int32
 }
 
 func (q *Queries) GetPartyByDocument(ctx context.Context, arg GetPartyByDocumentParams) (GetPartyByDocumentRow, error) {
@@ -101,6 +104,7 @@ func (q *Queries) GetPartyByDocument(ctx context.Context, arg GetPartyByDocument
 		&i.Phone,
 		&i.Address,
 		&i.City,
+		&i.ResponsibleAgentID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Version,
@@ -166,10 +170,10 @@ func (q *Queries) InsertConsent(ctx context.Context, arg InsertConsentParams) er
 const insertParty = `-- name: InsertParty :exec
 INSERT INTO parties.parties (
     id, tenant_id, kind, name, document_type, document_ciphertext, document_bidx, document_last4,
-    email, phone, address, city, created_at, created_by, updated_at, updated_by, version
+    email, phone, address, city, responsible_agent_id, created_at, created_by, updated_at, updated_by, version
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8,
-    $9, $10, $11, $12, $13, $14, $13, $14, 1
+    $9, $10, $11, $12, $13, $14, $15, $14, $15, 1
 )
 `
 
@@ -186,6 +190,7 @@ type InsertPartyParams struct {
 	Phone              pgtype.Text
 	Address            pgtype.Text
 	City               pgtype.Text
+	ResponsibleAgentID uuid.NullUUID
 	CreatedAt          time.Time
 	Actor              uuid.NullUUID
 }
@@ -204,6 +209,7 @@ func (q *Queries) InsertParty(ctx context.Context, arg InsertPartyParams) error 
 		arg.Phone,
 		arg.Address,
 		arg.City,
+		arg.ResponsibleAgentID,
 		arg.CreatedAt,
 		arg.Actor,
 	)
@@ -214,7 +220,7 @@ const isPartyVisibleTo = `-- name: IsPartyVisibleTo :one
 SELECT EXISTS (
     SELECT 1 FROM parties.parties p
     WHERE p.tenant_id = $1 AND p.id = $2
-      AND (p.created_by = $3::uuid
+      AND (p.responsible_agent_id = $3::uuid
            OR EXISTS (SELECT 1 FROM parties.policy_scopes s
                       WHERE s.tenant_id = p.tenant_id AND s.agent_id = $3::uuid AND p.id = ANY (s.party_ids)))
 )::boolean AS visible
@@ -283,13 +289,13 @@ func (q *Queries) ListConsents(ctx context.Context, arg ListConsentsParams) ([]L
 }
 
 const listParties = `-- name: ListParties :many
-SELECT p.id, p.kind, p.name, p.document_type, p.document_last4, p.email, p.phone, p.address, p.city, p.created_at, p.updated_at, p.version
+SELECT p.id, p.kind, p.name, p.document_type, p.document_last4, p.email, p.phone, p.address, p.city, p.responsible_agent_id, p.created_at, p.updated_at, p.version
 FROM parties.parties p
 WHERE p.tenant_id = $1
   AND ($2::uuid IS NULL OR p.id < $2::uuid)
   AND ($3::text IS NULL OR p.name ILIKE $3::text ESCAPE '\')
   AND ($4::uuid IS NULL
-       OR p.created_by = $4::uuid
+       OR p.responsible_agent_id = $4::uuid
        OR EXISTS (SELECT 1 FROM parties.policy_scopes s
                   WHERE s.tenant_id = p.tenant_id AND s.agent_id = $4::uuid
                     AND p.id = ANY (s.party_ids)))
@@ -306,18 +312,19 @@ type ListPartiesParams struct {
 }
 
 type ListPartiesRow struct {
-	ID            uuid.UUID
-	Kind          string
-	Name          string
-	DocumentType  string
-	DocumentLast4 string
-	Email         pgtype.Text
-	Phone         pgtype.Text
-	Address       pgtype.Text
-	City          pgtype.Text
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
-	Version       int32
+	ID                 uuid.UUID
+	Kind               string
+	Name               string
+	DocumentType       string
+	DocumentLast4      string
+	Email              pgtype.Text
+	Phone              pgtype.Text
+	Address            pgtype.Text
+	City               pgtype.Text
+	ResponsibleAgentID uuid.NullUUID
+	CreatedAt          time.Time
+	UpdatedAt          time.Time
+	Version            int32
 }
 
 func (q *Queries) ListParties(ctx context.Context, arg ListPartiesParams) ([]ListPartiesRow, error) {
@@ -345,6 +352,7 @@ func (q *Queries) ListParties(ctx context.Context, arg ListPartiesParams) ([]Lis
 			&i.Phone,
 			&i.Address,
 			&i.City,
+			&i.ResponsibleAgentID,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Version,
@@ -396,14 +404,41 @@ func (q *Queries) ListPartySummaries(ctx context.Context, arg ListPartySummaries
 	return items, nil
 }
 
+const transferResponsibleAgent = `-- name: TransferResponsibleAgent :execrows
+UPDATE parties.parties
+SET responsible_agent_id = $1, updated_at = $2, version = version + 1
+WHERE tenant_id = $3 AND responsible_agent_id = $4
+`
+
+type TransferResponsibleAgentParams struct {
+	ToAgent   uuid.NullUUID
+	UpdatedAt time.Time
+	TenantID  uuid.UUID
+	FromAgent uuid.NullUUID
+}
+
+func (q *Queries) TransferResponsibleAgent(ctx context.Context, arg TransferResponsibleAgentParams) (int64, error) {
+	result, err := q.db.Exec(ctx, transferResponsibleAgent,
+		arg.ToAgent,
+		arg.UpdatedAt,
+		arg.TenantID,
+		arg.FromAgent,
+	)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const updateParty = `-- name: UpdateParty :execrows
 UPDATE parties.parties
 SET name = $1, email = $2, phone = $3, address = $4, city = $5,
-    document_type = $6, document_last4 = $7,
-    document_ciphertext = coalesce($8::bytea, document_ciphertext),
-    document_bidx = coalesce($9::bytea, document_bidx),
-    updated_at = $10, updated_by = $11, version = version + 1
-WHERE tenant_id = $12 AND id = $13 AND version = $14
+    responsible_agent_id = $6,
+    document_type = $7, document_last4 = $8,
+    document_ciphertext = coalesce($9::bytea, document_ciphertext),
+    document_bidx = coalesce($10::bytea, document_bidx),
+    updated_at = $11, updated_by = $12, version = version + 1
+WHERE tenant_id = $13 AND id = $14 AND version = $15
 `
 
 type UpdatePartyParams struct {
@@ -412,6 +447,7 @@ type UpdatePartyParams struct {
 	Phone              pgtype.Text
 	Address            pgtype.Text
 	City               pgtype.Text
+	ResponsibleAgentID uuid.NullUUID
 	DocumentType       string
 	DocumentLast4      string
 	DocumentCiphertext []byte
@@ -430,6 +466,7 @@ func (q *Queries) UpdateParty(ctx context.Context, arg UpdatePartyParams) (int64
 		arg.Phone,
 		arg.Address,
 		arg.City,
+		arg.ResponsibleAgentID,
 		arg.DocumentType,
 		arg.DocumentLast4,
 		arg.DocumentCiphertext,

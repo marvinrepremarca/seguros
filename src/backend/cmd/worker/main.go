@@ -112,7 +112,10 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	for _, c := range append(featuremgmt.Consumers(invalidator), parties.Consumers()...) {
+	consumers := featuremgmt.Consumers(invalidator)
+	consumers = append(consumers, parties.Consumers(audit.NewRecorder(clock))...)
+	consumers = append(consumers, policies.Consumers(database, audit.NewRecorder(clock), outbox.NewWriter(clock), clock)...)
+	for _, c := range consumers {
 		if err := dispatcher.Register(c); err != nil {
 			return err
 		}

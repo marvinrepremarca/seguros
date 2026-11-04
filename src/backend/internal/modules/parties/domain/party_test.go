@@ -169,3 +169,22 @@ func TestNewConsent(t *testing.T) {
 		require.ErrorIs(t, err, domain.ErrInvalidConsent, name)
 	}
 }
+
+func TestAssignResponsibleAndReason(t *testing.T) {
+	t.Parallel()
+	p, err := domain.NewParty(newID(), domain.KindPerson, "Ana", doc(t, domain.DocumentCC, "1020304050"), domain.Contact{}, now)
+	require.NoError(t, err)
+	assert.False(t, p.Snapshot().Responsible.Valid)
+	agent := uuid.New()
+	p.AssignResponsible(agent, now.Add(time.Hour))
+	assert.Equal(t, agent, p.Snapshot().Responsible.UUID)
+	assert.Equal(t, now.Add(time.Hour), p.Snapshot().UpdatedAt)
+
+	reason, err := domain.ValidTransferReason("  Retiro del asesor ")
+	require.NoError(t, err)
+	assert.Equal(t, "Retiro del asesor", reason)
+	for _, bad := range []string{"", "ab", strings.Repeat("ñ", 101)} {
+		_, err := domain.ValidTransferReason(bad)
+		require.ErrorIs(t, err, domain.ErrInvalidReason, bad)
+	}
+}

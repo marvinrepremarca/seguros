@@ -1,19 +1,19 @@
 -- name: InsertParty :exec
 INSERT INTO parties.parties (
     id, tenant_id, kind, name, document_type, document_ciphertext, document_bidx, document_last4,
-    email, phone, address, city, created_at, created_by, updated_at, updated_by, version
+    email, phone, address, city, responsible_agent_id, created_at, created_by, updated_at, updated_by, version
 ) VALUES (
     @id, @tenant_id, @kind, @name, @document_type, @document_ciphertext, @document_bidx, @document_last4,
-    @email, @phone, @address, @city, @created_at, @actor, @created_at, @actor, 1
+    @email, @phone, @address, @city, @responsible_agent_id, @created_at, @actor, @created_at, @actor, 1
 );
 
 -- name: GetParty :one
-SELECT id, kind, name, document_type, document_last4, email, phone, address, city, created_at, updated_at, version
+SELECT id, kind, name, document_type, document_last4, email, phone, address, city, responsible_agent_id, created_at, updated_at, version
 FROM parties.parties
 WHERE tenant_id = @tenant_id AND id = @id;
 
 -- name: GetPartyByDocument :one
-SELECT id, kind, name, document_type, document_last4, email, phone, address, city, created_at, updated_at, version
+SELECT id, kind, name, document_type, document_last4, email, phone, address, city, responsible_agent_id, created_at, updated_at, version
 FROM parties.parties
 WHERE tenant_id = @tenant_id AND document_type = @document_type AND document_bidx = @document_bidx;
 
@@ -23,13 +23,13 @@ FROM parties.parties
 WHERE tenant_id = @tenant_id AND id = @id;
 
 -- name: ListParties :many
-SELECT p.id, p.kind, p.name, p.document_type, p.document_last4, p.email, p.phone, p.address, p.city, p.created_at, p.updated_at, p.version
+SELECT p.id, p.kind, p.name, p.document_type, p.document_last4, p.email, p.phone, p.address, p.city, p.responsible_agent_id, p.created_at, p.updated_at, p.version
 FROM parties.parties p
 WHERE p.tenant_id = @tenant_id
   AND (sqlc.narg('before')::uuid IS NULL OR p.id < sqlc.narg('before')::uuid)
   AND (sqlc.narg('name_pattern')::text IS NULL OR p.name ILIKE sqlc.narg('name_pattern')::text ESCAPE '\')
   AND (sqlc.narg('visible_to')::uuid IS NULL
-       OR p.created_by = sqlc.narg('visible_to')::uuid
+       OR p.responsible_agent_id = sqlc.narg('visible_to')::uuid
        OR EXISTS (SELECT 1 FROM parties.policy_scopes s
                   WHERE s.tenant_id = p.tenant_id AND s.agent_id = sqlc.narg('visible_to')::uuid
                     AND p.id = ANY (s.party_ids)))
@@ -44,6 +44,7 @@ WHERE tenant_id = @tenant_id AND id = ANY (@ids::uuid[]);
 -- name: UpdateParty :execrows
 UPDATE parties.parties
 SET name = @name, email = @email, phone = @phone, address = @address, city = @city,
+    responsible_agent_id = @responsible_agent_id,
     document_type = @document_type, document_last4 = @document_last4,
     document_ciphertext = coalesce(sqlc.narg('document_ciphertext')::bytea, document_ciphertext),
     document_bidx = coalesce(sqlc.narg('document_bidx')::bytea, document_bidx),
@@ -65,7 +66,7 @@ LIMIT 500;
 SELECT EXISTS (
     SELECT 1 FROM parties.parties p
     WHERE p.tenant_id = @tenant_id AND p.id = @id
-      AND (p.created_by = @agent::uuid
+      AND (p.responsible_agent_id = @agent::uuid
            OR EXISTS (SELECT 1 FROM parties.policy_scopes s
                       WHERE s.tenant_id = p.tenant_id AND s.agent_id = @agent::uuid AND p.id = ANY (s.party_ids)))
 )::boolean AS visible;
@@ -77,3 +78,8 @@ ON CONFLICT (tenant_id, policy_id) DO UPDATE
 SET agent_id = EXCLUDED.agent_id, party_ids = EXCLUDED.party_ids,
     policy_version = EXCLUDED.policy_version, updated_at = EXCLUDED.updated_at
 WHERE parties.policy_scopes.policy_version < EXCLUDED.policy_version;
+
+-- name: TransferResponsibleAgent :execrows
+UPDATE parties.parties
+SET responsible_agent_id = @to_agent, updated_at = @updated_at, version = version + 1
+WHERE tenant_id = @tenant_id AND responsible_agent_id = @from_agent;

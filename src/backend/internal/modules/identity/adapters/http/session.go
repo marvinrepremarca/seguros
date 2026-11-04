@@ -52,6 +52,7 @@ type SessionOptions struct {
 	Store       scs.Store
 	IdleTimeout time.Duration
 	Lifetime    time.Duration
+	Logger      *slog.Logger
 }
 
 // NewSessionManager crea la sesión principal: cookie __Host- HttpOnly, Secure, SameSite=Strict,
@@ -62,7 +63,22 @@ func NewSessionManager(opts SessionOptions) *scs.SessionManager {
 	m.IdleTimeout = opts.IdleTimeout
 	m.Lifetime = opts.Lifetime
 	m.Cookie = scs.SessionCookie{Name: SessionCookie, HttpOnly: true, Secure: true, Path: "/", SameSite: http.SameSiteStrictMode, Persist: false}
+	m.ErrorFunc = sessionErrorFunc(opts.Logger)
 	return m
+}
+
+// sessionErrorFunc responde los errores de la sesión como el resto de la API. scs guarda la sesión al
+// escribir la respuesta: si el cliente ya se fue, ese guardado falla y no es una falla del servidor.
+func sessionErrorFunc(logger *slog.Logger) func(http.ResponseWriter, *http.Request, error) {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return func(w http.ResponseWriter, r *http.Request, err error) {
+		if errors.Is(r.Context().Err(), context.Canceled) {
+			err = context.Canceled
+		}
+		httpx.WriteError(w, r, logger, err)
+	}
 }
 
 // NewAuthTxManager crea la sesión de la transacción de login (state, nonce, verificador PKCE).

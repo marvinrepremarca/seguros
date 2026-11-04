@@ -224,6 +224,17 @@ type PolicyPartiesChanged struct {
 	Version  int32
 	AgentID  uuid.NullUUID
 	PartyIDs []uuid.UUID
+	// GrantsAccess es false cuando la póliza terminó: ya no da alcance al asesor (DECISIONS N11).
+	GrantsAccess bool
+}
+
+// PolicyAgentChanged: cambió el asesor de la póliza.
+type PolicyAgentChanged struct {
+	PolicyID PolicyID
+	Previous uuid.NullUUID
+	New      uuid.NullUUID
+	At       time.Time
+	Reason   string
 }
 
 // PolicyIssued: la aseguradora expidió la póliza.
@@ -260,6 +271,7 @@ type PolicyFellIntoArrears struct{ PolicyID PolicyID }
 type PolicyReinstated struct{ PolicyID PolicyID }
 
 func (PolicyPartiesChanged) policyEvent()  {}
+func (PolicyAgentChanged) policyEvent()    {}
 func (PolicyIssued) policyEvent()          {}
 func (PolicyEndorsed) policyEvent()        {}
 func (PolicyCancelled) policyEvent()       {}

@@ -40,6 +40,12 @@ for _ in $(seq 1 60); do
 done
 curl -sf http://localhost:5173/health/ready >/dev/null || { echo "la API no arrancó" >&2; exit 1; }
 
+# El worker procesa lo que depende de eventos, como el acceso del asesor a los clientes de su póliza.
+(cd src/backend && go build -o "${TMPDIR:-/tmp}/seguros-worker-e2e" ./cmd/worker)
+(cd src/backend && SEGUROS_DB_URL="$("$root/deploy/scripts/dev-db-url.sh" worker)" \
+  "$root/deploy/scripts/with-dev-env.sh" "${TMPDIR:-/tmp}/seguros-worker-e2e") &
+pids+=($!)
+
 E2E_FULL=1 E2E_SPA_CSP=1 E2E_BASE_URL=http://localhost:5173 E2E_PASSWORD="$(get KC_TEST_USER_PASSWORD)" \
   E2E_KC_ADMIN_PASSWORD="$(get KC_BOOTSTRAP_ADMIN_PASSWORD)" \
   pnpm -C "$frontend" exec playwright test "$@"

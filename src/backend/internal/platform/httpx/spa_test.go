@@ -2,6 +2,7 @@ package httpx_test
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
@@ -168,4 +169,24 @@ func TestRateLimitByUser(t *testing.T) {
 	assert.Equal(t, http.StatusTooManyRequests, status(ana, "/x/reveal"))
 	assert.Equal(t, http.StatusOK, status(luis, "/x/reveal"), "el contador es por usuario")
 	assert.Equal(t, http.StatusOK, status(ana, "/otra"), "las demás rutas no cuentan")
+}
+
+func TestCanceledClientIsNotAServerError(t *testing.T) {
+	t.Parallel()
+	var logs strings.Builder
+	logger := slog.New(slog.NewTextHandler(&logs, nil))
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequestWithContext(ctx, http.MethodGet, "/x", nil)
+	httpx.WriteError(rec, req, logger, fmt.Errorf("consultando: %w", context.Canceled))
+	assert.Equal(t, 499, rec.Code)
+	assert.NotContains(t, logs.String(), "ERROR")
+
+	// Un error de cancelación sin que el cliente se haya ido sí es una falla del servidor.
+	rec = httptest.NewRecorder()
+	req = httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/x", nil)
+	httpx.WriteError(rec, req, logger, fmt.Errorf("consultando: %w", context.Canceled))
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.Contains(t, logs.String(), "ERROR")
 }

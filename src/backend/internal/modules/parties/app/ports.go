@@ -8,6 +8,7 @@ import (
 
 	"github.com/google/uuid"
 
+	identity "github.com/marvinrepremarca/seguros/internal/modules/identity/contracts"
 	"github.com/marvinrepremarca/seguros/internal/modules/parties/contracts"
 	"github.com/marvinrepremarca/seguros/internal/modules/parties/domain"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
@@ -49,7 +50,7 @@ type PartyRepository interface {
 	// GetByBlindIndex devuelve domain.ErrNotFound si no hay coincidencia.
 	GetByBlindIndex(ctx context.Context, docType domain.DocumentType, blindIndex []byte) (*domain.Party, error)
 	GetDocument(ctx context.Context, id domain.PartyID) (domain.DocumentType, []byte, error)
-	// IsVisibleTo indica si el tercero es cliente del asesor: lo registró o es parte de sus pólizas.
+	// IsVisibleTo indica si el tercero es cliente del asesor: es su responsable o es parte de una póliza suya no terminada.
 	IsVisibleTo(ctx context.Context, id domain.PartyID, agent uuid.UUID) (bool, error)
 	List(ctx context.Context, f ListFilter) ([]*domain.Party, error)
 	// Update aplica concurrencia optimista; doc nil conserva el documento guardado.
@@ -74,6 +75,7 @@ type Store interface {
 type Deps struct {
 	Store  Store
 	Cipher Cipher
+	Agents identity.Directory
 	Clock  kernel.Clock
 }
 

@@ -86,7 +86,7 @@ func (r *repository) Insert(ctx context.Context, p *domain.Party, doc app.Sealed
 		ID: uuid.UUID(s.ID), TenantID: r.tenant, Kind: string(s.Kind), Name: s.Name, DocumentType: string(s.DocumentType),
 		DocumentCiphertext: doc.Ciphertext, DocumentBidx: doc.BlindIndex, DocumentLast4: s.DocumentLast4,
 		Email: text(s.Contact.Email), Phone: text(s.Contact.Phone), Address: text(s.Contact.Address), City: text(s.Contact.City),
-		CreatedAt: s.CreatedAt, Actor: actor(ctx),
+		ResponsibleAgentID: s.Responsible, CreatedAt: s.CreatedAt, Actor: actor(ctx),
 	})
 	if err != nil {
 		return mapWriteError(err, "insertando tercero")
@@ -105,7 +105,7 @@ func rehydrate(id uuid.UUID, kind, name, docType, last4 string, email, phone, ad
 
 func fromGet(r partiessqlc.GetPartyRow) *domain.Party {
 	return rehydrate(r.ID, r.Kind, r.Name, r.DocumentType, r.DocumentLast4, r.Email, r.Phone, r.Address, r.City, func(s *domain.PartySnapshot) {
-		s.CreatedAt, s.UpdatedAt, s.Version = r.CreatedAt, r.UpdatedAt, r.Version
+		s.Responsible, s.CreatedAt, s.UpdatedAt, s.Version = r.ResponsibleAgentID, r.CreatedAt, r.UpdatedAt, r.Version
 	})
 }
 
@@ -168,7 +168,7 @@ func (r *repository) Update(ctx context.Context, p *domain.Party, doc *app.Seale
 	s := p.Snapshot()
 	params := partiessqlc.UpdatePartyParams{
 		Name: s.Name, Email: text(s.Contact.Email), Phone: text(s.Contact.Phone), Address: text(s.Contact.Address), City: text(s.Contact.City),
-		DocumentType: string(s.DocumentType), DocumentLast4: s.DocumentLast4, UpdatedAt: s.UpdatedAt, Actor: actor(ctx),
+		DocumentType: string(s.DocumentType), DocumentLast4: s.DocumentLast4, ResponsibleAgentID: s.Responsible, UpdatedAt: s.UpdatedAt, Actor: actor(ctx),
 		TenantID: r.tenant, ID: uuid.UUID(s.ID), Version: s.Version,
 	}
 	if doc != nil {

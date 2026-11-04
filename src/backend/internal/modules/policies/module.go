@@ -12,6 +12,7 @@ import (
 	catalog "github.com/marvinrepremarca/seguros/internal/modules/catalog/contracts"
 	identity "github.com/marvinrepremarca/seguros/internal/modules/identity/contracts"
 	parties "github.com/marvinrepremarca/seguros/internal/modules/parties/contracts"
+	policiesevents "github.com/marvinrepremarca/seguros/internal/modules/policies/adapters/events"
 	policieshttp "github.com/marvinrepremarca/seguros/internal/modules/policies/adapters/http"
 	policiesjobs "github.com/marvinrepremarca/seguros/internal/modules/policies/adapters/jobs"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies/adapters/postgres"
@@ -60,6 +61,11 @@ func New(d Deps) *Module {
 
 // Mount registra las rutas del módulo.
 func (m *Module) Mount(r chi.Router) error { return m.server.Mount(r) }
+
+// Consumers devuelve los consumidores de eventos del módulo (los registra cmd/worker).
+func Consumers(database *db.DB, recorder *audit.Recorder, writer *outbox.Writer, clock kernel.Clock) []outbox.Consumer {
+	return []outbox.Consumer{policiesevents.PortfolioTransfer(postgres.NewStore(database, recorder, writer), clock)}
+}
 
 // RegisterJobs añade el vencimiento diario de pólizas al worker (rol seguros_worker).
 func RegisterJobs(workers *river.Workers, database *db.DB, recorder *audit.Recorder, writer *outbox.Writer, clock kernel.Clock) []*river.PeriodicJob {

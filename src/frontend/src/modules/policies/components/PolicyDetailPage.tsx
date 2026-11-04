@@ -19,6 +19,7 @@ import {
   issuePolicy,
   PartyRole,
   rejectEndorsement,
+  reassignPolicyAgent,
   rejectPolicy,
   requestEndorsement,
   type Endorsement,
@@ -33,6 +34,7 @@ import {
   ROLE_LABELS,
   STATUS_LABELS,
 } from "../labels";
+import { agentsQuery } from "../queries";
 import { fromRiskData, riskFields, toRiskData } from "../risk";
 import { amount, signedAmount } from "../schemas";
 import { RiskFields } from "./RiskFields";
@@ -213,13 +215,14 @@ function RiskSummary({
   );
 }
 
-type OpenForm = "issue" | "reject" | "cancel" | "endorse" | null;
+type OpenForm = "issue" | "reject" | "cancel" | "endorse" | "reassign" | null;
 
 function Actions({ policy, deps }: { policy: Policy; deps: PolicyDeps }) {
   const actions = availableActions(policy.status, {
     manage: usePermission(permissions.policyManage),
     cancel: usePermission(permissions.policyCancel),
     endorse: usePermission(permissions.endorsementManage),
+    assign: usePermission(permissions.policyAssign),
   });
   const [open, setOpen] = useState<OpenForm>(null);
   const apply = useApply(policy);
@@ -265,6 +268,11 @@ function Actions({ policy, deps }: { policy: Policy; deps: PolicyDeps }) {
             Solicitar endoso
           </Button>
         )}
+        {actions.includes("reassign") && (
+          <Button variant="outline" onClick={toggle("reassign")}>
+            Cambiar asesor
+          </Button>
+        )}
         {actions.includes("cancel") && (
           <Button variant="destructive" onClick={toggle("cancel")}>
             Registrar cancelación
@@ -274,6 +282,7 @@ function Actions({ policy, deps }: { policy: Policy; deps: PolicyDeps }) {
       {open === "issue" && <IssueForm policy={policy} onDone={done} />}
       {open === "reject" && <RejectForm policy={policy} onDone={done} />}
       {open === "cancel" && <CancelForm policy={policy} onDone={done} />}
+      {open === "reassign" && <ReassignForm policy={policy} onDone={done} />}
       {open === "endorse" && <RequestEndorsementForm policy={policy} onDone={done} deps={deps} />}
     </div>
   );
@@ -351,6 +360,74 @@ function RejectForm({ policy, onDone }: FormProps) {
       </Field>
       <Button type="submit" disabled={reject.isPending}>
         Confirmar rechazo
+      </Button>
+    </form>
+  );
+}
+
+function ReassignForm({ policy, onDone }: FormProps) {
+  const agents = useQuery(agentsQuery());
+  const [agentId, setAgentId] = useState("");
+  const [reason, setReason] = useState("");
+  const apply = useApply(policy);
+  const reassign = useMutation(
+    apply(
+      () => reassignPolicyAgent(policy.id, { agentId, reason }, { version: policy.version }),
+      onDone,
+    ),
+  );
+  const current = agents.data?.find((a) => a.id === policy.agentId);
+  return (
+    <form
+      className="space-y-3 rounded border p-4"
+      onSubmit={submit(() => {
+        reassign.mutate();
+      })}
+    >
+      <p className="text-sm text-muted-foreground">
+        Asesor actual: {current?.displayName ?? "sin asesor"}. El cambio queda en el historial de la
+        póliza.
+      </p>
+      <ErrorMessage message={problemMessage(reassign.error)} />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Field label="Asesor nuevo">
+          {(p) => (
+            <Select
+              {...p}
+              required
+              value={agentId}
+              onChange={(e) => {
+                setAgentId(e.target.value);
+              }}
+            >
+              <option value="">Selecciona…</option>
+              {agents.data
+                ?.filter((a) => a.active && a.id !== policy.agentId)
+                .map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.displayName}
+                  </option>
+                ))}
+            </Select>
+          )}
+        </Field>
+        <Field label="Motivo del cambio">
+          {(p) => (
+            <Input
+              {...p}
+              required
+              minLength={3}
+              maxLength={200}
+              value={reason}
+              onChange={(e) => {
+                setReason(e.target.value);
+              }}
+            />
+          )}
+        </Field>
+      </div>
+      <Button type="submit" disabled={reassign.isPending}>
+        Confirmar cambio de asesor
       </Button>
     </form>
   );

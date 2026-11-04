@@ -6,6 +6,8 @@ package policiessqlc
 
 import (
 	"context"
+
+	"github.com/google/uuid"
 )
 
 type Querier interface {
@@ -14,6 +16,7 @@ type Querier interface {
 	DeletePolicyParties(ctx context.Context, arg DeletePolicyPartiesParams) error
 	DueForExpiration(ctx context.Context, arg DueForExpirationParams) ([]DueForExpirationRow, error)
 	GetPolicy(ctx context.Context, arg GetPolicyParams) (GetPolicyRow, error)
+	InsertAgentHistory(ctx context.Context, arg InsertAgentHistoryParams) error
 	InsertCoverage(ctx context.Context, arg InsertCoverageParams) error
 	InsertInsuredItem(ctx context.Context, arg InsertInsuredItemParams) error
 	InsertPolicy(ctx context.Context, arg InsertPolicyParams) error
@@ -23,6 +26,7 @@ type Querier interface {
 	ListInsuredItems(ctx context.Context, arg ListInsuredItemsParams) ([]ListInsuredItemsRow, error)
 	ListPolicies(ctx context.Context, arg ListPoliciesParams) ([]ListPoliciesRow, error)
 	ListPolicyParties(ctx context.Context, arg ListPolicyPartiesParams) ([]ListPolicyPartiesRow, error)
+	ListReassignablePolicyIDs(ctx context.Context, arg ListReassignablePolicyIDsParams) ([]uuid.UUID, error)
 	UpdatePolicy(ctx context.Context, arg UpdatePolicyParams) (int64, error)
 	UpsertEndorsement(ctx context.Context, arg UpsertEndorsementParams) error
 }

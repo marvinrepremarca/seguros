@@ -106,6 +106,31 @@ paths:
         "404": { $ref: "#/components/responses/Problem" }
         "409": { $ref: "#/components/responses/Problem" }
         "422": { $ref: "#/components/responses/Problem" }
+  /api/v1/parties/parties/{partyId}/responsible-agent:
+    parameters:
+      - { name: partyId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: assignPartyResponsible
+      summary: Traspasa el cliente a otro asesor activo. Queda auditado con motivo.
+      x-permission: parties.party.assign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AssignResponsibleRequest" }
+      responses:
+        "200":
+          description: Tercero actualizado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Party" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
   /api/v1/parties/parties/{partyId}/document/reveal:
     parameters:
       - { name: partyId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -218,6 +243,14 @@ components:
         address: { type: string, maxLength: 200 }
         city: { type: string, maxLength: 100 }
         document: { $ref: "#/components/schemas/DocumentInput" }
+    AssignResponsibleRequest:
+      type: object
+      required: [agentId, reason, version]
+      additionalProperties: false
+      properties:
+        agentId: { type: string, format: uuid }
+        reason: { type: string, minLength: 3, maxLength: 200 }
+        version: { type: integer, format: int32, minimum: 1 }
     Party:
       type: object
       required: [id, kind, name, documentType, documentLast4, version, createdAt, updatedAt]
@@ -232,6 +265,7 @@ components:
         phone: { type: string }
         address: { type: string }
         city: { type: string }
+        responsibleAgentId: { type: string, format: uuid }
         version: { type: integer, format: int32 }
         createdAt: { type: string, format: date-time }
         updatedAt: { type: string, format: date-time }

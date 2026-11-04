@@ -422,7 +422,8 @@ func TestPartiesChangedEvents(t *testing.T) {
 	p, err := domain.NewPolicy(domain.PolicyID(uuid.Must(uuid.NewV7())), terms, dt.Now())
 	require.NoError(t, err)
 	events := p.PullEvents()
-	require.Len(t, events, 1)
+	require.Len(t, events, 2, "partes y asesor inicial")
+	assert.IsType(t, domain.PolicyAgentChanged{}, events[1])
 	created, ok := events[0].(domain.PolicyPartiesChanged)
 	require.True(t, ok)
 	assert.Equal(t, int32(1), created.Version)
@@ -438,4 +439,76 @@ func TestPartiesChangedEvents(t *testing.T) {
 	sameParties, id := requested(t, domain.StatusActive)
 	require.NoError(t, sameParties.IssueEndorsement(id, "END-1", dt.Money(t, "0"), dt.Money(t, "0"), domain.EndorsementEffects{}, dt.Now()))
 	assert.Len(t, sameParties.PullEvents(), 1, "sin cambio de partes no hay evento de partes")
+}
+
+func TestTerminalTransitionsStopGrantingAccess(t *testing.T) {
+	t.Parallel()
+	grants := func(t *testing.T, events []domain.Event) bool {
+		t.Helper()
+		for _, e := range events {
+			if c, ok := e.(domain.PolicyPartiesChanged); ok {
+				return c.GrantsAccess
+			}
+		}
+		t.Fatal("sin PolicyPartiesChanged")
+		return false
+	}
+	cases := []struct {
+		name string
+		from domain.Status
+		run  func(*domain.Policy) error
+	}{
+		{"rechazada", domain.StatusInProcess, func(p *domain.Policy) error { return p.Reject("sin capacidad", dt.Now()) }},
+		{"cancelada", domain.StatusActive, func(p *domain.Policy) error { return p.Cancel(cancellation(t), dt.Now()) }},
+		{"renovada", domain.StatusExpired, func(p *domain.Policy) error { return p.MarkRenewed(domain.PolicyID(uuid.New()), dt.Now()) }},
+		{"no renovada", domain.StatusExpired, func(p *domain.Policy) error { return p.MarkNotRenewed(dt.Now()) }},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			p := dt.PolicyIn(t, c.from)
+			require.NoError(t, c.run(p))
+			assert.False(t, grants(t, p.PullEvents()))
+		})
+	}
+	// Vencida sigue dando acceso: es cuando se gestiona la renovación.
+	expired := dt.PolicyIn(t, domain.StatusActive)
+	require.NoError(t, expired.Expire(dt.Date(t, "2027-01-01"), dt.Now()))
+	require.NoError(t, expired.ReassignAgent(uuid.New(), "Retiro del asesor", dt.Now()))
+	assert.True(t, grants(t, expired.PullEvents()))
+}
+
+func TestReassignAgent(t *testing.T) {
+	t.Parallel()
+	agent := uuid.New()
+	for _, s := range allStatuses() {
+		p := dt.PolicyIn(t, s)
+		err := p.ReassignAgent(agent, "Retiro del asesor", dt.Now())
+		switch s {
+		case domain.StatusRejected, domain.StatusCancelled, domain.StatusRenewed, domain.StatusNotRenewed:
+			require.ErrorIs(t, err, domain.ErrAgentNotReassignable, s)
+			assert.False(t, p.Snapshot().Terms.AgentID.Valid, "conserva su asesor como historial")
+		case domain.StatusInQuotation, domain.StatusInProcess, domain.StatusActive, domain.StatusInArrears, domain.StatusExpired:
+			require.NoError(t, err, s)
+			assert.Equal(t, agent, p.Snapshot().Terms.AgentID.UUID)
+			assert.Equal(t, s, p.Status(), "no cambia de estado")
+		}
+	}
+	p := dt.PolicyIn(t, domain.StatusActive)
+	first, second := uuid.New(), uuid.New()
+	require.NoError(t, p.ReassignAgent(first, "Asignación", dt.Now()))
+	p.PullEvents()
+	require.ErrorIs(t, p.ReassignAgent(first, "Otra vez", dt.Now()), domain.ErrSameAgent)
+	require.ErrorIs(t, p.ReassignAgent(second, "x", dt.Now()), domain.ErrInvalidTransferReason)
+	require.ErrorIs(t, p.ReassignAgent(second, strings.Repeat("ñ", 101), dt.Now()), domain.ErrInvalidTransferReason, "límite en bytes de la bitácora")
+	require.NoError(t, p.ReassignAgent(second, "Retiro del asesor", dt.Now()))
+	var changed domain.PolicyAgentChanged
+	for _, e := range p.PullEvents() {
+		if c, ok := e.(domain.PolicyAgentChanged); ok {
+			changed = c
+		}
+	}
+	assert.Equal(t, first, changed.Previous.UUID)
+	assert.Equal(t, second, changed.New.UUID)
+	assert.Equal(t, "Retiro del asesor", changed.Reason)
 }

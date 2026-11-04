@@ -26,6 +26,10 @@ func (h *CreatePartyHandler) Handle(ctx context.Context, cmd CreatePartyCommand)
 	if err := authz.Require(ctx, authz.PartyCreate); err != nil {
 		return domain.PartySnapshot{}, err
 	}
+	scope, err := readScope(ctx)
+	if err != nil {
+		return domain.PartySnapshot{}, err
+	}
 	doc, err := domain.NewDocumentID(cmd.DocumentType, cmd.DocumentNumber)
 	if err != nil {
 		return domain.PartySnapshot{}, err
@@ -37,6 +41,9 @@ func (h *CreatePartyHandler) Handle(ctx context.Context, cmd CreatePartyCommand)
 	party, err := domain.NewParty(id, cmd.Kind, cmd.Name, doc, cmd.Contact, h.Clock.Now())
 	if err != nil {
 		return domain.PartySnapshot{}, err
+	}
+	if scope.Valid { // quien solo alcanza a sus clientes queda como responsable del que registra
+		party.AssignResponsible(scope.UUID, h.Clock.Now())
 	}
 	sealed, err := h.seal(ctx, id, doc)
 	if err != nil {

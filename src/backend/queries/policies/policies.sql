@@ -93,3 +93,14 @@ SET status = EXCLUDED.status, resolved_at = EXCLUDED.resolved_at, endorsement_nu
 -- name: DueForExpiration :many
 SELECT r.tenant_id::uuid AS tenant_id, r.id::uuid AS id
 FROM policies.due_for_expiration(@today::date, @page_size::integer) AS r;
+
+-- name: InsertAgentHistory :exec
+INSERT INTO policies.policy_agent_history (id, tenant_id, policy_id, previous_agent_id, agent_id, effective_at, reason, changed_by)
+VALUES (@id, @tenant_id, @policy_id, @previous_agent_id, @agent_id, @effective_at, @reason, @changed_by);
+
+-- name: ListReassignablePolicyIDs :many
+SELECT id FROM policies.policies
+WHERE tenant_id = @tenant_id AND agent_id = @agent_id
+  AND status IN ('in_quotation', 'in_process', 'active', 'in_arrears', 'expired')
+ORDER BY id
+LIMIT @page_size;

@@ -9,6 +9,7 @@ export type NavLink =
   | { to: "/clientes" }
   | { to: "/polizas" }
   | { to: "/configuracion/catalogo" }
+  | { to: "/configuracion/traspaso-cartera" }
   | { to: "/configuracion/funcionalidades" }
   | { to: "/modulos/$modulo"; params: { modulo: string } };
 
@@ -90,6 +91,11 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         label: "Catálogo",
         link: { to: "/configuracion/catalogo" },
         permissions: [permissions.catalogRead],
+      },
+      {
+        label: "Traspaso de cartera",
+        link: { to: "/configuracion/traspaso-cartera" },
+        permissions: [permissions.policyAssign],
       },
     ],
   },

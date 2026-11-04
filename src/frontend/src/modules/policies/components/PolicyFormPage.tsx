@@ -10,7 +10,6 @@ import { ErrorMessage, Field, Input, QueryState, Select } from "@/shared/ui/fiel
 import {
   createPolicy,
   getPolicy,
-  listAgents,
   updatePolicyTerms,
   type Policy,
   type PolicyTerms,
@@ -18,6 +17,7 @@ import {
 import type { PolicyDeps } from "../deps";
 import { PAYMENT_LABELS, ROLE_LABELS } from "../labels";
 import { fromRiskData, riskFields, toRiskData } from "../risk";
+import { agentsQuery } from "../queries";
 import { policyFormSchema, type PolicyFormValues } from "../schemas";
 import { RiskFields } from "./RiskFields";
 
@@ -93,14 +93,7 @@ function PolicyForm({ deps, policy }: { deps: PolicyDeps; policy?: Policy }) {
   const lines = useQuery(deps.lines);
   const products = useQuery(deps.products);
   const schemas = useQuery(deps.riskSchemas);
-  const agents = useQuery({
-    queryKey: ["policies", "agents"],
-    queryFn: async () => {
-      const res = await listAgents();
-      if (res.status !== 200) throw new Error("asesores no disponibles");
-      return res.data.items;
-    },
-  });
+  const agents = useQuery(agentsQuery());
   const form = useForm({
     resolver: zodResolver(policyFormSchema),
     defaultValues: policy ? fromPolicy(policy) : EMPTY,

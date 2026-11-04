@@ -38,7 +38,8 @@
   - Documento: `Person` usa CC, CE o PPT; `Organization` usa NIT con dígito de verificación válido.
   - Una sola `Party` por `(tenant, tipo, número)`: una segunda da `parties.party.document_taken`.
 - El número de documento es **Restringido**: cifrado, con blind index, ligado al ID de la `Party`; la UI y las respuestas solo muestran los últimos 4 caracteres, y ninguno en documentos de menos de 8. Revelarlo exige `parties.document.reveal` y se audita. Nunca va en URLs: la búsqueda por documento es `POST`.
-- Alcance del asesor (DECISIONS N10): un cliente fuera de su alcance responde 404, también en la búsqueda por documento, que queda auditada. Un documento repetido responde 409 sin datos y se audita.
+- Asesor responsable (DECISIONS N11): lo fija el registro de un asesor y se traspasa con motivo; lo que registra Operaciones no tiene responsable hasta que se le asigne. `created_by` es solo auditoría.
+- Alcance del asesor (DECISIONS N10, N11): un cliente fuera de su alcance responde 404, también en la búsqueda por documento, que queda auditada. Un documento repetido responde 409 sin datos y se audita.
 - Habeas data: cada autorización o revocación es un `Consent` nuevo con fecha, finalidad y versión del texto. Consulta y rectificación están aquí; exporte y supresión llegan con `Compliance` (Fase 5). El consentimiento no bloquea la expedición.
 
 ### Catalog
@@ -59,6 +60,7 @@
   - Expedir exige el `PolicyNumber` que asignó la aseguradora.
   - Un endoso solo aplica a póliza `Vigente` o `EnMora`; su fecha efectiva está dentro de la vigencia. Estados: `Solicitado → Emitido | Rechazado` (DECISIONS N9). Al emitirse aplica variación de prima e impuestos (resultado ≥ 0), sumas aseguradas, partes y datos de bienes; debe quedar ≥1 `Insured`. Un endoso **no cambia el `PolicyHolder`** (eludiría el KYC de N4).
   - La cancelación registra lo que expidió la aseguradora: causa (solicitud del cliente, venta del bien, mora, revocación de la aseguradora, otra), fecha efectiva dentro de la vigencia y prima no devengada informada, entre 0 y la prima neta (DECISIONS T7). Un endoso `Solicitado` no impide cancelar, pero ya no se puede emitir.
+  - El asesor se cambia en cualquier estado no terminal (DECISIONS N11), sin cambiar el estado; queda en `policy_agent_history` con fecha y motivo. Una póliza terminada conserva el suyo.
   - La renovación crea una **nueva** `Policy` con `RenewedFromPolicyId`; nunca muta la anterior.
 - Máquina de estados:
 
@@ -107,6 +109,8 @@ Cualquier otra transición devuelve el error de dominio `ErrInvalidPolicyTransit
 |---|---|---|
 | `QuoteAccepted` | Quoting | Policies, Crm |
 | `PolicyPartiesChanged` | Policies | Parties (alcance del asesor) |
+| `PolicyAgentChanged` | Policies | Commissions |
+| `PortfolioTransferRequested` | Policies | Policies, Parties |
 | `PolicyIssued` | Policies | Billing, Commissions, Renewals, Notifications, Reporting |
 | `PolicyEndorsed` | Policies | Billing, Commissions |
 | `PolicyCancelled` | Policies | Billing (anula cuotas pendientes, registra devolución informada), Commissions (clawback), Renewals |
@@ -128,9 +132,9 @@ Todo consumidor verifica el flag del módulo para el tenant del evento y es **id
 | Rol | Permisos clave |
 |---|---|
 | `TenantAdmin` | Configuración, usuarios, flags del tenant |
-| `Manager` | Todo lectura; aprobación de overrides; comisiones; acuerdos de comisión |
+| `Manager` | Todo lectura; aprobación de overrides; comisiones; acuerdos de comisión; traspaso de cartera |
 | `SalesAgent` | Leads y cotizaciones propias; pólizas propias (lectura); registra clientes y actualiza los suyos, sin cambiar el documento (DECISIONS N10) |
-| `Operations` | Expedición, endosos, renovaciones, cancelaciones |
+| `Operations` | Expedición, endosos, renovaciones, cancelaciones; traspaso de cartera |
 | `ClaimsAnalyst` | Siniestros (incluye datos de salud) |
 | `Collections` | Cuotas, pagos, gestión de cobro |
 | `Accounting` | Comisiones, conciliación, facturación |

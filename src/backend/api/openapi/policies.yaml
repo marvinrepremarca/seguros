@@ -45,8 +45,8 @@ paths:
   /api/v1/policies/agents:
     get:
       operationId: listAgents
-      summary: Usuarios de la agencia que se pueden asignar como asesor.
-      x-permission: policies.policy.manage
+      summary: Usuarios de la agencia. Solo a los activos se les asigna cartera; requiere manage o assign.
+      x-permission: authenticated
       responses:
         "200":
           description: Asesores.
@@ -62,6 +62,47 @@ paths:
                     items: { $ref: "#/components/schemas/Agent" }
         "401": { $ref: "#/components/responses/Problem" }
         "403": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/policies/portfolio-transfers:
+    post:
+      operationId: transferPortfolio
+      summary: Pide pasar toda la cartera de un asesor a otro. Se procesa en segundo plano.
+      x-permission: policies.policy.assign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/TransferPortfolioRequest" }
+      responses:
+        "202": { description: Traspaso aceptado. }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/policies/policies/{policyId}/agent:
+    parameters:
+      - { name: policyId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: reassignPolicyAgent
+      summary: Cambia el asesor de la póliza por otro activo. Queda en el historial con motivo.
+      x-permission: policies.policy.assign
+      parameters:
+        - { $ref: "#/components/parameters/Version" }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReassignAgentRequest" }
+      responses:
+        "200": { $ref: "#/components/responses/Policy" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
   /api/v1/policies/policies/{policyId}:
     parameters:
       - { name: policyId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -349,6 +390,21 @@ components:
           type: array
           maxItems: 100
           items: { $ref: "#/components/schemas/InsuredItemInput" }
+    ReassignAgentRequest:
+      type: object
+      required: [agentId, reason]
+      additionalProperties: false
+      properties:
+        agentId: { type: string, format: uuid }
+        reason: { type: string, minLength: 3, maxLength: 200 }
+    TransferPortfolioRequest:
+      type: object
+      required: [fromAgentId, toAgentId, reason]
+      additionalProperties: false
+      properties:
+        fromAgentId: { type: string, format: uuid }
+        toAgentId: { type: string, format: uuid }
+        reason: { type: string, minLength: 3, maxLength: 200 }
     ReasonRequest:
       type: object
       required: [reason]

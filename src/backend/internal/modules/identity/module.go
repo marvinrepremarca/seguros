@@ -51,7 +51,7 @@ type Module struct {
 // New compone el módulo.
 func New(d Deps) (*Module, error) {
 	sessions := identityhttp.NewSessionManager(identityhttp.SessionOptions{
-		Store: d.SessionStore, IdleTimeout: d.Auth.SessionIdle, Lifetime: d.Auth.SessionLifetime,
+		Store: d.SessionStore, IdleTimeout: d.Auth.SessionIdle, Lifetime: d.Auth.SessionLifetime, Logger: d.Logger,
 	})
 	guard, err := identityhttp.NewGuard(d.Policy)
 	if err != nil {

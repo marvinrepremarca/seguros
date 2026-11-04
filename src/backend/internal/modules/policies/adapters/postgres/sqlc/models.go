@@ -80,6 +80,17 @@ type PoliciesPolicy struct {
 	Version               int32
 }
 
+type PoliciesPolicyAgentHistory struct {
+	ID              uuid.UUID
+	TenantID        uuid.UUID
+	PolicyID        uuid.UUID
+	PreviousAgentID uuid.NullUUID
+	AgentID         uuid.NullUUID
+	EffectiveAt     time.Time
+	Reason          string
+	ChangedBy       uuid.NullUUID
+}
+
 type PoliciesPolicyParty struct {
 	TenantID uuid.UUID
 	PolicyID uuid.UUID

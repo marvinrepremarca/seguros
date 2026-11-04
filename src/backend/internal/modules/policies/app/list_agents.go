@@ -8,10 +8,13 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/platform/authz"
 )
 
-// ListAgents lista los usuarios que se pueden asignar como asesor.
+// ListAgents lista los usuarios de la agencia; solo a los activos se les asigna cartera.
 func (s *Service) ListAgents(ctx context.Context) ([]identity.User, error) {
+	// Quien expide elige asesor y quien traspasa cartera también: son permisos alternativos.
 	if err := authz.Require(ctx, authz.PolicyManage); err != nil {
-		return nil, err
+		if err := authz.Require(ctx, authz.PolicyAssign); err != nil {
+			return nil, err
+		}
 	}
 	users, err := s.Users.Agents(ctx)
 	if err != nil {

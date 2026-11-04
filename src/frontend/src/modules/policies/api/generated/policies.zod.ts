@@ -152,7 +152,7 @@ export const CreatePolicyResponse = zod.object({
 
 
 /**
- * @summary Usuarios de la agencia que se pueden asignar como asesor.
+ * @summary Usuarios de la agencia. Solo a los activos se les asigna cartera; requiere manage o assign.
  */
 export const ListAgentsResponse = zod.object({
   "items": zod.array(zod.object({
@@ -160,6 +160,108 @@ export const ListAgentsResponse = zod.object({
   "displayName": zod.string(),
   "active": zod.boolean().describe('Habilitado y con rol de asesor: solo a estos se les asigna.')
 }))
+})
+
+
+/**
+ * @summary Pide pasar toda la cartera de un asesor a otro. Se procesa en segundo plano.
+ */
+export const transferPortfolioBodyReasonMin = 3;
+export const transferPortfolioBodyReasonMax = 200;
+
+
+
+export const TransferPortfolioBody = zod.object({
+  "fromAgentId": zod.uuid(),
+  "toAgentId": zod.uuid(),
+  "reason": zod.string().min(transferPortfolioBodyReasonMin).max(transferPortfolioBodyReasonMax)
+})
+
+export const TransferPortfolioResponse = zod.void()
+
+
+/**
+ * @summary Cambia el asesor de la póliza por otro activo. Queda en el historial con motivo.
+ */
+export const ReassignPolicyAgentParams = zod.object({
+  "policyId": zod.uuid()
+})
+
+
+
+
+export const ReassignPolicyAgentQueryParams = zod.object({
+  "version": zod.int().min(1).describe('Versión de la póliza que el cliente leyó (concurrencia optimista).')
+})
+
+export const reassignPolicyAgentBodyReasonMin = 3;
+export const reassignPolicyAgentBodyReasonMax = 200;
+
+
+
+export const ReassignPolicyAgentBody = zod.object({
+  "agentId": zod.uuid(),
+  "reason": zod.string().min(reassignPolicyAgentBodyReasonMin).max(reassignPolicyAgentBodyReasonMax)
+})
+
+export const ReassignPolicyAgentResponse = zod.object({
+  "id": zod.uuid(),
+  "status": zod.enum(['in_quotation', 'in_process', 'active', 'in_arrears', 'cancelled', 'expired', 'renewed', 'not_renewed', 'rejected']),
+  "policyNumber": zod.string().optional(),
+  "insurerId": zod.uuid(),
+  "lineOfBusinessId": zod.uuid(),
+  "productId": zod.uuid().optional(),
+  "agentId": zod.uuid().optional(),
+  "currency": zod.enum(['COP', 'USD', 'EUR']),
+  "netPremium": zod.string(),
+  "taxes": zod.string(),
+  "totalPremium": zod.string(),
+  "effectiveFrom": zod.iso.date(),
+  "effectiveTo": zod.iso.date(),
+  "paymentForm": zod.enum(['single_payment', 'monthly_installments', 'quarterly_installments', 'automatic_debit', 'premium_financing']),
+  "renewedFromPolicyId": zod.uuid().optional(),
+  "issuedAt": zod.iso.datetime({"offset":true}).optional(),
+  "rejectionReason": zod.string().optional(),
+  "cancellation": zod.object({
+  "cause": zod.enum(['client_request', 'item_sold', 'arrears', 'insurer_revocation', 'other']),
+  "effectiveDate": zod.iso.date(),
+  "unearnedPremium": zod.string(),
+  "insurerReference": zod.string().optional()
+}).optional(),
+  "parties": zod.array(zod.object({
+  "partyId": zod.uuid(),
+  "role": zod.enum(['holder', 'insured', 'beneficiary']),
+  "name": zod.string()
+})),
+  "coverages": zod.array(zod.object({
+  "id": zod.uuid(),
+  "name": zod.string(),
+  "sumInsured": zod.string(),
+  "deductible": zod.string().optional()
+})),
+  "items": zod.array(zod.object({
+  "id": zod.uuid(),
+  "description": zod.string(),
+  "riskSchemaKey": zod.string(),
+  "riskSchemaVersion": zod.int(),
+  "riskData": zod.record(zod.string(), zod.unknown())
+})),
+  "endorsements": zod.array(zod.object({
+  "id": zod.uuid(),
+  "type": zod.enum(['data_change', 'item_change', 'party_inclusion', 'party_exclusion', 'sum_insured_increase', 'sum_insured_decrease', 'other']),
+  "status": zod.enum(['requested', 'issued', 'rejected']),
+  "description": zod.string(),
+  "effectiveDate": zod.iso.date(),
+  "requestedAt": zod.iso.datetime({"offset":true}),
+  "resolvedAt": zod.iso.datetime({"offset":true}).optional(),
+  "number": zod.string().optional(),
+  "netPremiumDelta": zod.string().optional(),
+  "taxesDelta": zod.string().optional(),
+  "rejectionReason": zod.string().optional()
+})),
+  "version": zod.int(),
+  "createdAt": zod.iso.datetime({"offset":true}),
+  "updatedAt": zod.iso.datetime({"offset":true})
 })
 
 

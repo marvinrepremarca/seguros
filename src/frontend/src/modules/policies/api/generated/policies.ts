@@ -148,6 +148,25 @@ export interface PolicyTerms {
   items: InsuredItemInput[];
 }
 
+export interface ReassignAgentRequest {
+  agentId: string;
+  /**
+     * @minLength 3
+     * @maxLength 200
+     */
+  reason: string;
+}
+
+export interface TransferPortfolioRequest {
+  fromAgentId: string;
+  toAgentId: string;
+  /**
+     * @minLength 3
+     * @maxLength 200
+     */
+  reason: string;
+}
+
 export interface ReasonRequest {
   /**
      * @minLength 3
@@ -358,6 +377,14 @@ limit?: number;
 
 export type ListAgents200 = {
   items: Agent[];
+};
+
+export type ReassignPolicyAgentParams = {
+/**
+ * Versión de la póliza que el cliente leyó (concurrencia optimista).
+ * @minimum 1
+ */
+version: VersionParameter;
 };
 
 export type UpdatePolicyTermsParams = {
@@ -724,10 +751,15 @@ export type listAgentsResponse403 = {
   status: 403
 }
 
+export type listAgentsResponse503 = {
+  data: ProblemResponse
+  status: 503
+}
+
 export type listAgentsResponseSuccess = (listAgentsResponse200) & {
   headers: Headers;
 };
-export type listAgentsResponseError = (listAgentsResponse401 | listAgentsResponse403) & {
+export type listAgentsResponseError = (listAgentsResponse401 | listAgentsResponse403 | listAgentsResponse503) & {
   headers: Headers;
 };
 
@@ -742,7 +774,7 @@ export const getListAgentsUrl = () => {
 }
 
 /**
- * @summary Usuarios de la agencia que se pueden asignar como asesor.
+ * @summary Usuarios de la agencia. Solo a los activos se les asigna cartera; requiere manage o assign.
  */
 export const listAgents = async ( options?: Parameters<typeof apiClient>[1]): Promise<listAgentsResponse> => {
 
@@ -813,7 +845,7 @@ export function useListAgents<TData = Awaited<ReturnType<typeof listAgents>>, TE
  , queryClient?: QueryClient
   ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
 /**
- * @summary Usuarios de la agencia que se pueden asignar como asesor.
+ * @summary Usuarios de la agencia. Solo a los activos se les asigna cartera; requiere manage o assign.
  */
 
 export function useListAgents<TData = Awaited<ReturnType<typeof listAgents>>, TError = ProblemResponse>(
@@ -833,6 +865,280 @@ export function useListAgents<TData = Awaited<ReturnType<typeof listAgents>>, TE
 
 
 
+
+export type transferPortfolioResponse202 = {
+  data: void
+  status: 202
+}
+
+export type transferPortfolioResponse400 = {
+  data: ProblemResponse
+  status: 400
+}
+
+export type transferPortfolioResponse401 = {
+  data: ProblemResponse
+  status: 401
+}
+
+export type transferPortfolioResponse403 = {
+  data: ProblemResponse
+  status: 403
+}
+
+export type transferPortfolioResponse422 = {
+  data: ProblemResponse
+  status: 422
+}
+
+export type transferPortfolioResponse503 = {
+  data: ProblemResponse
+  status: 503
+}
+
+export type transferPortfolioResponseSuccess = (transferPortfolioResponse202) & {
+  headers: Headers;
+};
+export type transferPortfolioResponseError = (transferPortfolioResponse400 | transferPortfolioResponse401 | transferPortfolioResponse403 | transferPortfolioResponse422 | transferPortfolioResponse503) & {
+  headers: Headers;
+};
+
+export type transferPortfolioResponse = (transferPortfolioResponseSuccess | transferPortfolioResponseError)
+
+export const getTransferPortfolioUrl = () => {
+
+
+
+
+  return `/api/v1/policies/portfolio-transfers`
+}
+
+/**
+ * @summary Pide pasar toda la cartera de un asesor a otro. Se procesa en segundo plano.
+ */
+export const transferPortfolio = async (transferPortfolioRequest: TransferPortfolioRequest, options?: Parameters<typeof apiClient>[1]): Promise<transferPortfolioResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiClient<transferPortfolioResponse>(getTransferPortfolioUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(transferPortfolioRequest)
+  }
+);}
+
+
+
+
+
+export const getTransferPortfolioMutationKey = () => ['transferPortfolio'] as const;
+
+export const getTransferPortfolioMutationOptions = <TError = ProblemResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof transferPortfolio>>, TError,TransferPortfolioMutationVariables, TContext>, request?: SecondParameter<typeof apiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof transferPortfolio>>, TError,TransferPortfolioMutationVariables, TContext> => {
+
+const mutationKey = getTransferPortfolioMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof transferPortfolio>>, TransferPortfolioMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  transferPortfolio(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type TransferPortfolioMutationResult = NonNullable<Awaited<ReturnType<typeof transferPortfolio>>>
+    export type TransferPortfolioMutationBody = TransferPortfolioRequest
+    export type TransferPortfolioMutationError = ProblemResponse
+    export type TransferPortfolioMutationVariables = {data: TransferPortfolioRequest}
+
+    /**
+ * @summary Pide pasar toda la cartera de un asesor a otro. Se procesa en segundo plano.
+ */
+export const useTransferPortfolio = <TError = ProblemResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof transferPortfolio>>, TError,TransferPortfolioMutationVariables, TContext>, request?: SecondParameter<typeof apiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof transferPortfolio>>,
+        TError,
+        TransferPortfolioMutationVariables,
+        TContext
+      > => {
+      return useMutation(getTransferPortfolioMutationOptions(options), queryClient);
+    }
+
+export type reassignPolicyAgentResponse200 = {
+  data: PolicyResponse
+  status: 200
+}
+
+export type reassignPolicyAgentResponse400 = {
+  data: ProblemResponse
+  status: 400
+}
+
+export type reassignPolicyAgentResponse401 = {
+  data: ProblemResponse
+  status: 401
+}
+
+export type reassignPolicyAgentResponse403 = {
+  data: ProblemResponse
+  status: 403
+}
+
+export type reassignPolicyAgentResponse404 = {
+  data: ProblemResponse
+  status: 404
+}
+
+export type reassignPolicyAgentResponse409 = {
+  data: ProblemResponse
+  status: 409
+}
+
+export type reassignPolicyAgentResponse422 = {
+  data: ProblemResponse
+  status: 422
+}
+
+export type reassignPolicyAgentResponse503 = {
+  data: ProblemResponse
+  status: 503
+}
+
+export type reassignPolicyAgentResponseSuccess = (reassignPolicyAgentResponse200) & {
+  headers: Headers;
+};
+export type reassignPolicyAgentResponseError = (reassignPolicyAgentResponse400 | reassignPolicyAgentResponse401 | reassignPolicyAgentResponse403 | reassignPolicyAgentResponse404 | reassignPolicyAgentResponse409 | reassignPolicyAgentResponse422 | reassignPolicyAgentResponse503) & {
+  headers: Headers;
+};
+
+export type reassignPolicyAgentResponse = (reassignPolicyAgentResponseSuccess | reassignPolicyAgentResponseError)
+
+export const getReassignPolicyAgentUrl = (policyId: string,
+    params: ReassignPolicyAgentParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/policies/policies/${policyId}/agent?${stringifiedParams}` : `/api/v1/policies/policies/${policyId}/agent`
+}
+
+/**
+ * @summary Cambia el asesor de la póliza por otro activo. Queda en el historial con motivo.
+ */
+export const reassignPolicyAgent = async (policyId: string,
+    reassignAgentRequest: ReassignAgentRequest,
+    params: ReassignPolicyAgentParams, options?: Parameters<typeof apiClient>[1]): Promise<reassignPolicyAgentResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiClient<reassignPolicyAgentResponse>(getReassignPolicyAgentUrl(policyId,params),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(reassignAgentRequest)
+  }
+);}
+
+
+
+
+
+export const getReassignPolicyAgentMutationKey = () => ['reassignPolicyAgent'] as const;
+
+export const getReassignPolicyAgentMutationOptions = <TError = ProblemResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reassignPolicyAgent>>, TError,ReassignPolicyAgentMutationVariables, TContext>, request?: SecondParameter<typeof apiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof reassignPolicyAgent>>, TError,ReassignPolicyAgentMutationVariables, TContext> => {
+
+const mutationKey = getReassignPolicyAgentMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reassignPolicyAgent>>, ReassignPolicyAgentMutationVariables> = (props) => {
+          const {policyId,data,params} = props ?? {};
+
+          return  reassignPolicyAgent(policyId,data,params,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReassignPolicyAgentMutationResult = NonNullable<Awaited<ReturnType<typeof reassignPolicyAgent>>>
+    export type ReassignPolicyAgentMutationBody = ReassignAgentRequest
+    export type ReassignPolicyAgentMutationError = ProblemResponse
+    export type ReassignPolicyAgentMutationVariables = {policyId: string;data: ReassignAgentRequest;params: ReassignPolicyAgentParams}
+
+    /**
+ * @summary Cambia el asesor de la póliza por otro activo. Queda en el historial con motivo.
+ */
+export const useReassignPolicyAgent = <TError = ProblemResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reassignPolicyAgent>>, TError,ReassignPolicyAgentMutationVariables, TContext>, request?: SecondParameter<typeof apiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof reassignPolicyAgent>>,
+        TError,
+        ReassignPolicyAgentMutationVariables,
+        TContext
+      > => {
+      return useMutation(getReassignPolicyAgentMutationOptions(options), queryClient);
+    }
 
 export type getPolicyResponse200 = {
   data: PolicyResponse

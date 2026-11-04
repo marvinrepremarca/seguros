@@ -43,6 +43,7 @@ type PartiesParty struct {
 	UpdatedAt          time.Time
 	UpdatedBy          uuid.NullUUID
 	Version            int32
+	ResponsibleAgentID uuid.NullUUID
 }
 
 type PartiesPolicyScope struct {

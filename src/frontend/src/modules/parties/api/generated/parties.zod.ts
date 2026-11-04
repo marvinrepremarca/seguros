@@ -41,6 +41,7 @@ export const ListPartiesResponse = zod.object({
   "phone": zod.string().optional(),
   "address": zod.string().optional(),
   "city": zod.string().optional(),
+  "responsibleAgentId": zod.uuid().optional(),
   "version": zod.int(),
   "createdAt": zod.iso.datetime({"offset":true}),
   "updatedAt": zod.iso.datetime({"offset":true})
@@ -89,6 +90,7 @@ export const CreatePartyResponse = zod.object({
   "phone": zod.string().optional(),
   "address": zod.string().optional(),
   "city": zod.string().optional(),
+  "responsibleAgentId": zod.uuid().optional(),
   "version": zod.int(),
   "createdAt": zod.iso.datetime({"offset":true}),
   "updatedAt": zod.iso.datetime({"offset":true})
@@ -118,6 +120,7 @@ export const SearchPartyByDocumentResponse = zod.object({
   "phone": zod.string().optional(),
   "address": zod.string().optional(),
   "city": zod.string().optional(),
+  "responsibleAgentId": zod.uuid().optional(),
   "version": zod.int(),
   "createdAt": zod.iso.datetime({"offset":true}),
   "updatedAt": zod.iso.datetime({"offset":true})
@@ -138,6 +141,7 @@ export const GetPartyResponse = zod.object({
   "phone": zod.string().optional(),
   "address": zod.string().optional(),
   "city": zod.string().optional(),
+  "responsibleAgentId": zod.uuid().optional(),
   "version": zod.int(),
   "createdAt": zod.iso.datetime({"offset":true}),
   "updatedAt": zod.iso.datetime({"offset":true})
@@ -191,6 +195,43 @@ export const UpdatePartyResponse = zod.object({
   "phone": zod.string().optional(),
   "address": zod.string().optional(),
   "city": zod.string().optional(),
+  "responsibleAgentId": zod.uuid().optional(),
+  "version": zod.int(),
+  "createdAt": zod.iso.datetime({"offset":true}),
+  "updatedAt": zod.iso.datetime({"offset":true})
+})
+
+
+/**
+ * @summary Traspasa el cliente a otro asesor activo. Queda auditado con motivo.
+ */
+export const AssignPartyResponsibleParams = zod.object({
+  "partyId": zod.uuid()
+})
+
+export const assignPartyResponsibleBodyReasonMin = 3;
+export const assignPartyResponsibleBodyReasonMax = 200;
+
+
+
+
+export const AssignPartyResponsibleBody = zod.object({
+  "agentId": zod.uuid(),
+  "reason": zod.string().min(assignPartyResponsibleBodyReasonMin).max(assignPartyResponsibleBodyReasonMax),
+  "version": zod.int().min(1)
+})
+
+export const AssignPartyResponsibleResponse = zod.object({
+  "id": zod.uuid(),
+  "kind": zod.enum(['person', 'organization']),
+  "name": zod.string(),
+  "documentType": zod.enum(['CC', 'CE', 'PPT', 'NIT']),
+  "documentLast4": zod.string(),
+  "email": zod.string().optional(),
+  "phone": zod.string().optional(),
+  "address": zod.string().optional(),
+  "city": zod.string().optional(),
+  "responsibleAgentId": zod.uuid().optional(),
   "version": zod.int(),
   "createdAt": zod.iso.datetime({"offset":true}),
   "updatedAt": zod.iso.datetime({"offset":true})

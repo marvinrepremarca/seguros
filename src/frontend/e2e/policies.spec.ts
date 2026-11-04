@@ -165,12 +165,11 @@ test("expedir, endosar y cancelar una póliza desde la UI", async ({ browser }) 
   await context.close();
 });
 
-test("un asesor no ve acciones de operación ni pólizas ajenas", async ({ page }) => {
+test("un asesor no ve acciones de operación", async ({ page }) => {
   await login(page, "sales.dev");
   await goTo(page, "Pólizas");
   await expect(page.getByRole("heading", { level: 1, name: "Pólizas" })).toBeVisible();
   await expect(page.getByRole("link", { name: "Nueva póliza" })).toHaveCount(0);
-  await expect(page.getByText("No hay pólizas para mostrar.")).toBeVisible();
 });
 
 test("un asesor solo ve los clientes que registró", async ({ browser }) => {
@@ -209,4 +208,116 @@ test("un asesor solo ve los clientes que registró", async ({ browser }) => {
   await expect(page.getByRole("alert")).toContainText("Ya existe un cliente con ese documento");
   await expect(page.getByText(foreign)).toHaveCount(0);
   await context.close();
+});
+
+test("el acceso del asesor sigue a la póliza y el gerente puede reasignar", async ({ browser }) => {
+  test.setTimeout(120_000);
+  const suffix = String(Date.now()).slice(-8);
+  const insurerName = `Aseg ${suffix}x`;
+  const lineName = `Ramo ${suffix}x`;
+
+  // El asesor debe haber ingresado una vez para aparecer como asignable.
+  const salesContext = await browser.newContext();
+  const sales = await salesContext.newPage();
+  await login(sales, "sales.dev");
+
+  const adminContext = await browser.newContext();
+  const admin = await adminContext.newPage();
+  await login(admin, "admin.dev");
+  await goTo(admin, "Catálogo");
+  await admin.getByLabel("Nueva aseguradora").fill(insurerName);
+  await admin.getByRole("button", { name: "Agregar aseguradora" }).click();
+  await expect(admin.getByText(insurerName).first()).toBeVisible();
+  await admin.getByLabel("Nuevo ramo").fill(lineName);
+  await admin.getByLabel("Datos de riesgo").selectOption({ label: "General" });
+  await admin.getByRole("button", { name: "Agregar ramo" }).click();
+  await expect(admin.getByText(lineName).first()).toBeVisible();
+  await adminContext.close();
+
+  const opsContext = await browser.newContext();
+  const ops = await opsContext.newPage();
+  await login(ops, "ops.dev");
+  const holderName = `Tomador ${suffix}`;
+  const cc = `4${suffix}1`;
+  await goTo(ops, "Clientes");
+  await ops.getByRole("link", { name: "Nuevo cliente" }).click();
+  await ops.getByLabel("Nombre o razón social").fill(holderName);
+  await ops.getByLabel("Número de documento").fill(cc);
+  await ops.getByRole("button", { name: "Guardar cliente" }).click();
+  await expect(ops.getByRole("heading", { level: 1, name: holderName })).toBeVisible();
+  const clientUrl = new URL(ops.url()).pathname;
+
+  // Sin póliza, el asesor no alcanza a ese cliente.
+  await sales.goto(clientUrl);
+  await expect(sales.getByRole("alert")).toBeVisible();
+
+  await goTo(ops, "Pólizas");
+  await ops.getByRole("link", { name: "Nueva póliza" }).click();
+  await ops.getByLabel("Aseguradora", { exact: true }).selectOption({ label: insurerName });
+  await ops.getByLabel("Ramo", { exact: true }).selectOption({ label: lineName });
+  const option = `${holderName} (CC •••• ${cc.slice(-4)})`;
+  await ops.getByLabel("Buscar tomador").fill(holderName);
+  await expect(
+    ops.getByLabel("Tomador", { exact: true }).locator("option", { hasText: holderName }),
+  ).toBeAttached();
+  await ops.getByLabel("Tomador", { exact: true }).selectOption({ label: option });
+  await ops.getByLabel("Buscar cliente 1").fill(holderName);
+  await expect(
+    ops.getByLabel("Cliente 1", { exact: true }).locator("option", { hasText: holderName }),
+  ).toBeAttached();
+  await ops.getByLabel("Cliente 1", { exact: true }).selectOption({ label: option });
+  await ops.getByLabel("Prima neta").fill("100000");
+  await ops.getByLabel("Vigente desde").fill("2026-01-01");
+  await ops.getByLabel("Vigente hasta").fill("2030-12-31");
+  await ops.getByLabel("Asesor (opcional)").selectOption({ label: "Sales Dev" });
+  await ops.getByLabel("Cobertura 1").fill("Básica");
+  await ops.getByLabel("Suma asegurada 1").fill("1000000");
+  await ops.getByLabel("Descripción del bien 1").fill("Riesgo general");
+  await ops.getByLabel("Descripción del riesgo *").fill("Riesgo de prueba");
+  await ops.getByRole("button", { name: "Guardar póliza" }).click();
+  await expect(ops.getByText("En cotización")).toBeVisible();
+  const policyUrl = new URL(ops.url()).pathname;
+
+  // Con el worker procesando el evento, el asesor ya alcanza a las partes de su póliza.
+  await expect(async () => {
+    await sales.goto(clientUrl);
+    await expect(sales.getByRole("heading", { level: 1, name: holderName })).toBeVisible({
+      timeout: 2000,
+    });
+  }).toPass({ timeout: 30_000 });
+
+  // Un rechazo termina la póliza: pierde el cliente y conserva la póliza como historial.
+  await ops.getByRole("button", { name: "El cliente aceptó" }).click();
+  await expect(ops.getByText("En trámite")).toBeVisible();
+  await ops.getByRole("button", { name: "Registrar rechazo" }).click();
+  await ops.getByLabel("Motivo del rechazo").fill("Riesgo no asegurable");
+  await ops.getByRole("button", { name: "Confirmar rechazo" }).click();
+  await expect(ops.getByText("Rechazada", { exact: true })).toBeVisible();
+  await expect(async () => {
+    await sales.goto(clientUrl);
+    await expect(sales.getByRole("alert")).toBeVisible({ timeout: 2000 });
+  }).toPass({ timeout: 30_000 });
+  await sales.goto(policyUrl);
+  await expect(sales.getByText("Rechazada", { exact: true })).toBeVisible();
+  await opsContext.close();
+  await salesContext.close();
+
+  // El gerente tiene la página de traspaso y ve al asesor como opción.
+  const managerContext = await browser.newContext();
+  const manager = await managerContext.newPage();
+  await login(manager, "manager.dev");
+  await goTo(manager, "Traspaso de cartera");
+  await expect(
+    manager.getByRole("heading", { level: 1, name: "Traspaso de cartera" }),
+  ).toBeVisible();
+  await expect(
+    manager.getByLabel("Asesor actual").locator("option", { hasText: "Sales Dev" }),
+  ).toBeAttached();
+  const axe = await new AxeBuilder({ page: manager })
+    .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])
+    .analyze();
+  expect(axe.violations).toEqual([]);
+  await manager.goto(clientUrl);
+  await expect(manager.getByRole("button", { name: "Cambiar asesor responsable" })).toBeVisible();
+  await managerContext.close();
 });

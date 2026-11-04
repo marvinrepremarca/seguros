@@ -27,6 +27,8 @@ var (
 	ErrNotFound         = kernel.NewError(kernel.KindNotFound, "parties.party.not_found", "tercero inexistente")
 	ErrConcurrentUpdate = kernel.NewError(kernel.KindConflict, "parties.party.concurrent_update", "el tercero cambió; recargue y reintente")
 	ErrInvalidConsent   = kernel.NewError(kernel.KindValidation, "parties.consent.invalid", "autorización inválida")
+	ErrInvalidReason    = kernel.NewError(kernel.KindValidation, "parties.party.invalid_reason", "motivo de 3 a 200 caracteres")
+	ErrInvalidAgent     = kernel.NewError(kernel.KindValidation, "parties.party.invalid_agent", "el asesor no pertenece a la agencia o no está activo")
 	ErrFutureConsent    = kernel.NewError(kernel.KindValidation, "parties.consent.future_date", "la fecha de la autorización no puede ser futura")
 )
 
@@ -160,6 +162,7 @@ type Party struct {
 	documentType  DocumentType
 	documentLast4 string
 	contact       Contact
+	responsible   uuid.NullUUID
 	createdAt     time.Time
 	updatedAt     time.Time
 	version       int32
@@ -197,6 +200,21 @@ func (p *Party) Rectify(name string, contact Contact, doc *DocumentID, now time.
 	return nil
 }
 
+// AssignResponsible fija el asesor responsable (DECISIONS N11): de él sale el acceso del asesor.
+func (p *Party) AssignResponsible(agent uuid.UUID, now time.Time) {
+	p.responsible = uuid.NullUUID{UUID: agent, Valid: true}
+	p.updatedAt = now.UTC()
+}
+
+// ValidTransferReason valida el motivo de un traspaso. El límite en bytes es el de la bitácora.
+func ValidTransferReason(reason string) (string, error) {
+	reason = strings.TrimSpace(reason)
+	if utf8.RuneCountInString(reason) < 3 || len(reason) > 200 {
+		return "", ErrInvalidReason
+	}
+	return reason, nil
+}
+
 func (p *Party) setDetails(name string, contact Contact) error {
 	name = strings.TrimSpace(name)
 	if n := utf8.RuneCountInString(name); n < 2 || n > 200 {
@@ -226,6 +244,7 @@ type PartySnapshot struct {
 	DocumentType  DocumentType
 	DocumentLast4 string
 	Contact       Contact
+	Responsible   uuid.NullUUID
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 	Version       int32
@@ -235,7 +254,7 @@ type PartySnapshot struct {
 func RehydrateParty(s PartySnapshot) *Party {
 	return &Party{
 		id: s.ID, kind: s.Kind, name: s.Name, documentType: s.DocumentType, documentLast4: s.DocumentLast4,
-		contact: s.Contact, createdAt: s.CreatedAt, updatedAt: s.UpdatedAt, version: s.Version,
+		contact: s.Contact, responsible: s.Responsible, createdAt: s.CreatedAt, updatedAt: s.UpdatedAt, version: s.Version,
 	}
 }
 
@@ -243,7 +262,7 @@ func RehydrateParty(s PartySnapshot) *Party {
 func (p *Party) Snapshot() PartySnapshot {
 	return PartySnapshot{
 		ID: p.id, Kind: p.kind, Name: p.name, DocumentType: p.documentType, DocumentLast4: p.documentLast4,
-		Contact: p.contact, CreatedAt: p.createdAt, UpdatedAt: p.updatedAt, Version: p.version,
+		Contact: p.contact, Responsible: p.responsible, CreatedAt: p.createdAt, UpdatedAt: p.updatedAt, Version: p.version,
 	}
 }
 

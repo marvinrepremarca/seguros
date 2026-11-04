@@ -85,6 +85,13 @@ func (e PartyKind) Valid() bool {
 	}
 }
 
+// AssignResponsibleRequest defines model for AssignResponsibleRequest.
+type AssignResponsibleRequest struct {
+	AgentId uuid.UUID `json:"agentId"`
+	Reason  string    `json:"reason"`
+	Version int32     `json:"version"`
+}
+
 // Consent defines model for Consent.
 type Consent struct {
 	ConsentDate kernel.Date   `json:"consentDate"`
@@ -121,18 +128,19 @@ type DocumentType string
 
 // Party defines model for Party.
 type Party struct {
-	Address       *string      `json:"address,omitempty"`
-	City          *string      `json:"city,omitempty"`
-	CreatedAt     time.Time    `json:"createdAt"`
-	DocumentLast4 string       `json:"documentLast4"`
-	DocumentType  DocumentType `json:"documentType"`
-	Email         *string      `json:"email,omitempty"`
-	Id            uuid.UUID    `json:"id"`
-	Kind          PartyKind    `json:"kind"`
-	Name          string       `json:"name"`
-	Phone         *string      `json:"phone,omitempty"`
-	UpdatedAt     time.Time    `json:"updatedAt"`
-	Version       int32        `json:"version"`
+	Address            *string      `json:"address,omitempty"`
+	City               *string      `json:"city,omitempty"`
+	CreatedAt          time.Time    `json:"createdAt"`
+	DocumentLast4      string       `json:"documentLast4"`
+	DocumentType       DocumentType `json:"documentType"`
+	Email              *string      `json:"email,omitempty"`
+	Id                 uuid.UUID    `json:"id"`
+	Kind               PartyKind    `json:"kind"`
+	Name               string       `json:"name"`
+	Phone              *string      `json:"phone,omitempty"`
+	ResponsibleAgentId *uuid.UUID   `json:"responsibleAgentId,omitempty"`
+	UpdatedAt          time.Time    `json:"updatedAt"`
+	Version            int32        `json:"version"`
 }
 
 // PartyKind defines model for PartyKind.
@@ -199,6 +207,9 @@ type UpdatePartyJSONRequestBody = UpdatePartyRequest
 // RegisterPartyConsentJSONRequestBody defines body for RegisterPartyConsent for application/json ContentType.
 type RegisterPartyConsentJSONRequestBody = RegisterConsentRequest
 
+// AssignPartyResponsibleJSONRequestBody defines body for AssignPartyResponsible for application/json ContentType.
+type AssignPartyResponsibleJSONRequestBody = AssignResponsibleRequest
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// ListParties Lista terceros (búsqueda opcional por nombre, paginación keyset).
@@ -225,6 +236,9 @@ type ServerInterface interface {
 	// RevealPartyDocument Devuelve el número de documento completo. Cada lectura queda auditada.
 	// (POST /api/v1/parties/parties/{partyId}/document/reveal)
 	RevealPartyDocument(w http.ResponseWriter, r *http.Request, partyId uuid.UUID)
+	// AssignPartyResponsible Traspasa el cliente a otro asesor activo. Queda auditado con motivo.
+	// (POST /api/v1/parties/parties/{partyId}/responsible-agent)
+	AssignPartyResponsible(w http.ResponseWriter, r *http.Request, partyId uuid.UUID)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -275,6 +289,12 @@ func (_ Unimplemented) RegisterPartyConsent(w http.ResponseWriter, r *http.Reque
 // RevealPartyDocument Devuelve el número de documento completo. Cada lectura queda auditada.
 // (POST /api/v1/parties/parties/{partyId}/document/reveal)
 func (_ Unimplemented) RevealPartyDocument(w http.ResponseWriter, r *http.Request, partyId uuid.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// AssignPartyResponsible Traspasa el cliente a otro asesor activo. Queda auditado con motivo.
+// (POST /api/v1/parties/parties/{partyId}/responsible-agent)
+func (_ Unimplemented) AssignPartyResponsible(w http.ResponseWriter, r *http.Request, partyId uuid.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -504,6 +524,32 @@ func (siw *ServerInterfaceWrapper) RevealPartyDocument(w http.ResponseWriter, r 
 	handler.ServeHTTP(w, r)
 }
 
+// AssignPartyResponsible operation middleware
+func (siw *ServerInterfaceWrapper) AssignPartyResponsible(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "partyId" -------------
+	var partyId uuid.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "partyId", chi.URLParam(r, "partyId"), &partyId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "partyId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.AssignPartyResponsible(w, r, partyId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 type UnescapedCookieParamError struct {
 	ParamName string
 	Err       error
@@ -631,6 +677,9 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/api/v1/parties/parties/{partyId}", wrapper.UpdateParty)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/parties/parties/{partyId}/responsible-agent", wrapper.AssignPartyResponsible)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/parties/parties/{partyId}/document/reveal", wrapper.RevealPartyDocument)
@@ -1319,6 +1368,129 @@ func (response RevealPartyDocument404ApplicationProblemPlusJSONResponse) VisitRe
 	return err
 }
 
+type AssignPartyResponsibleRequestObject struct {
+	PartyId uuid.UUID `json:"partyId"`
+	Body    *AssignPartyResponsibleJSONRequestBody
+}
+
+type AssignPartyResponsibleResponseObject interface {
+	VisitAssignPartyResponsibleResponse(w http.ResponseWriter) error
+}
+
+type AssignPartyResponsible200JSONResponse Party
+
+func (response AssignPartyResponsible200JSONResponse) VisitAssignPartyResponsibleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AssignPartyResponsible400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response AssignPartyResponsible400ApplicationProblemPlusJSONResponse) VisitAssignPartyResponsibleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AssignPartyResponsible401ApplicationProblemPlusJSONResponse Problem
+
+func (response AssignPartyResponsible401ApplicationProblemPlusJSONResponse) VisitAssignPartyResponsibleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AssignPartyResponsible403ApplicationProblemPlusJSONResponse Problem
+
+func (response AssignPartyResponsible403ApplicationProblemPlusJSONResponse) VisitAssignPartyResponsibleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AssignPartyResponsible404ApplicationProblemPlusJSONResponse Problem
+
+func (response AssignPartyResponsible404ApplicationProblemPlusJSONResponse) VisitAssignPartyResponsibleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AssignPartyResponsible409ApplicationProblemPlusJSONResponse Problem
+
+func (response AssignPartyResponsible409ApplicationProblemPlusJSONResponse) VisitAssignPartyResponsibleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AssignPartyResponsible422ApplicationProblemPlusJSONResponse Problem
+
+func (response AssignPartyResponsible422ApplicationProblemPlusJSONResponse) VisitAssignPartyResponsibleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type AssignPartyResponsible503ApplicationProblemPlusJSONResponse Problem
+
+func (response AssignPartyResponsible503ApplicationProblemPlusJSONResponse) VisitAssignPartyResponsibleResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(503)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// ListParties Lista terceros (búsqueda opcional por nombre, paginación keyset).
@@ -1345,6 +1517,9 @@ type StrictServerInterface interface {
 	// RevealPartyDocument Devuelve el número de documento completo. Cada lectura queda auditada.
 	// (POST /api/v1/parties/parties/{partyId}/document/reveal)
 	RevealPartyDocument(ctx context.Context, request RevealPartyDocumentRequestObject) (RevealPartyDocumentResponseObject, error)
+	// AssignPartyResponsible Traspasa el cliente a otro asesor activo. Queda auditado con motivo.
+	// (POST /api/v1/parties/parties/{partyId}/responsible-agent)
+	AssignPartyResponsible(ctx context.Context, request AssignPartyResponsibleRequestObject) (AssignPartyResponsibleResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -1618,41 +1793,76 @@ func (sh *strictHandler) RevealPartyDocument(w http.ResponseWriter, r *http.Requ
 	}
 }
 
+// AssignPartyResponsible operation middleware
+func (sh *strictHandler) AssignPartyResponsible(w http.ResponseWriter, r *http.Request, partyId uuid.UUID) {
+	var request AssignPartyResponsibleRequestObject
+
+	request.PartyId = partyId
+
+	var body AssignPartyResponsibleJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.AssignPartyResponsible(ctx, request.(AssignPartyResponsibleRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "AssignPartyResponsible")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(AssignPartyResponsibleResponseObject); ok {
+		if err := validResponse.VisitAssignPartyResponsibleResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

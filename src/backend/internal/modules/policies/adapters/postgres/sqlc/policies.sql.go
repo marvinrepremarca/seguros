@@ -163,6 +163,36 @@ func (q *Queries) GetPolicy(ctx context.Context, arg GetPolicyParams) (GetPolicy
 	return i, err
 }
 
+const insertAgentHistory = `-- name: InsertAgentHistory :exec
+INSERT INTO policies.policy_agent_history (id, tenant_id, policy_id, previous_agent_id, agent_id, effective_at, reason, changed_by)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+`
+
+type InsertAgentHistoryParams struct {
+	ID              uuid.UUID
+	TenantID        uuid.UUID
+	PolicyID        uuid.UUID
+	PreviousAgentID uuid.NullUUID
+	AgentID         uuid.NullUUID
+	EffectiveAt     time.Time
+	Reason          string
+	ChangedBy       uuid.NullUUID
+}
+
+func (q *Queries) InsertAgentHistory(ctx context.Context, arg InsertAgentHistoryParams) error {
+	_, err := q.db.Exec(ctx, insertAgentHistory,
+		arg.ID,
+		arg.TenantID,
+		arg.PolicyID,
+		arg.PreviousAgentID,
+		arg.AgentID,
+		arg.EffectiveAt,
+		arg.Reason,
+		arg.ChangedBy,
+	)
+	return err
+}
+
 const insertCoverage = `-- name: InsertCoverage :exec
 INSERT INTO policies.coverages (id, tenant_id, policy_id, name, sum_insured, deductible)
 VALUES ($1, $2, $3, $4, $5, $6)
@@ -557,6 +587,40 @@ func (q *Queries) ListPolicyParties(ctx context.Context, arg ListPolicyPartiesPa
 			return nil, err
 		}
 		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listReassignablePolicyIDs = `-- name: ListReassignablePolicyIDs :many
+SELECT id FROM policies.policies
+WHERE tenant_id = $1 AND agent_id = $2
+  AND status IN ('in_quotation', 'in_process', 'active', 'in_arrears', 'expired')
+ORDER BY id
+LIMIT $3
+`
+
+type ListReassignablePolicyIDsParams struct {
+	TenantID uuid.UUID
+	AgentID  uuid.NullUUID
+	PageSize int32
+}
+
+func (q *Queries) ListReassignablePolicyIDs(ctx context.Context, arg ListReassignablePolicyIDsParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listReassignablePolicyIDs, arg.TenantID, arg.AgentID, arg.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err

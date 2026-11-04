@@ -18,6 +18,7 @@ type Querier interface {
 	ListConsents(ctx context.Context, arg ListConsentsParams) ([]ListConsentsRow, error)
 	ListParties(ctx context.Context, arg ListPartiesParams) ([]ListPartiesRow, error)
 	ListPartySummaries(ctx context.Context, arg ListPartySummariesParams) ([]ListPartySummariesRow, error)
+	TransferResponsibleAgent(ctx context.Context, arg TransferResponsibleAgentParams) (int64, error)
 	UpdateParty(ctx context.Context, arg UpdatePartyParams) (int64, error)
 	UpsertPolicyScope(ctx context.Context, arg UpsertPolicyScopeParams) error
 }

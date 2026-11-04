@@ -36,7 +36,8 @@ describe("visibleSections", () => {
     expect(labels).toContain("Funcionalidades");
     expect(labels).toContain("Pólizas");
     expect(labels).toContain("Catálogo");
-    expect(labels).toHaveLength(16); // Inicio, Clientes, Pólizas + 11 módulos + Funcionalidades, Catálogo
+    expect(labels).toContain("Traspaso de cartera");
+    expect(labels).toHaveLength(17); // Inicio, Clientes, Pólizas + 11 módulos + Funcionalidades, Catálogo, Traspaso
   });
 
   it("cada módulo del menú tiene etiqueta", () => {

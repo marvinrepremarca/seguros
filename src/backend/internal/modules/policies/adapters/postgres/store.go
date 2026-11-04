@@ -50,6 +50,16 @@ func (s *Store) WithinTenant(ctx context.Context, fn func(ctx context.Context, u
 	})
 }
 
+// Bind devuelve la unidad de trabajo sobre una transacción ya abierta (consumidores del outbox, cuya
+// transacción incluye el inbox).
+func (s *Store) Bind(ctx context.Context, tx pgx.Tx) (app.UnitOfWork, error) {
+	tenant, ok := reqctx.TenantID(ctx)
+	if !ok {
+		return nil, db.ErrNoTenant
+	}
+	return &unitOfWork{tx: tx, recorder: s.recorder, outbox: s.outbox, repo: &repository{q: policiessqlc.New(tx), tenant: uuid.UUID(tenant)}}, nil
+}
+
 // DueForExpiration implementa app.Store mediante la función SECURITY DEFINER (cruza tenants, solo
 // devuelve IDs y solo la puede ejecutar el rol del worker).
 func (s *Store) DueForExpiration(ctx context.Context, today kernel.Date, limit int32) ([]app.DuePolicy, error) {
@@ -371,6 +381,34 @@ func (r *repository) loadChildren(ctx context.Context, id uuid.UUID, currency ke
 		s.Endorsements = append(s.Endorsements, out)
 	}
 	return nil
+}
+
+func (r *repository) AppendAgentHistory(ctx context.Context, e domain.PolicyAgentChanged) error {
+	id, err := uuid.NewV7()
+	if err != nil {
+		return fmt.Errorf("policies: id de historial: %w", err)
+	}
+	if err := r.q.InsertAgentHistory(ctx, policiessqlc.InsertAgentHistoryParams{
+		ID: id, TenantID: r.tenant, PolicyID: uuid.UUID(e.PolicyID), PreviousAgentID: e.Previous, AgentID: e.New,
+		EffectiveAt: e.At, Reason: e.Reason, ChangedBy: actor(ctx),
+	}); err != nil {
+		return fmt.Errorf("policies: guardando historial de asesor: %w", err)
+	}
+	return nil
+}
+
+func (r *repository) ReassignableByAgent(ctx context.Context, agent uuid.UUID, limit int32) ([]domain.PolicyID, error) {
+	rows, err := r.q.ListReassignablePolicyIDs(ctx, policiessqlc.ListReassignablePolicyIDsParams{
+		TenantID: r.tenant, AgentID: uuid.NullUUID{UUID: agent, Valid: true}, PageSize: limit,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("policies: listando cartera: %w", err)
+	}
+	out := make([]domain.PolicyID, 0, len(rows))
+	for _, id := range rows {
+		out = append(out, domain.PolicyID(id))
+	}
+	return out, nil
 }
 
 func optionalMoney(d decimal.NullDecimal, currency kernel.Currency) (*kernel.Money, error) {

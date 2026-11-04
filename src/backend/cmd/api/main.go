@@ -156,7 +156,7 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	partiesMod := parties.New(parties.Deps{DB: database, Audit: recorder, Cipher: cipher, Policy: policy, Clock: clock, Logger: logger})
+	partiesMod := parties.New(parties.Deps{DB: database, Audit: recorder, Cipher: cipher, Agents: identityMod.Directory, Policy: policy, Clock: clock, Logger: logger})
 	catalogMod, err := catalog.New(catalog.Deps{DB: database, Audit: recorder, Policy: policy, Clock: clock, Logger: logger})
 	if err != nil {
 		return err

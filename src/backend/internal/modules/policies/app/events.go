@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -12,6 +13,11 @@ import (
 
 func publish(ctx context.Context, uow UnitOfWork, events []domain.Event) error {
 	for _, e := range events {
+		if changed, ok := e.(domain.PolicyAgentChanged); ok {
+			if err := uow.Policies().AppendAgentHistory(ctx, changed); err != nil {
+				return err
+			}
+		}
 		topic, payload, err := toContract(e)
 		if err != nil {
 			return err
@@ -34,7 +40,11 @@ func toContract(e domain.Event) (string, any, error) {
 	switch ev := e.(type) {
 	case domain.PolicyPartiesChanged:
 		return contracts.TopicPolicyPartiesChanged, contracts.PolicyPartiesChanged{
-			PolicyID: uuid.UUID(ev.PolicyID), PolicyVersion: ev.Version, AgentID: nullable(ev.AgentID), PartyIDs: ev.PartyIDs,
+			PolicyID: uuid.UUID(ev.PolicyID), PolicyVersion: ev.Version, AgentID: nullable(ev.AgentID), PartyIDs: ev.PartyIDs, GrantsAccess: ev.GrantsAccess,
+		}, nil
+	case domain.PolicyAgentChanged:
+		return contracts.TopicPolicyAgentChanged, contracts.PolicyAgentChanged{
+			PolicyID: uuid.UUID(ev.PolicyID), PreviousAgentID: nullable(ev.Previous), AgentID: nullable(ev.New), EffectiveAt: ev.At.Format(time.RFC3339Nano),
 		}, nil
 	case domain.PolicyIssued:
 		t := ev.Policy.Terms

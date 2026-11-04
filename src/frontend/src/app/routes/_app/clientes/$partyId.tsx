@@ -3,6 +3,8 @@ import { createFileRoute, notFound } from "@tanstack/react-router";
 import { PartyDetailPage } from "@/modules/parties";
 import { hasPermission, permissions } from "@/shared/lib/session";
 
+import { partyAgentsQuery } from "../../../policy-deps";
+
 export const Route = createFileRoute("/_app/clientes/$partyId")({
   beforeLoad: ({ context }) => {
     // Solo UX: el backend exige el permiso en cada operación.
@@ -19,5 +21,5 @@ export const Route = createFileRoute("/_app/clientes/$partyId")({
 
 function Page() {
   const { partyId } = Route.useParams();
-  return <PartyDetailPage key={partyId} partyId={partyId} />;
+  return <PartyDetailPage key={partyId} partyId={partyId} agentsQuery={partyAgentsQuery} />;
 }

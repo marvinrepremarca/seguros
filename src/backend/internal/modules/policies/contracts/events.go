@@ -6,14 +6,16 @@ import "github.com/google/uuid"
 
 // Tópicos de los eventos de policies.
 const (
-	TopicPolicyPartiesChanged  = "policies.policy_parties_changed"
-	TopicPolicyIssued          = "policies.policy_issued"
-	TopicPolicyEndorsed        = "policies.policy_endorsed"
-	TopicPolicyCancelled       = "policies.policy_cancelled"
-	TopicPolicyExpired         = "policies.policy_expired"
-	TopicPolicyRenewed         = "policies.policy_renewed"
-	TopicPolicyFellIntoArrears = "policies.policy_fell_into_arrears"
-	TopicPolicyReinstated      = "policies.policy_reinstated"
+	TopicPolicyPartiesChanged       = "policies.policy_parties_changed"
+	TopicPolicyAgentChanged         = "policies.policy_agent_changed"
+	TopicPortfolioTransferRequested = "policies.portfolio_transfer_requested"
+	TopicPolicyIssued               = "policies.policy_issued"
+	TopicPolicyEndorsed             = "policies.policy_endorsed"
+	TopicPolicyCancelled            = "policies.policy_cancelled"
+	TopicPolicyExpired              = "policies.policy_expired"
+	TopicPolicyRenewed              = "policies.policy_renewed"
+	TopicPolicyFellIntoArrears      = "policies.policy_fell_into_arrears"
+	TopicPolicyReinstated           = "policies.policy_reinstated"
 )
 
 // PolicyPartiesChanged se publica al crear la póliza y cuando cambian sus partes o su asesor. Lleva el
@@ -23,6 +25,25 @@ type PolicyPartiesChanged struct {
 	PolicyVersion int32       `json:"policyVersion"`
 	AgentID       *uuid.UUID  `json:"agentId,omitempty"`
 	PartyIDs      []uuid.UUID `json:"partyIds"`
+	// GrantsAccess es false cuando la póliza terminó: ya no da alcance al asesor (DECISIONS N11).
+	GrantsAccess bool `json:"grantsAccess"`
+}
+
+// PolicyAgentChanged se publica cuando cambia el asesor. EffectiveAt delimita a quién atribuir lo que
+// se cause después (Commissions, Fase 3).
+type PolicyAgentChanged struct {
+	PolicyID        uuid.UUID  `json:"policyId"`
+	PreviousAgentID *uuid.UUID `json:"previousAgentId,omitempty"`
+	AgentID         *uuid.UUID `json:"agentId,omitempty"`
+	EffectiveAt     string     `json:"effectiveAt"` // RFC 3339
+}
+
+// PortfolioTransferRequested pide pasar toda la cartera de un asesor a otro. Cada módulo procesa la suya.
+type PortfolioTransferRequested struct {
+	FromAgentID uuid.UUID `json:"fromAgentId"`
+	ToAgentID   uuid.UUID `json:"toAgentId"`
+	Reason      string    `json:"reason"`
+	RequestedBy uuid.UUID `json:"requestedBy"`
 }
 
 // PolicyIssued se publica cuando la aseguradora expide la póliza.

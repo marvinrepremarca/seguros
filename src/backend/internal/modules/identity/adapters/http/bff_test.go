@@ -485,3 +485,23 @@ func TestProviderOutageIsToleratedOnlyWithinTheGrace(t *testing.T) {
 	status, _ = meRoles(t, e, b)
 	assert.Equal(t, http.StatusUnauthorized, status, "sin confirmación más allá de la gracia se cierra la sesión")
 }
+
+// scs guarda la sesión al escribir la respuesta: un cliente que ya se fue no es un error del servidor.
+func TestSessionSaveFailureForAGoneClientIsNotAServerError(t *testing.T) {
+	t.Parallel()
+	var logs strings.Builder
+	sessions := identityhttp.NewSessionManager(identityhttp.SessionOptions{
+		Store: memstore.New(), IdleTimeout: time.Minute, Lifetime: time.Hour, Logger: slog.New(slog.NewTextHandler(&logs, nil)),
+	})
+	gone, cancel := context.WithCancel(context.Background())
+	cancel()
+	rec := httptest.NewRecorder()
+	sessions.ErrorFunc(rec, httptest.NewRequestWithContext(gone, http.MethodGet, "/x", nil), errors.New("guardando: cliente desconectado"))
+	assert.Equal(t, 499, rec.Code)
+	assert.NotContains(t, logs.String(), "ERROR")
+
+	rec = httptest.NewRecorder()
+	sessions.ErrorFunc(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/x", nil), errors.New("valkey caído"))
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.Contains(t, logs.String(), "ERROR", "una falla real sí se registra")
+}

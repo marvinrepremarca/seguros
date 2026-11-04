@@ -28,6 +28,13 @@ const MESSAGES: Readonly<Record<string, string>> = {
     "Otra persona cambió esta póliza. Recarga e inténtalo de nuevo.",
   "policies.policy.invalid_transition": "La póliza no permite esta operación en su estado actual.",
   "policies.policy.not_editable": "Después de expedida, la póliza solo cambia por endoso.",
+  "policies.policy.invalid_agent": "El asesor no pertenece a la agencia o ya no está activo.",
+  "parties.party.invalid_agent": "El asesor no pertenece a la agencia o ya no está activo.",
+  "policies.policy.agent_not_reassignable":
+    "Una póliza terminada conserva su asesor como historial.",
+  "policies.policy.same_agent": "El asesor nuevo debe ser distinto del actual.",
+  "identity.directory.unavailable":
+    "No se pudo consultar los asesores activos. Inténtalo de nuevo en unos minutos.",
   "policies.policy.number_taken": "Ese número de póliza ya existe en la aseguradora.",
   "policies.policy.invalid_holder": "La póliza debe tener exactamente un tomador.",
   "policies.policy.insured_required": "La póliza debe tener al menos un asegurado.",
