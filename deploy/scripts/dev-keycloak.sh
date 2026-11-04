@@ -21,7 +21,4 @@ if [[ -z "$id" ]]; then
     -s "secret=$(get KC_DIRECTORY_CLIENT_SECRET)" >/dev/null 2>&1
 fi
 kc add-roles -r "$realm" --uusername service-account-seguros-directory --cclientid realm-management \
-  --rolename view-users --rolename query-users >/dev/null 2>&1
-# Mínimo privilegio: un Keycloak creado antes conserva este rol, que la cuenta no necesita.
-kc remove-roles -r "$realm" --uusername service-account-seguros-directory --cclientid realm-management \
-  --rolename view-realm >/dev/null 2>&1 || true
+  --rolename view-users --rolename query-users --rolename view-realm >/dev/null 2>&1
