@@ -214,6 +214,9 @@ func (p *Policy) RejectEndorsement(id uuid.UUID, reason string, now time.Time) e
 	return nil
 }
 
+// CurrentScope devuelve el alcance vigente de la póliza, para reconstruir la proyección de parties.
+func (p *Policy) CurrentScope() Event { return p.partiesChanged(p.version) }
+
 // Event es un evento de dominio de la póliza.
 type Event interface{ policyEvent() }
 

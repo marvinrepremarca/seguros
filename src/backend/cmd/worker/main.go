@@ -5,6 +5,8 @@ package main
 
 import (
 	"context"
+	"errors"
+	"flag"
 	"fmt"
 	"log/slog"
 	"os"
@@ -28,11 +30,16 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 	"github.com/marvinrepremarca/seguros/internal/platform/obs"
 	"github.com/marvinrepremarca/seguros/internal/platform/outbox"
+	"github.com/marvinrepremarca/seguros/internal/platform/reqctx"
 	"github.com/marvinrepremarca/seguros/internal/platform/session"
 )
 
 func main() {
-	if err := run(); err != nil {
+	command := run
+	if len(os.Args) > 1 && os.Args[1] == "rebuild-scopes" {
+		command = func() error { return rebuildScopes(os.Args[2:]) }
+	}
+	if err := command(); err != nil {
 		slog.Error("worker terminó con error", "error", err)
 		os.Exit(1)
 	}
@@ -164,5 +171,43 @@ func run() error {
 		logger.Warn("cerrando pub/sub", "error", err)
 	}
 	logger.Info("worker detenido")
+	return nil
+}
+
+// rebuildScopes republica el alcance de las pólizas de una agencia. Antes de producción y al reparar
+// parties.policy_scopes: los consumidores deben estar corriendo en el worker desplegado.
+func rebuildScopes(args []string) error {
+	fs := flag.NewFlagSet("rebuild-scopes", flag.ContinueOnError)
+	org := fs.String("org", "", "alias de la organización")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	if *org == "" {
+		return errors.New("uso: worker rebuild-scopes --org <alias>")
+	}
+	cfg, err := config.LoadWorker(os.LookupEnv)
+	if err != nil {
+		return err
+	}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	database, err := db.Open(ctx, cfg.DB, db.Options{ApplicationName: cfg.ServiceName})
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+	if err := database.RequireRole(ctx, "seguros_worker"); err != nil {
+		return err
+	}
+	clock := kernel.SystemClock{}
+	info, err := tenancy.New(database, clock).Directory.ResolveByOrgAlias(ctx, *org)
+	if err != nil {
+		return err
+	}
+	n, err := policies.RebuildScopes(reqctx.WithTenantID(ctx, info.ID), database, audit.NewRecorder(clock), outbox.NewWriter(clock))
+	if err != nil {
+		return err
+	}
+	slog.Info("alcance de pólizas republicado", "org", *org, "policies", n)
 	return nil
 }

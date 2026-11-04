@@ -57,6 +57,8 @@ type PolicyRepository interface {
 	// ReassignableByAgent lista pólizas no terminadas del asesor, sin las que se le asignaron después de cutoff.
 	ReassignableByAgent(ctx context.Context, agent uuid.UUID, cutoff time.Time, limit int32) ([]domain.PolicyID, error)
 	InsertTransferRequest(ctx context.Context, q TransferRequest) error
+	// IDsAfter recorre las pólizas del tenant en orden de ID.
+	IDsAfter(ctx context.Context, after uuid.NullUUID, limit int32) ([]domain.PolicyID, error)
 }
 
 // UnitOfWork agrupa repositorio, auditoría y outbox en una transacción con RLS.

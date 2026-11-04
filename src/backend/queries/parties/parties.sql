@@ -77,7 +77,7 @@ VALUES (@tenant_id, @policy_id, @agent_id, @party_ids, @policy_version, @updated
 ON CONFLICT (tenant_id, policy_id) DO UPDATE
 SET agent_id = EXCLUDED.agent_id, party_ids = EXCLUDED.party_ids,
     policy_version = EXCLUDED.policy_version, updated_at = EXCLUDED.updated_at
-WHERE parties.policy_scopes.policy_version < EXCLUDED.policy_version;
+WHERE parties.policy_scopes.policy_version <= EXCLUDED.policy_version;
 
 -- name: TransferResponsibleAgent :execrows
 WITH moved AS (

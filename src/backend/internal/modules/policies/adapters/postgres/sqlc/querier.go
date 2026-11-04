@@ -26,6 +26,7 @@ type Querier interface {
 	ListEndorsements(ctx context.Context, arg ListEndorsementsParams) ([]ListEndorsementsRow, error)
 	ListInsuredItems(ctx context.Context, arg ListInsuredItemsParams) ([]ListInsuredItemsRow, error)
 	ListPolicies(ctx context.Context, arg ListPoliciesParams) ([]ListPoliciesRow, error)
+	ListPolicyIDsAfter(ctx context.Context, arg ListPolicyIDsAfterParams) ([]uuid.UUID, error)
 	ListPolicyParties(ctx context.Context, arg ListPolicyPartiesParams) ([]ListPolicyPartiesRow, error)
 	ListReassignablePolicyIDs(ctx context.Context, arg ListReassignablePolicyIDsParams) ([]uuid.UUID, error)
 	UpdatePolicy(ctx context.Context, arg UpdatePolicyParams) (int64, error)

@@ -4,6 +4,7 @@
 package policies
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/go-chi/chi/v5"
@@ -65,6 +66,12 @@ func (m *Module) Mount(r chi.Router) error { return m.server.Mount(r) }
 // Consumers devuelve los consumidores de eventos del módulo (los registra cmd/worker).
 func Consumers(database *db.DB, recorder *audit.Recorder, writer *outbox.Writer, clock kernel.Clock) []outbox.Consumer {
 	return []outbox.Consumer{policiesevents.PortfolioTransfer(postgres.NewStore(database, recorder, writer), clock)}
+}
+
+// RebuildScopes republica el alcance de las pólizas del tenant del contexto (rol seguros_worker).
+func RebuildScopes(ctx context.Context, database *db.DB, recorder *audit.Recorder, writer *outbox.Writer) (int, error) {
+	r := &app.ScopeRebuilder{Store: postgres.NewStore(database, recorder, writer)}
+	return r.Run(ctx)
 }
 
 // RegisterJobs añade el vencimiento diario de pólizas al worker (rol seguros_worker).

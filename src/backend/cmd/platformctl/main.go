@@ -12,6 +12,8 @@
 //	platformctl flag kill --key module.claims --reason "incidente" --operator ana.ops   (kill switch global)
 //	platformctl flag kill --key module.compliance --confirm-control module.compliance --reason "..." --operator ana.ops
 //	platformctl flag restore --key module.claims --reason "resuelto" --operator ana.ops
+//	platformctl dead-letter list --org agencia-x
+//	platformctl dead-letter retry --org agencia-x --id <uuid> --reason "falla corregida" --operator ana.ops
 //
 // Se ejecuta con el rol seguros_platform (SEGUROS_DB_URL), el único que escribe switches globales.
 //
@@ -27,6 +29,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/google/uuid"
 	"github.com/valkey-io/valkey-go"
 
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
@@ -51,7 +54,9 @@ const usage = `uso:
   platformctl tenant set-plan --org <alias> --plan <plan> --reason <motivo> --operator <persona>
   platformctl flag set --org <alias> --key <flag> --value on|off|clear --reason <motivo>
   platformctl flag kill --key <flag> --reason <motivo> --operator <persona> [--confirm-control <flag>]
-  platformctl flag restore --key <flag> --reason <motivo> --operator <persona>`
+  platformctl flag restore --key <flag> --reason <motivo> --operator <persona>
+  platformctl dead-letter list --org <alias>
+  platformctl dead-letter retry --org <alias> --id <uuid> --reason <motivo> --operator <persona>`
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -61,7 +66,7 @@ func main() {
 }
 
 func run(args []string) error {
-	if len(args) < 2 || (args[0] != "tenant" && args[0] != "flag") {
+	if len(args) < 2 || (args[0] != "tenant" && args[0] != "flag" && args[0] != "dead-letter") {
 		return errors.New(usage)
 	}
 	cfg, err := config.LoadPlatformCtl(os.LookupEnv)
@@ -84,6 +89,9 @@ func run(args []string) error {
 	tenants := tenancy.New(database, kernel.SystemClock{})
 	if args[0] == "tenant" {
 		return runTenant(ctx, logger, tenants, args[1], args[2:])
+	}
+	if args[0] == "dead-letter" {
+		return runDeadLetter(ctx, database, tenants, logger, args[1], args[2:])
 	}
 	if cfg.Valkey.URL.IsEmpty() {
 		return errors.New("los comandos de flag requieren SEGUROS_VALKEY_URL (invalidación de cachés)")
@@ -192,4 +200,44 @@ func runTenant(ctx context.Context, logger *slog.Logger, mod *tenancy.Module, su
 		return errors.New(usage)
 	}
 	return nil
+}
+
+func runDeadLetter(ctx context.Context, database *db.DB, tenants *tenancy.Module, logger *slog.Logger, sub string, args []string) error {
+	fs := flag.NewFlagSet("dead-letter", flag.ContinueOnError)
+	org := fs.String("org", "", "alias de la organización")
+	id := fs.String("id", "", "ID del mensaje")
+	reason := fs.String("reason", "", "motivo")
+	operator := fs.String("operator", "", "persona que ejecuta")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	info, err := tenants.Directory.ResolveByOrgAlias(ctx, *org)
+	if err != nil {
+		return err
+	}
+	ctx = reqctx.WithTenantID(ctx, info.ID)
+	switch sub {
+	case "list":
+		letters, err := outbox.ListDeadLetters(ctx, database)
+		if err != nil {
+			return err
+		}
+		for _, l := range letters {
+			logger.Info("mensaje fallido", "id", l.ID.String(), "consumer", l.Consumer, "topic", l.Topic, "event_id", l.EventID.String(), "failed_at", l.FailedAt)
+		}
+		logger.Info("mensajes fallidos pendientes", "org", *org, "count", len(letters))
+		return nil
+	case "retry":
+		letter, err := uuid.Parse(*id)
+		if err != nil || *reason == "" || *operator == "" {
+			return errors.New(usage)
+		}
+		if err := outbox.RetryDeadLetter(ctx, database, letter, kernel.SystemClock{}.Now()); err != nil {
+			return err
+		}
+		logger.Info("mensaje reprocesado", "org", *org, "id", letter.String(), "reason", *reason, "operator", *operator)
+		return nil
+	default:
+		return errors.New(usage)
+	}
 }

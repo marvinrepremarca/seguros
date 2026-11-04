@@ -112,3 +112,9 @@ WHERE p.tenant_id = @tenant_id AND p.agent_id = @agent_id
         AND h.agent_id = @agent_id AND h.effective_at > @requested_at)
 ORDER BY p.id
 LIMIT @page_size;
+
+-- name: ListPolicyIDsAfter :many
+SELECT id FROM policies.policies
+WHERE tenant_id = @tenant_id AND (sqlc.narg('after')::uuid IS NULL OR id > sqlc.narg('after')::uuid)
+ORDER BY id
+LIMIT @page_size;

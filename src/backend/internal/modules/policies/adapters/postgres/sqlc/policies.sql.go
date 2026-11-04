@@ -592,6 +592,39 @@ func (q *Queries) ListPolicies(ctx context.Context, arg ListPoliciesParams) ([]L
 	return items, nil
 }
 
+const listPolicyIDsAfter = `-- name: ListPolicyIDsAfter :many
+SELECT id FROM policies.policies
+WHERE tenant_id = $1 AND ($2::uuid IS NULL OR id > $2::uuid)
+ORDER BY id
+LIMIT $3
+`
+
+type ListPolicyIDsAfterParams struct {
+	TenantID uuid.UUID
+	After    uuid.NullUUID
+	PageSize int32
+}
+
+func (q *Queries) ListPolicyIDsAfter(ctx context.Context, arg ListPolicyIDsAfterParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, listPolicyIDsAfter, arg.TenantID, arg.After, arg.PageSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listPolicyParties = `-- name: ListPolicyParties :many
 SELECT party_id, role FROM policies.policy_parties WHERE tenant_id = $1 AND policy_id = $2 ORDER BY role, party_id
 `

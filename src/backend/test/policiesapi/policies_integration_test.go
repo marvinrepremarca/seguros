@@ -1249,3 +1249,26 @@ func TestPortfolioTransferBatchesAndRespectsCutoff(t *testing.T) {
 	assert.Equal(t, fromID, e.do(t, w.ops, http.MethodGet, base+"/"+late.str(t, "id"), nil).body["agentId"], "asignada después del corte")
 	assert.Equal(t, fromID, e.do(t, w.ops, http.MethodGet, "/api/v1/parties/parties/"+client.str(t, "id"), nil).body["responsibleAgentId"], "asignado después del corte")
 }
+
+// Reconstruir el alcance repara la proyección aunque se haya perdido el evento, y es idempotente.
+func TestRebuildScopesRepairsTheProjection(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	w := e.world(t)
+	agent := e.as(w.tenant, authz.RoleSalesAgent)
+	e.users.list = []identity.User{{ID: uuid.UUID(agent.UserID), DisplayName: "Asesora", Active: true}}
+	terms := w.terms()
+	terms["agentId"] = uuid.UUID(agent.UserID).String()
+	require.Equal(t, http.StatusCreated, e.do(t, w.ops, http.MethodPost, base, terms).status)
+	path := "/api/v1/parties/parties/" + w.holder
+	require.Equal(t, http.StatusNotFound, e.do(t, agent, http.MethodGet, path, nil).status)
+
+	ctx := reqctx.WithTenantID(context.Background(), w.tenant)
+	for range 2 {
+		n, err := policies.RebuildScopes(ctx, workerDB, audit.NewRecorder(e.clock), outbox.NewWriter(e.clock))
+		require.NoError(t, err)
+		assert.Equal(t, 1, n)
+	}
+	deliverScopeEvents(t, w.tenant)
+	assert.Equal(t, http.StatusOK, e.do(t, agent, http.MethodGet, path, nil).status)
+}

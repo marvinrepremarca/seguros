@@ -384,6 +384,18 @@ func (r *repository) loadChildren(ctx context.Context, id uuid.UUID, currency ke
 	return nil
 }
 
+func (r *repository) IDsAfter(ctx context.Context, after uuid.NullUUID, limit int32) ([]domain.PolicyID, error) {
+	rows, err := r.q.ListPolicyIDsAfter(ctx, policiessqlc.ListPolicyIDsAfterParams{TenantID: r.tenant, After: after, PageSize: limit})
+	if err != nil {
+		return nil, fmt.Errorf("policies: recorriendo pólizas: %w", err)
+	}
+	out := make([]domain.PolicyID, len(rows))
+	for i, id := range rows {
+		out[i] = domain.PolicyID(id)
+	}
+	return out, nil
+}
+
 func (r *repository) InsertTransferRequest(ctx context.Context, q app.TransferRequest) error {
 	if err := r.q.InsertTransferRequest(ctx, policiessqlc.InsertTransferRequestParams{
 		ID: q.ID, TenantID: r.tenant, FromAgentID: q.From, ToAgentID: q.To, Reason: q.Reason.Code, Note: text(q.Reason.Note),
