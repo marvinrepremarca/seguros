@@ -84,6 +84,10 @@ export type LoginParams = {
  * @maxLength 512
  */
 returnTo?: string;
+/**
+ * Pide autenticarse de nuevo aunque haya sesión en el proveedor (tras exigir MFA).
+ */
+reauth?: boolean;
 };
 
 export type LoginCallbackParams = {

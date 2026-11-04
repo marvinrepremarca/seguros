@@ -407,6 +407,10 @@ func TestTurningOffAControlFlagForATenantNeedsConfirmation(t *testing.T) {
 	deps := app.NewDeps(reg, store, fakeTenants{plans: map[kernel.TenantID]string{tenant: "basico"}}, &fakeInvalidator{}, clock, slog.New(slog.DiscardHandler))
 	h := app.NewSetTenantFlagHandler(deps, app.ActorPlatform)
 	ctx := platform(tenant)
+	_, err = h.Handle(ctx, app.SetTenantFlagCommand{Key: "module.compliance", Enabled: on(), Reason: "contrató cumplimiento"})
+	require.NoError(t, err)
+	_, err = h.Handle(ctx, app.SetTenantFlagCommand{Key: "module.compliance", Reason: "limpiar override"})
+	require.ErrorIs(t, err, domain.ErrControlConfirmationRequired, "limpiar también lo apaga")
 	cmd := app.SetTenantFlagCommand{Key: "module.compliance", Enabled: off(), Reason: "piloto sin SARLAFT"}
 	_, err = h.Handle(ctx, cmd)
 	require.ErrorIs(t, err, domain.ErrControlConfirmationRequired)

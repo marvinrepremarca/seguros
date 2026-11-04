@@ -441,6 +441,7 @@ WITH moved AS (
     UPDATE parties.parties
     SET responsible_agent_id = $3, updated_at = $6, updated_by = $5, version = version + 1
     WHERE tenant_id = $1 AND responsible_agent_id = $2
+      AND created_at <= $7
       AND NOT EXISTS (
           SELECT 1 FROM parties.party_responsible_history h
           WHERE h.tenant_id = parties.parties.tenant_id AND h.party_id = parties.parties.id

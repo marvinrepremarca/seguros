@@ -28,6 +28,10 @@ func PortfolioTransfer(recorder *audit.Recorder) outbox.Consumer {
 			if err := e.Decode(&ev); err != nil {
 				return err
 			}
+			// Un motivo fuera del catálogo o sin corte no se aplica: iría al historial o movería todo.
+			if _, ok := kernel.NewTransferReason(ev.Reason, otherNote(ev.Reason)); !ok || ev.RequestedAt.IsZero() {
+				return fmt.Errorf("parties: traspaso inválido en el evento %s", e.ID)
+			}
 			// Quien pidió el traspaso es el autor en el historial y en la bitácora.
 			ctx = reqctx.WithUserID(ctx, kernel.UserID(ev.RequestedBy))
 			n, err := partiessqlc.New(tx).TransferResponsibleAgent(ctx, partiessqlc.TransferResponsibleAgentParams{
@@ -76,4 +80,12 @@ func PolicyScope() outbox.Consumer {
 			return nil
 		},
 	}
+}
+
+// otherNote satisface la nota obligatoria de "other": la nota real no viaja en el evento.
+func otherNote(code string) string {
+	if code == kernel.TransferOther {
+		return "Ver solicitud de traspaso"
+	}
+	return ""
 }

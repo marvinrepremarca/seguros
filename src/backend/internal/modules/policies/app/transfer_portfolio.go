@@ -78,6 +78,9 @@ func TransferPoliciesBatch(ctx context.Context, uow UnitOfWork, clock kernel.Clo
 	if err != nil {
 		return err
 	}
+	if ev.RequestedAt.IsZero() {
+		return domain.ErrInvalidTransferReason // sin corte no se sabe qué mover
+	}
 	ids, err := uow.Policies().ReassignableByAgent(ctx, ev.FromAgentID, ev.RequestedAt, transferBatch)
 	if err != nil {
 		return err

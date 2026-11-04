@@ -84,8 +84,14 @@ func NewHTTPClient() *http.Client {
 }
 
 // AuthCodeURL construye la URL de autorización con state, nonce y PKCE S256.
-func (p *Provider) AuthCodeURL(state, nonce, verifier string) string {
-	return p.oauth.AuthCodeURL(state, gooidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier))
+// Con forceLogin el proveedor vuelve a autenticar aunque tenga sesión: sin esto, quien ya configuró el
+// segundo factor seguiría entrando con la sesión anterior, solo con contraseña.
+func (p *Provider) AuthCodeURL(state, nonce, verifier string, forceLogin bool) string {
+	opts := []oauth2.AuthCodeOption{gooidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier)}
+	if forceLogin {
+		opts = append(opts, oauth2.SetAuthURLParam("prompt", "login"))
+	}
+	return p.oauth.AuthCodeURL(state, opts...)
 }
 
 // Exchange canjea el código (con el verificador PKCE) y valida el ID token y su nonce.

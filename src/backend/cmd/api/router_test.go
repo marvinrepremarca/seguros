@@ -40,7 +40,7 @@ import (
 
 type noProvider struct{}
 
-func (noProvider) AuthCodeURL(string, string, string) string { return "https://idp.example/auth" }
+func (noProvider) AuthCodeURL(string, string, string, bool) string { return "https://idp.example/auth" }
 func (noProvider) Exchange(context.Context, string, string, string) (app.VerifiedIdentity, error) {
 	return app.VerifiedIdentity{}, oidc.ErrInvalidToken
 }

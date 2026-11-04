@@ -1274,7 +1274,7 @@ func TestRebuildScopesRepairsTheProjection(t *testing.T) {
 
 	ctx := reqctx.WithTenantID(context.Background(), w.tenant)
 	for range 2 {
-		n, err := policies.RebuildScopes(ctx, workerDB, audit.NewRecorder(e.clock), outbox.NewWriter(e.clock))
+		n, err := policies.RebuildScopes(ctx, workerDB, audit.NewRecorder(e.clock), outbox.NewWriter(e.clock), "ana.ops", "Despliegue inicial")
 		require.NoError(t, err)
 		assert.Equal(t, 1, n)
 	}

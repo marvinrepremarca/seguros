@@ -17,6 +17,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/db"
 	"github.com/marvinrepremarca/seguros/internal/platform/flags"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
@@ -353,14 +354,20 @@ func TestDeadLetterRetryRepublishesTheEvent(t *testing.T) {
 	require.Len(t, letters, 1)
 	assert.Equal(t, id, letters[0].EventID)
 
+	now := time.Now() //nolint:forbidigo // instante informativo
+	recorded := audit.NewRecorder(kernel.SystemClock{})
+	entry := func(ctx context.Context, tx pgx.Tx) error {
+		return recorded.Record(ctx, tx, audit.Entry{Action: "messaging.dead_letter.retried", ResourceType: "messaging.dead_letter", ResourceID: "x", Outcome: audit.OutcomeSuccess})
+	}
 	other := newTenant()
-	require.ErrorIs(t, outbox.RetryDeadLetter(other, platform, letters[0].ID, time.Now()), outbox.ErrDeadLetterNotPending, "otro tenant no lo alcanza") //nolint:forbidigo // instante informativo
+	require.ErrorIs(t, outbox.RetryDeadLetter(other, platform, letters[0].ID, now, false, entry), outbox.ErrDeadLetterNotPending, "otro tenant no lo alcanza")
+	require.ErrorIs(t, outbox.RetryDeadLetter(ctx, platform, letters[0].ID, now.Add(8*24*time.Hour), false, entry), outbox.ErrDeadLetterTooOld)
 
 	rec.mu.Lock()
 	rec.fail = false
 	rec.mu.Unlock()
-	require.NoError(t, outbox.RetryDeadLetter(ctx, platform, letters[0].ID, time.Now()))                                                 //nolint:forbidigo // instante informativo
-	require.ErrorIs(t, outbox.RetryDeadLetter(ctx, platform, letters[0].ID, time.Now()), outbox.ErrDeadLetterNotPending, "una sola vez") //nolint:forbidigo // instante informativo
+	require.NoError(t, outbox.RetryDeadLetter(ctx, platform, letters[0].ID, now, false, entry))
+	require.ErrorIs(t, outbox.RetryDeadLetter(ctx, platform, letters[0].ID, now, false, entry), outbox.ErrDeadLetterNotPending, "una sola vez")
 	drain(t, h)
 	assert.Equal(t, 1, rec.count(), "el consumidor lo procesó al reintentar")
 	letters, err = outbox.ListDeadLetters(ctx, platform)

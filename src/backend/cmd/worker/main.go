@@ -179,11 +179,13 @@ func run() error {
 func rebuildScopes(args []string) error {
 	fs := flag.NewFlagSet("rebuild-scopes", flag.ContinueOnError)
 	org := fs.String("org", "", "alias de la organización")
+	operator := fs.String("operator", "", "persona que ejecuta")
+	reason := fs.String("reason", "", "motivo")
 	if err := fs.Parse(args); err != nil {
 		return err
 	}
-	if *org == "" {
-		return errors.New("uso: worker rebuild-scopes --org <alias>")
+	if *org == "" || *operator == "" || *reason == "" {
+		return errors.New("uso: worker rebuild-scopes --org <alias> --operator <persona> --reason <motivo>")
 	}
 	cfg, err := config.LoadWorker(os.LookupEnv)
 	if err != nil {
@@ -204,7 +206,7 @@ func rebuildScopes(args []string) error {
 	if err != nil {
 		return err
 	}
-	n, err := policies.RebuildScopes(reqctx.WithTenantID(ctx, info.ID), database, audit.NewRecorder(clock), outbox.NewWriter(clock))
+	n, err := policies.RebuildScopes(reqctx.WithTenantID(ctx, info.ID), database, audit.NewRecorder(clock), outbox.NewWriter(clock), *operator, *reason)
 	if err != nil {
 		return err
 	}

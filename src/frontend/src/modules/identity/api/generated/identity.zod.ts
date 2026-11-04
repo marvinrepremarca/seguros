@@ -20,7 +20,8 @@ export const loginQueryReturnToMax = 512;
 
 
 export const LoginQueryParams = zod.object({
-  "returnTo": zod.string().max(loginQueryReturnToMax).optional().describe('Ruta relativa de la SPA a la que volver tras el login.')
+  "returnTo": zod.string().max(loginQueryReturnToMax).optional().describe('Ruta relativa de la SPA a la que volver tras el login.'),
+  "reauth": zod.boolean().optional().describe('Pide autenticarse de nuevo aunque haya sesión en el proveedor (tras exigir MFA).')
 })
 
 export const LoginResponse = zod.void()

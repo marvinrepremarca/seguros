@@ -57,15 +57,6 @@ func (s *SetTenantFlagHandler) Handle(ctx context.Context, cmd SetTenantFlagComm
 	if def.Kind == flags.KindOps {
 		return FlagView{}, domain.ErrGlobalOnly
 	}
-	if def.Control && cmd.Enabled != nil && !*cmd.Enabled {
-		if cmd.ConfirmControl != string(cmd.Key) {
-			return FlagView{}, domain.ErrControlConfirmationRequired
-		}
-		if operator := strings.TrimSpace(cmd.Operator); operator == "" || len(operator) > 120 {
-			return FlagView{}, domain.ErrInvalidOperator
-		}
-		s.logger.InfoContext(ctx, "flag de control apagado para un tenant", "flag", string(cmd.Key), "operator", strings.TrimSpace(cmd.Operator))
-	}
 	reason, err := domain.NewReason(cmd.Reason)
 	if err != nil {
 		return FlagView{}, err
@@ -105,6 +96,17 @@ func (s *SetTenantFlagHandler) Handle(ctx context.Context, cmd SetTenantFlagComm
 		if err := s.checkDependencies(def, before, after, info.Plan, next); err != nil {
 			return err
 		}
+		// Se decide por el resultado: apagar y limpiar un override pueden dejar el control apagado (ADR 0012).
+		operator := strings.TrimSpace(cmd.Operator)
+		turnsOffControl := def.Control && prev.Enabled && !next.Enabled
+		if turnsOffControl {
+			if cmd.ConfirmControl != string(cmd.Key) {
+				return domain.ErrControlConfirmationRequired
+			}
+			if operator == "" || len(operator) > 120 {
+				return domain.ErrInvalidOperator
+			}
+		}
 
 		now := s.clock.Now()
 		if cmd.Enabled == nil {
@@ -119,13 +121,17 @@ func (s *SetTenantFlagHandler) Handle(ctx context.Context, cmd SetTenantFlagComm
 		if cmd.Enabled != nil {
 			override = strconv.FormatBool(*cmd.Enabled)
 		}
+		details := map[string]string{
+			"previous": strconv.FormatBool(prev.Enabled), "new": strconv.FormatBool(next.Enabled),
+			"override": override, "source": string(next.Source), "reason": truncate(string(reason), 200),
+			"actor": actorName(actor),
+		}
+		if turnsOffControl {
+			details["operator"] = operator
+		}
 		if err := uow.Audit(ctx, audit.Entry{
 			Action: "featuremgmt.flag.updated", ResourceType: "featuremgmt.flag", ResourceID: string(cmd.Key),
-			Outcome: audit.OutcomeSuccess, Details: map[string]string{
-				"previous": strconv.FormatBool(prev.Enabled), "new": strconv.FormatBool(next.Enabled),
-				"override": override, "source": string(next.Source), "reason": truncate(string(reason), 200),
-				"actor": actorName(actor),
-			},
+			Outcome: audit.OutcomeSuccess, Details: details,
 		}); err != nil {
 			return err
 		}

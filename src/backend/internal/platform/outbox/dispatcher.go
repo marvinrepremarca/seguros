@@ -225,9 +225,9 @@ func (d *Dispatcher) recordDeadLetter(ctx context.Context, c Consumer, e Event, 
 	}
 	return d.opts.DB.WithTenantTx(ctx, func(tx pgx.Tx) error {
 		_, err := tx.Exec(ctx, `
-			INSERT INTO messaging.dead_letters (id, tenant_id, consumer, event_id, topic, payload, error, failed_at)
-			VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-			id, uuid.UUID(e.TenantID), c.Name, e.ID, e.Topic, []byte(e.Payload), msg, d.opts.Clock.Now().UTC())
+			INSERT INTO messaging.dead_letters (id, tenant_id, consumer, event_id, topic, payload, error, failed_at, occurred_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+			id, uuid.UUID(e.TenantID), c.Name, e.ID, e.Topic, []byte(e.Payload), msg, d.opts.Clock.Now().UTC(), e.OccurredAt)
 		if err != nil {
 			return fmt.Errorf("outbox: guardando dead letter: %w", err)
 		}

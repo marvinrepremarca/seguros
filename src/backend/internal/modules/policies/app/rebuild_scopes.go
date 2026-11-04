@@ -2,10 +2,12 @@ package app
 
 import (
 	"context"
+	"errors"
 
 	"github.com/google/uuid"
 
 	"github.com/marvinrepremarca/seguros/internal/modules/policies/domain"
+	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 )
 
 // rebuildBatch es cuántas pólizas se republican por transacción.
@@ -18,7 +20,18 @@ type ScopeRebuilder struct {
 }
 
 // Run devuelve cuántas pólizas republicó.
-func (r *ScopeRebuilder) Run(ctx context.Context) (int, error) {
+func (r *ScopeRebuilder) Run(ctx context.Context, operator, reason string) (int, error) {
+	if operator == "" || reason == "" {
+		return 0, errors.New("policies: la reconstrucción exige operador y motivo")
+	}
+	if err := r.Store.WithinTenant(ctx, func(ctx context.Context, uow UnitOfWork) error {
+		return uow.Audit(ctx, audit.Entry{
+			Action: "policies.scope.rebuilt", ResourceType: "policies.portfolio", ResourceID: "all", Outcome: audit.OutcomeSuccess,
+			Details: map[string]string{"operator": operator, "reason": reason},
+		})
+	}); err != nil {
+		return 0, err
+	}
 	total := 0
 	after := uuid.NullUUID{}
 	for {

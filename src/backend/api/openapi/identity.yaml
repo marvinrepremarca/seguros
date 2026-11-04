@@ -22,6 +22,11 @@ paths:
           required: false
           description: Ruta relativa de la SPA a la que volver tras el login.
           schema: { type: string, maxLength: 512 }
+        - name: reauth
+          in: query
+          required: false
+          description: Pide autenticarse de nuevo aunque haya sesión en el proveedor (tras exigir MFA).
+          schema: { type: boolean }
       responses:
         "302":
           description: Redirección al proveedor de identidad.

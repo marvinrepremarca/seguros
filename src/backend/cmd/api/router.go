@@ -34,6 +34,24 @@ type routerDeps struct {
 	SPA http.Handler
 }
 
+// isAgentChange indica los traspasos y cambios de asesor.
+func isAgentChange(r *http.Request) bool {
+	p := r.URL.Path
+	return r.Method == http.MethodPost && (p == "/api/v1/policies/portfolio-transfers" ||
+		(strings.HasPrefix(p, "/api/v1/policies/policies/") && strings.HasSuffix(p, "/agent")) ||
+		strings.HasSuffix(p, "/responsible-agent"))
+}
+
+// isNameSearch indica la búsqueda de clientes por nombre.
+func isNameSearch(r *http.Request) bool {
+	return r.Method == http.MethodGet && r.URL.Path == "/api/v1/parties/parties" && r.URL.Query().Has("q")
+}
+
+// isAgentList indica el listado de asesores, que consulta al proveedor de identidad.
+func isAgentList(r *http.Request) bool {
+	return r.Method == http.MethodGet && r.URL.Path == "/api/v1/policies/agents"
+}
+
 // isDocumentLookup indica las rutas que leen o confirman un número de documento: revelarlo, buscarlo,
 // y registrar o rectificar un tercero (un documento repetido responde 409).
 func isDocumentLookup(r *http.Request) bool {
@@ -68,6 +86,10 @@ func buildRouter(d routerDeps) (*chi.Mux, error) {
 		// Datos Restringidos: por usuario, para frenar la extracción masiva de documentos.
 		r.Use(httpx.RateLimitByUser(isDocumentLookup, 30, time.Minute))
 		r.Use(httpx.RateLimitByTenant(isDocumentLookup, 300, time.Minute))
+		// Cada traspaso escribe y dispara lotes; la búsqueda por nombre permite extraer clientes.
+		r.Use(httpx.RateLimitByUser(isAgentChange, 10, time.Minute))
+		r.Use(httpx.RateLimitByUser(isNameSearch, 60, time.Minute))
+		r.Use(httpx.RateLimitByUser(isAgentList, 60, time.Minute))
 		mountErr = errors.Join(d.Identity.Server.Mount(r), d.FeatureMgmt.Mount(r), d.Parties.Mount(r), d.Catalog.Mount(r), d.Policies.Mount(r))
 	})
 	if mountErr != nil {

@@ -69,9 +69,9 @@ func Consumers(database *db.DB, recorder *audit.Recorder, writer *outbox.Writer,
 }
 
 // RebuildScopes republica el alcance de las pólizas del tenant del contexto (rol seguros_worker).
-func RebuildScopes(ctx context.Context, database *db.DB, recorder *audit.Recorder, writer *outbox.Writer) (int, error) {
+func RebuildScopes(ctx context.Context, database *db.DB, recorder *audit.Recorder, writer *outbox.Writer, operator, reason string) (int, error) {
 	r := &app.ScopeRebuilder{Store: postgres.NewStore(database, recorder, writer)}
-	return r.Run(ctx)
+	return r.Run(ctx, operator, reason)
 }
 
 // RegisterJobs añade el vencimiento diario de pólizas al worker (rol seguros_worker).

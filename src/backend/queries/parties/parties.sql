@@ -84,6 +84,7 @@ WITH moved AS (
     UPDATE parties.parties
     SET responsible_agent_id = @to_agent, updated_at = @updated_at, updated_by = @actor, version = version + 1
     WHERE tenant_id = @tenant_id AND responsible_agent_id = @from_agent
+      AND created_at <= @requested_at
       AND NOT EXISTS (
           SELECT 1 FROM parties.party_responsible_history h
           WHERE h.tenant_id = parties.parties.tenant_id AND h.party_id = parties.parties.id
