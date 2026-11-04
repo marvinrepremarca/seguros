@@ -9,7 +9,7 @@ GO_MOD   := github.com/marvinrepremarca/seguros
 COMPOSE  := deploy/scripts/compose.sh
 
 .PHONY: help generate generate-sqlc generate-openapi fmt fmt-check lint arch test test-integration \
-        check vuln licenses migrate-up migrate-status run-api run-worker e2e-full dev-seed platformctl dev-env dev-up dev-down dev-status dev-logs
+        check vuln licenses migrate-up migrate-status run-api run-worker e2e-full e2e-mfa dev-seed platformctl dev-env dev-up dev-down dev-status dev-logs
 
 help: ## Lista los targets
 	@grep -hE '^[a-zA-Z_-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-18s %s\n", $$1, $$2}'
@@ -78,6 +78,9 @@ run-api: ## Ejecuta la API local contra las dependencias de desarrollo
 
 run-worker: ## Ejecuta el worker local (rol seguros_worker) contra las dependencias de desarrollo
 	cd $(BACKEND) && SEGUROS_DB_URL="$$($(DEV_DB_URL) worker)" $(CURDIR)/deploy/scripts/with-dev-env.sh go run ./cmd/worker
+
+e2e-mfa: ## E2E del segundo factor contra Keycloak real, con la API exigiendo MFA
+	E2E_MFA=1 SEGUROS_AUTH_MFA_REQUIRED=true deploy/scripts/e2e-full.sh e2e/mfa.spec.ts
 
 e2e-full: ## E2E de punta a punta: migra, crea el tenant de prueba, levanta la API y corre Playwright
 	deploy/scripts/e2e-full.sh

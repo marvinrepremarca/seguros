@@ -22,3 +22,17 @@ if [[ -z "$id" ]]; then
 fi
 kc add-roles -r "$realm" --uusername service-account-seguros-directory --cclientid realm-management \
   --rolename view-users --rolename query-users --rolename view-realm >/dev/null 2>&1
+
+# MFA por rol (N13). En desarrollo solo se liga a un rol de prueba: los demás usuarios de los E2E entran
+# sin segundo factor. mfa.dev se recrea en cada corrida para que deba configurarlo desde cero.
+kc get roles/MfaDevTest -r "$realm" >/dev/null 2>&1 || kc create roles -r "$realm" -s name=MfaDevTest >/dev/null 2>&1
+"$dir/scripts/keycloak-mfa.sh" "$realm" MfaDevTest
+old="$(kc get users -r "$realm" -q username=mfa.dev -q exact=true --fields id --format csv --noquotes 2>/dev/null | tr -d '\r')"
+[[ -z "$old" ]] || kc delete "users/$old" -r "$realm" >/dev/null 2>&1
+kc create users -r "$realm" -s username=mfa.dev -s enabled=true -s email=mfa.dev@example.test -s emailVerified=true \
+  -s firstName=Mfa -s lastName=Dev >/dev/null 2>&1
+kc set-password -r "$realm" --username mfa.dev --new-password "$(get KC_TEST_USER_PASSWORD)" >/dev/null 2>&1
+kc add-roles -r "$realm" --uusername mfa.dev --rolename Operations --rolename MfaDevTest >/dev/null 2>&1
+user="$(kc get users -r "$realm" -q username=mfa.dev -q exact=true --fields id --format csv --noquotes 2>/dev/null | tr -d '\r')"
+org="$(kc get organizations -r "$realm" --fields id --format csv --noquotes 2>/dev/null | tr -d '\r' | head -1)"
+printf '"%s"' "$user" | kc create "organizations/$org/members" -r "$realm" -f - >/dev/null 2>&1

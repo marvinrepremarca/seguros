@@ -35,7 +35,7 @@ export function loginErrorMessage(code: string | undefined): string | null {
     case "":
       return null;
     case "identity.login.mfa_required":
-      return "Tu rol exige verificación en dos pasos. Configura un segundo factor en tu cuenta e inténtalo de nuevo.";
+      return "Tu rol exige verificación en dos pasos. Inicia sesión de nuevo e ingresa tu código.";
     case "identity.login.tenant_unavailable":
       return "Tu agencia no tiene acceso activo. Comunícate con el administrador de la plataforma.";
     case "identity.login.organization_required":
