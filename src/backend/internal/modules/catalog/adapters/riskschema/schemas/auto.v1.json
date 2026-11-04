@@ -1,0 +1,8 @@
+{"type":"object","x-label":"Autos","additionalProperties":false,"required":["plate","brand","model","year"],"properties":{
+"plate":{"type":"string","x-label":"Placa","x-order":1,"pattern":"^[A-Z]{3}[0-9]{2}[0-9A-Z]$"},
+"brand":{"type":"string","x-label":"Marca","x-order":2,"minLength":1,"maxLength":60},
+"model":{"type":"string","x-label":"Modelo","x-order":3,"minLength":1,"maxLength":60},
+"year":{"type":"integer","x-label":"Año","x-order":4,"minimum":1950,"maximum":2100},
+"use":{"type":"string","x-label":"Uso","x-order":5,"maxLength":60},
+"city":{"type":"string","x-label":"Ciudad de circulación","x-order":6,"maxLength":100},
+"driver":{"type":"string","x-label":"Conductor","x-order":7,"maxLength":200}}}

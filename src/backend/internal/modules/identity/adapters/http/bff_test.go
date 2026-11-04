@@ -1,6 +1,7 @@
 package identityhttp_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -31,15 +32,78 @@ import (
 	"github.com/marvinrepremarca/seguros/test/oidctest"
 )
 
-const publicURL = "https://app.example.test"
+const (
+	publicURL       = "https://app.example.test"
+	revalidateEvery = 5 * time.Minute
+)
 
 type fakeTenants struct {
 	mu     sync.Mutex
 	tenant tenancy.TenantInfo
+	// resolveErr simula una falla de la BD del directorio de tenants.
+	resolveErr error
 }
 
-func (f *fakeTenants) ResolveByOrgAlias(context.Context, string) (tenancy.TenantInfo, error) {
-	return tenancy.TenantInfo{}, nil
+func (f *fakeTenants) failResolve(err error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.resolveErr = err
+}
+
+// fakeCipher deja reconocible lo cifrado y puede fallar como un servicio de llaves caído.
+type fakeCipher struct {
+	mu   sync.Mutex
+	down bool
+}
+
+func (f *fakeCipher) setDown(v bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.down = v
+}
+
+func (*fakeCipher) EncryptFor(_ context.Context, _, _ string, plaintext []byte) ([]byte, error) {
+	return append([]byte("sealed:"), plaintext...), nil
+}
+
+func (f *fakeCipher) DecryptFor(_ context.Context, _, _ string, ciphertext []byte) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	rest, ok := bytes.CutPrefix(ciphertext, []byte("sealed:"))
+	if f.down || !ok {
+		return nil, errors.New("sin llave")
+	}
+	return rest, nil
+}
+
+type fakeMembers struct {
+	mu   sync.Mutex
+	left []kernel.UserID
+}
+
+func (f *fakeMembers) MarkLeftOrganization(_ context.Context, _ kernel.TenantID, user kernel.UserID, _ time.Time) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.left = append(f.left, user)
+	return nil
+}
+
+func (f *fakeMembers) count() int {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return len(f.left)
+}
+
+func (f *fakeTenants) ResolveByOrgAlias(_ context.Context, alias string) (tenancy.TenantInfo, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.resolveErr != nil {
+		return tenancy.TenantInfo{}, f.resolveErr
+	}
+	if alias != "agencia-x" {
+		return tenancy.TenantInfo{}, tenancy.ErrTenantNotFound
+	}
+	return f.tenant, nil
 }
 
 func (f *fakeTenants) Get(_ context.Context, id kernel.TenantID) (tenancy.TenantInfo, error) {
@@ -73,6 +137,9 @@ type env struct {
 	router  http.Handler
 	tenants *fakeTenants
 	login   *fakeLogin
+	clock   *kernel.FakeClock
+	members *fakeMembers
+	cipher  *fakeCipher
 }
 
 func newEnv(t *testing.T) *env {
@@ -96,18 +163,23 @@ func newEnv(t *testing.T) *env {
 		UserID: kernel.UserID(uuid.Must(uuid.NewV7())), TenantID: tenant.ID, Plan: "profesional",
 		Roles: []authz.Role{authz.RoleManager}, DisplayName: "Ana",
 	}}
+	members := &fakeMembers{}
+	cipher := &fakeCipher{}
 	logger := slog.New(slog.DiscardHandler)
+	clock := kernel.NewFakeClock(time.Now().UTC()) //nolint:forbidigo // solo decide cuándo revalidar; go-oidc usa el reloj real
 	sessions := identityhttp.NewSessionManager(identityhttp.SessionOptions{Store: memstore.New(), IdleTimeout: 30 * time.Minute, Lifetime: 8 * time.Hour})
 	srv := identityhttp.NewServer(identityhttp.Options{
-		Provider: provider, Login: login, Tenants: tenants, Policy: policy, Sessions: sessions,
-		AuthTx: identityhttp.NewAuthTxManager(memstore.New()), Guard: guard, PublicURL: publicURL, Logger: logger,
+		Provider: provider, Cipher: cipher, Login: login, Tenants: tenants, Policy: policy, Sessions: sessions,
+		AuthTx: identityhttp.NewAuthTxManager(memstore.New()), Guard: guard, PublicURL: publicURL, Clock: clock, Logger: logger,
 	})
 	root := httpx.NewRouter(httpx.RouterOptions{Logger: logger, Clock: kernel.SystemClock{}, MaxBodyBytes: 1 << 20})
 	root.Group(func(r chi.Router) {
-		r.Use(sessions.LoadAndSave, identityhttp.NewAuthenticator(sessions, tenants, policy, logger).Middleware, identityhttp.CSRF(sessions, publicURL))
+		r.Use(sessions.LoadAndSave, identityhttp.NewAuthenticator(identityhttp.AuthenticatorOptions{
+			Sessions: sessions, Tenants: tenants, Policy: policy, Provider: provider, Members: members, Cipher: cipher, Clock: clock, Interval: revalidateEvery, Logger: logger,
+		}).Middleware, identityhttp.CSRF(sessions, publicURL))
 		require.NoError(t, srv.Mount(r))
 	})
-	return &env{op: op, router: root, tenants: tenants, login: login}
+	return &env{op: op, router: root, tenants: tenants, login: login, clock: clock, members: members, cipher: cipher}
 }
 
 // browser guarda cookies manualmente: las cookies __Host- son Secure y httptest usa http.
@@ -215,7 +287,9 @@ func TestLoginSessionAndLogout(t *testing.T) {
 	assert.Equal(t, "Ana", me.User.DisplayName)
 	assert.Equal(t, "profesional", me.Tenant.Plan)
 	assert.Equal(t, []string{"Manager"}, me.Roles)
-	assert.Equal(t, []string{string(authz.FeatureFlagRead)}, me.Permissions)
+	// Los permisos salen de los roles según la política (crece con cada módulo).
+	assert.Contains(t, me.Permissions, string(authz.FeatureFlagRead))
+	assert.NotContains(t, me.Permissions, string(authz.FeatureFlagUpdate), "Manager no cambia flags")
 	csrf := cookie(t, res, identityhttp.CSRFCookie)
 	assert.False(t, csrf.HttpOnly, "la SPA debe leer el token anti-CSRF")
 	assert.True(t, csrf.Secure)
@@ -378,4 +452,187 @@ func TestSanitizeReturnTo(t *testing.T) {
 	for in, want := range tests {
 		assert.Equal(t, want, identityhttp.SanitizeReturnTo(in), "entrada %q", in)
 	}
+}
+
+func meRoles(t *testing.T, e *env, b *browser) (int, []string) {
+	t.Helper()
+	res := b.do(t, e.router, http.MethodGet, "/bff/me", nil)
+	if res.Code != http.StatusOK {
+		return res.Code, nil
+	}
+	var me struct {
+		Roles []string `json:"roles"`
+	}
+	require.NoError(t, json.NewDecoder(res.Body).Decode(&me))
+	return res.Code, me.Roles
+}
+
+// Una baja o un cambio en Keycloak se aplica como máximo en un intervalo de revalidación.
+func TestSessionIsRevalidatedWithTheProvider(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name   string
+		change func(*env)
+		status int
+		roles  []string
+	}{
+		{"usuario deshabilitado", func(e *env) { e.op.Revoke("kc-1") }, http.StatusUnauthorized, nil},
+		{"sale de la organización", func(e *env) {
+			c := claims()
+			c.Organizations = []string{"otra-agencia"}
+			e.op.SetClaims(c)
+		}, http.StatusUnauthorized, nil},
+		{"se queda sin roles", func(e *env) {
+			c := claims()
+			c.Roles = nil
+			e.op.SetClaims(c)
+		}, http.StatusUnauthorized, nil},
+		{"pasa a un rol sin MFA nueva", func(e *env) {
+			c := claims()
+			c.Roles = []string{"Manager", "Collections"}
+			e.op.SetClaims(c)
+		}, http.StatusOK, []string{"Collections", "Manager"}},
+		{"gana un rol que exige MFA: debe volver a entrar", func(e *env) {
+			c := claims()
+			c.Roles = []string{"Manager", "Accounting"}
+			e.op.SetClaims(c)
+		}, http.StatusUnauthorized, nil},
+		{"pierde un rol", func(e *env) {
+			c := claims()
+			c.Roles = []string{"SalesAgent"}
+			e.op.SetClaims(c)
+		}, http.StatusOK, []string{"SalesAgent"}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			e := newEnv(t)
+			b := newBrowser()
+			e.loginFlow(t, b, "/", claims())
+			c.change(e)
+
+			e.clock.Advance(revalidateEvery - time.Second)
+			status, roles := meRoles(t, e, b)
+			assert.Equal(t, http.StatusOK, status, "dentro del intervalo no se consulta al proveedor")
+			assert.Equal(t, []string{"Manager"}, roles)
+
+			e.clock.Advance(time.Second)
+			status, roles = meRoles(t, e, b)
+			assert.Equal(t, c.status, status)
+			assert.Equal(t, c.roles, roles)
+		})
+	}
+}
+
+func TestProviderOutageDoesNotCallTheProviderOnEveryRequest(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	b := newBrowser()
+	e.loginFlow(t, b, "/", claims())
+	e.op.SetUnavailable(true)
+	e.clock.Advance(revalidateEvery)
+	before := e.op.Refreshes()
+
+	for range 3 {
+		status, _ := meRoles(t, e, b)
+		require.Equal(t, http.StatusOK, status)
+	}
+	assert.Equal(t, before+1, e.op.Refreshes(), "tras la falla se espera antes de volver a intentar")
+
+	e.clock.Advance(31 * time.Second)
+	status, _ := meRoles(t, e, b)
+	require.Equal(t, http.StatusOK, status)
+	assert.Equal(t, before+2, e.op.Refreshes(), "pasada la espera se reintenta")
+
+	e.clock.Advance(3 * revalidateEvery)
+	status, _ = meRoles(t, e, b)
+	assert.Equal(t, http.StatusUnauthorized, status, "la espera no alarga la gracia")
+}
+
+func TestLeavingTheOrganizationIsRecorded(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	b := newBrowser()
+	e.loginFlow(t, b, "/", claims())
+	c := claims()
+	c.Organizations = []string{"otra-agencia"}
+	e.op.SetClaims(c)
+	e.clock.Advance(revalidateEvery)
+	status, _ := meRoles(t, e, b)
+	assert.Equal(t, http.StatusUnauthorized, status)
+	assert.Equal(t, 1, e.members.count())
+}
+
+// Una falla de la BD no se confunde con una salida de la organización.
+func TestDirectoryFailureIsToleratedOnlyWithinTheGrace(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	b := newBrowser()
+	e.loginFlow(t, b, "/", claims())
+	e.tenants.failResolve(errors.New("bd caída"))
+	e.clock.Advance(revalidateEvery)
+	status, _ := meRoles(t, e, b)
+	assert.Equal(t, http.StatusOK, status)
+	assert.Zero(t, e.members.count())
+
+	e.clock.Advance(2 * revalidateEvery)
+	status, _ = meRoles(t, e, b)
+	assert.Equal(t, http.StatusUnauthorized, status)
+	assert.Zero(t, e.members.count())
+}
+
+func TestKeyServiceOutageIsToleratedOnlyWithinTheGrace(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	b := newBrowser()
+	e.loginFlow(t, b, "/", claims())
+	e.cipher.setDown(true)
+	e.clock.Advance(revalidateEvery)
+	status, _ := meRoles(t, e, b)
+	assert.Equal(t, http.StatusOK, status)
+	e.clock.Advance(2 * revalidateEvery)
+	status, _ = meRoles(t, e, b)
+	assert.Equal(t, http.StatusUnauthorized, status)
+}
+
+func TestProviderOutageIsToleratedOnlyWithinTheGrace(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	b := newBrowser()
+	e.loginFlow(t, b, "/", claims())
+	e.op.SetUnavailable(true)
+
+	e.clock.Advance(2 * revalidateEvery)
+	status, _ := meRoles(t, e, b)
+	assert.Equal(t, http.StatusOK, status, "un corte breve no expulsa a todos")
+
+	e.op.SetUnavailable(false)
+	e.clock.Advance(time.Second)
+	status, _ = meRoles(t, e, b)
+	require.Equal(t, http.StatusOK, status, "se recupera y reinicia el plazo")
+
+	e.op.SetUnavailable(true)
+	e.clock.Advance(3 * revalidateEvery)
+	status, _ = meRoles(t, e, b)
+	assert.Equal(t, http.StatusUnauthorized, status, "sin confirmación más allá de la gracia se cierra la sesión")
+}
+
+// scs guarda la sesión al escribir la respuesta: un cliente que ya se fue no es un error del servidor.
+func TestSessionSaveFailureForAGoneClientIsNotAServerError(t *testing.T) {
+	t.Parallel()
+	var logs strings.Builder
+	sessions := identityhttp.NewSessionManager(identityhttp.SessionOptions{
+		Store: memstore.New(), IdleTimeout: time.Minute, Lifetime: time.Hour, Logger: slog.New(slog.NewTextHandler(&logs, nil)),
+	})
+	gone, cancel := context.WithCancel(context.Background())
+	cancel()
+	rec := httptest.NewRecorder()
+	sessions.ErrorFunc(rec, httptest.NewRequestWithContext(gone, http.MethodGet, "/x", nil), errors.New("guardando: cliente desconectado"))
+	assert.Equal(t, 499, rec.Code)
+	assert.NotContains(t, logs.String(), "ERROR")
+
+	rec = httptest.NewRecorder()
+	sessions.ErrorFunc(rec, httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/x", nil), errors.New("valkey caído"))
+	assert.Equal(t, http.StatusInternalServerError, rec.Code)
+	assert.Contains(t, logs.String(), "ERROR", "una falla real sí se registra")
 }

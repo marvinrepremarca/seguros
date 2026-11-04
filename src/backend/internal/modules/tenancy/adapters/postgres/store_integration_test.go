@@ -26,8 +26,9 @@ import (
 
 //nolint:gochecknoglobals // compartidos por la suite (TestMain)
 var (
-	database *db.DB // rol seguros_platform
-	appDB    *db.DB // rol seguros_app (API)
+	database *db.DB    // rol seguros_platform
+	appDB    *db.DB    // rol seguros_app (API)
+	pgSuper  *pgx.Conn // superusuario: solo para verificar messaging.outbox (la app no lo lee)
 )
 
 func TestMain(m *testing.M) { os.Exit(runMain(m)) }
@@ -56,6 +57,12 @@ func runMain(m *testing.M) int {
 		return 1
 	}
 	defer appDB.Close()
+	pgSuper, err = pgx.Connect(ctx, env.SuperuserURL)
+	if err != nil {
+		slog.Error("abriendo BD", "error", err)
+		return 1
+	}
+	defer pgSuper.Close(ctx) //nolint:errcheck // limpieza al final de la suite
 	return m.Run()
 }
 
@@ -71,15 +78,15 @@ func TestProvisionResolveAndUpdate(t *testing.T) {
 	ctx := context.Background()
 	alias := uniqueAlias()
 
-	id, err := mod.Provision.Handle(ctx, app.ProvisionTenantCommand{Name: "Agencia", Plan: "basico", OrgAlias: alias})
+	id, err := mod.Provision.Handle(ctx, app.ProvisionTenantCommand{Reason: "prueba", Operator: "ops.test", Name: "Agencia", Plan: "basico", OrgAlias: alias})
 	require.NoError(t, err)
 
 	info, err := mod.Directory.ResolveByOrgAlias(ctx, alias)
 	require.NoError(t, err)
 	assert.Equal(t, contracts.TenantInfo{ID: id, Plan: "basico", Active: true}, info)
 
-	require.NoError(t, mod.ChangeStatus.Handle(ctx, app.ChangeTenantStatusCommand{OrgAlias: alias, Suspend: true}))
-	require.NoError(t, mod.ChangePlan.Handle(ctx, app.ChangeTenantPlanCommand{OrgAlias: alias, Plan: "empresarial"}))
+	require.NoError(t, mod.ChangeStatus.Handle(ctx, app.ChangeTenantStatusCommand{Reason: "prueba", Operator: "ops.test", OrgAlias: alias, Suspend: true}))
+	require.NoError(t, mod.ChangePlan.Handle(ctx, app.ChangeTenantPlanCommand{Reason: "prueba", Operator: "ops.test", OrgAlias: alias, Plan: "empresarial"}))
 	info, err = mod.Directory.Get(ctx, id)
 	require.NoError(t, err)
 	assert.Equal(t, contracts.TenantInfo{ID: id, Plan: "empresarial", Active: false}, info)
@@ -87,7 +94,7 @@ func TestProvisionResolveAndUpdate(t *testing.T) {
 	_, err = mod.Directory.ResolveByOrgAlias(ctx, "no-vinculada")
 	require.ErrorIs(t, err, contracts.ErrTenantNotFound)
 
-	_, err = mod.Provision.Handle(ctx, app.ProvisionTenantCommand{Name: "Otra", Plan: "basico", OrgAlias: alias})
+	_, err = mod.Provision.Handle(ctx, app.ProvisionTenantCommand{Reason: "prueba", Operator: "ops.test", Name: "Otra", Plan: "basico", OrgAlias: alias})
 	require.ErrorIs(t, err, domain.ErrOrgAliasTaken)
 }
 
@@ -96,9 +103,9 @@ func TestTenantIsolation(t *testing.T) {
 	t.Parallel()
 	mod := newModule()
 	ctx := context.Background()
-	idA, err := mod.Provision.Handle(ctx, app.ProvisionTenantCommand{Name: "A", Plan: "basico", OrgAlias: uniqueAlias()})
+	idA, err := mod.Provision.Handle(ctx, app.ProvisionTenantCommand{Reason: "prueba", Operator: "ops.test", Name: "A", Plan: "basico", OrgAlias: uniqueAlias()})
 	require.NoError(t, err)
-	idB, err := mod.Provision.Handle(ctx, app.ProvisionTenantCommand{Name: "B", Plan: "basico", OrgAlias: uniqueAlias()})
+	idB, err := mod.Provision.Handle(ctx, app.ProvisionTenantCommand{Reason: "prueba", Operator: "ops.test", Name: "B", Plan: "basico", OrgAlias: uniqueAlias()})
 	require.NoError(t, err)
 
 	ctxB := reqctx.WithTenantID(ctx, idB)
@@ -127,7 +134,7 @@ func TestAppRoleLimits(t *testing.T) {
 	t.Parallel()
 	mod := newModule()
 	ctx := context.Background()
-	id, err := mod.Provision.Handle(ctx, app.ProvisionTenantCommand{Name: "A", Plan: "basico", OrgAlias: uniqueAlias()})
+	id, err := mod.Provision.Handle(ctx, app.ProvisionTenantCommand{Reason: "prueba", Operator: "ops.test", Name: "A", Plan: "basico", OrgAlias: uniqueAlias()})
 	require.NoError(t, err)
 	ctxA := reqctx.WithTenantID(ctx, id)
 
@@ -146,7 +153,7 @@ func TestAppRoleLimits(t *testing.T) {
 
 func TestAPIRoleCannotChangeTenants(t *testing.T) {
 	t.Parallel()
-	id, err := newModule().Provision.Handle(context.Background(), app.ProvisionTenantCommand{Name: "Agencia", Plan: "basico", OrgAlias: uniqueAlias()})
+	id, err := newModule().Provision.Handle(context.Background(), app.ProvisionTenantCommand{Reason: "prueba", Operator: "ops.test", Name: "Agencia", Plan: "basico", OrgAlias: uniqueAlias()})
 	require.NoError(t, err)
 	ctx := reqctx.WithTenantID(context.Background(), id)
 	err = appDB.WithTenantTx(ctx, func(tx pgx.Tx) error {
@@ -158,4 +165,47 @@ func TestAPIRoleCannotChangeTenants(t *testing.T) {
 	info, err := tenancy.New(appDB, kernel.SystemClock{}).Directory.Get(context.Background(), id)
 	require.NoError(t, err, "la API sí lee su propio tenant")
 	assert.Equal(t, "basico", info.Plan)
+}
+
+// Alta, plan y suspensión quedan en audit.events y messaging.outbox con el rol seguros_platform, en
+// la misma transacción; si el cambio falla no queda rastro.
+func TestPlatformOperationsLeaveAuditAndOutbox(t *testing.T) {
+	t.Parallel()
+	mod := newModule()
+	alias := uniqueAlias()
+	base := context.Background()
+	id, err := mod.Provision.Handle(base, app.ProvisionTenantCommand{Reason: "prueba", Operator: "ops.test", Name: "A", Plan: "basico", OrgAlias: alias})
+	require.NoError(t, err)
+	require.NoError(t, mod.ChangePlan.Handle(base, app.ChangeTenantPlanCommand{Reason: "upgrade", Operator: "ana.ops", OrgAlias: alias, Plan: "empresarial"}))
+	require.NoError(t, mod.ChangeStatus.Handle(base, app.ChangeTenantStatusCommand{Reason: "impago", Operator: "ana.ops", OrgAlias: alias, Suspend: true}))
+	err = mod.ChangeStatus.Handle(base, app.ChangeTenantStatusCommand{Reason: "repetida", Operator: "ana.ops", OrgAlias: alias, Suspend: true})
+	require.ErrorIs(t, err, domain.ErrInvalidTransition)
+
+	ctx := reqctx.WithTenantID(base, id)
+	require.NoError(t, database.WithTenantTx(ctx, func(tx pgx.Tx) error {
+		rows, err := tx.Query(ctx, `
+			SELECT action, details->>'reason', details->>'operator', actor_type
+			FROM audit.events WHERE tenant_id = $1 AND resource_type = 'tenancy.tenant' ORDER BY id`, uuid.UUID(id))
+		if err != nil {
+			return err
+		}
+		defer rows.Close()
+		var got [][4]string
+		for rows.Next() {
+			var r [4]string
+			if err := rows.Scan(&r[0], &r[1], &r[2], &r[3]); err != nil {
+				return err
+			}
+			got = append(got, r)
+		}
+		assert.Equal(t, [][4]string{
+			{"tenancy.tenant.provisioned", "prueba", "ops.test", "system"},
+			{"tenancy.tenant.plan_changed", "upgrade", "ana.ops", "system"},
+			{"tenancy.tenant.suspended", "impago", "ana.ops", "system"},
+		}, got)
+		return rows.Err()
+	}))
+	var events int
+	require.NoError(t, pgSuper.QueryRow(base, `SELECT count(*) FROM messaging.outbox WHERE tenant_id = $1`, uuid.UUID(id)).Scan(&events))
+	assert.Equal(t, 3, events)
 }

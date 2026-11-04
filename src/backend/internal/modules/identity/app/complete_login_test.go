@@ -113,7 +113,7 @@ func handler(store *fakeStore, mfa bool) *app.CompleteLoginHandler {
 func cmd(mut ...func(*app.CompleteLoginCommand)) app.CompleteLoginCommand {
 	c := app.CompleteLoginCommand{
 		Subject: "kc-1", Profile: domain.Profile{Email: "ana@example.test", DisplayName: "Ana"},
-		Roles: []string{"Operations", "Desconocido"}, Organizations: []string{"agencia-x"}, AuthMethods: []string{"pwd"},
+		Roles: []string{"Collections", "Desconocido"}, Organizations: []string{"agencia-x"}, AuthMethods: []string{"pwd"},
 	}
 	for _, m := range mut {
 		m(&c)
@@ -129,7 +129,7 @@ func TestCompleteLoginProvisionsUserAndAudits(t *testing.T) {
 
 	assert.Equal(t, activeTenant.ID, res.TenantID)
 	assert.Equal(t, "profesional", res.Plan)
-	assert.Equal(t, []authz.Role{authz.RoleOperations}, res.Roles, "roles desconocidos descartados")
+	assert.Equal(t, []authz.Role{authz.RoleCollections}, res.Roles, "roles desconocidos descartados")
 	assert.Equal(t, "Ana", res.DisplayName)
 	require.Contains(t, store.users, "kc-1")
 	assert.Equal(t, res.UserID, store.users["kc-1"].ID())
@@ -237,4 +237,14 @@ func TestCompleteLoginRejectsInvalidProfile(t *testing.T) {
 		c.Profile = domain.Profile{}
 	}))
 	require.ErrorIs(t, err, domain.ErrInvalidDisplayName)
+}
+
+// DECISIONS N13: Operaciones revela documentos, así que exige MFA.
+func TestCompleteLoginRequiresMFAForOperations(t *testing.T) {
+	t.Parallel()
+	_, err := handler(newStore(), true).Handle(context.Background(), cmd(func(c *app.CompleteLoginCommand) {
+		c.Roles = []string{"Operations"}
+		c.AuthMethods = []string{"pwd"}
+	}))
+	require.ErrorIs(t, err, app.ErrMFARequired)
 }

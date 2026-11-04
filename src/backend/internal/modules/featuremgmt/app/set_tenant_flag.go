@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt/contracts"
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt/domain"
@@ -18,6 +19,9 @@ type SetTenantFlagCommand struct {
 	Key     flags.Key
 	Enabled *bool
 	Reason  string
+	// Operator y ConfirmControl son obligatorios para apagar un flag de control (ADR 0012).
+	Operator       string
+	ConfirmControl string
 }
 
 // SetTenantFlagHandler cambia overrides de un tenant con un actor fijo: la API construye uno de
@@ -92,6 +96,17 @@ func (s *SetTenantFlagHandler) Handle(ctx context.Context, cmd SetTenantFlagComm
 		if err := s.checkDependencies(def, before, after, info.Plan, next); err != nil {
 			return err
 		}
+		// Se decide por el resultado: apagar y limpiar un override pueden dejar el control apagado (ADR 0012).
+		operator := strings.TrimSpace(cmd.Operator)
+		turnsOffControl := def.Control && prev.Enabled && !next.Enabled
+		if turnsOffControl {
+			if cmd.ConfirmControl != string(cmd.Key) {
+				return domain.ErrControlConfirmationRequired
+			}
+			if operator == "" || len(operator) > 120 {
+				return domain.ErrInvalidOperator
+			}
+		}
 
 		now := s.clock.Now()
 		if cmd.Enabled == nil {
@@ -106,13 +121,17 @@ func (s *SetTenantFlagHandler) Handle(ctx context.Context, cmd SetTenantFlagComm
 		if cmd.Enabled != nil {
 			override = strconv.FormatBool(*cmd.Enabled)
 		}
+		details := map[string]string{
+			"previous": strconv.FormatBool(prev.Enabled), "new": strconv.FormatBool(next.Enabled),
+			"override": override, "source": string(next.Source), "reason": truncate(string(reason), 200),
+			"actor": actorName(actor),
+		}
+		if turnsOffControl {
+			details["operator"] = operator
+		}
 		if err := uow.Audit(ctx, audit.Entry{
 			Action: "featuremgmt.flag.updated", ResourceType: "featuremgmt.flag", ResourceID: string(cmd.Key),
-			Outcome: audit.OutcomeSuccess, Details: map[string]string{
-				"previous": strconv.FormatBool(prev.Enabled), "new": strconv.FormatBool(next.Enabled),
-				"override": override, "source": string(next.Source), "reason": truncate(string(reason), 200),
-				"actor": actorName(actor),
-			},
+			Outcome: audit.OutcomeSuccess, Details: details,
 		}); err != nil {
 			return err
 		}

@@ -13,6 +13,34 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const getUserByID = `-- name: GetUserByID :one
+SELECT id, idp_subject, display_name, left_organization_at FROM identity.users WHERE tenant_id = $1 AND id = $2
+`
+
+type GetUserByIDParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+type GetUserByIDRow struct {
+	ID                 uuid.UUID
+	IdpSubject         string
+	DisplayName        string
+	LeftOrganizationAt *time.Time
+}
+
+func (q *Queries) GetUserByID(ctx context.Context, arg GetUserByIDParams) (GetUserByIDRow, error) {
+	row := q.db.QueryRow(ctx, getUserByID, arg.TenantID, arg.ID)
+	var i GetUserByIDRow
+	err := row.Scan(
+		&i.ID,
+		&i.IdpSubject,
+		&i.DisplayName,
+		&i.LeftOrganizationAt,
+	)
+	return i, err
+}
+
 const getUserBySubject = `-- name: GetUserBySubject :one
 SELECT id, tenant_id, idp_subject, email, display_name, last_login_at, created_at, updated_at, version
 FROM identity.users
@@ -81,9 +109,62 @@ func (q *Queries) InsertUser(ctx context.Context, arg InsertUserParams) error {
 	return err
 }
 
+const listUsers = `-- name: ListUsers :many
+SELECT id, idp_subject, display_name, left_organization_at FROM identity.users WHERE tenant_id = $1 ORDER BY display_name, id LIMIT 500
+`
+
+type ListUsersRow struct {
+	ID                 uuid.UUID
+	IdpSubject         string
+	DisplayName        string
+	LeftOrganizationAt *time.Time
+}
+
+func (q *Queries) ListUsers(ctx context.Context, tenantID uuid.UUID) ([]ListUsersRow, error) {
+	rows, err := q.db.Query(ctx, listUsers, tenantID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUsersRow{}
+	for rows.Next() {
+		var i ListUsersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.IdpSubject,
+			&i.DisplayName,
+			&i.LeftOrganizationAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const markUserLeftOrganization = `-- name: MarkUserLeftOrganization :exec
+UPDATE identity.users
+SET left_organization_at = $1, updated_at = $1, version = version + 1
+WHERE tenant_id = $2 AND id = $3 AND left_organization_at IS NULL
+`
+
+type MarkUserLeftOrganizationParams struct {
+	LeftAt   *time.Time
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+func (q *Queries) MarkUserLeftOrganization(ctx context.Context, arg MarkUserLeftOrganizationParams) error {
+	_, err := q.db.Exec(ctx, markUserLeftOrganization, arg.LeftAt, arg.TenantID, arg.ID)
+	return err
+}
+
 const updateUserLogin = `-- name: UpdateUserLogin :execrows
 UPDATE identity.users
-SET email = $1, display_name = $2, last_login_at = $3,
+SET email = $1, display_name = $2, last_login_at = $3, left_organization_at = NULL,
     updated_at = $3, updated_by = id, version = version + 1
 WHERE tenant_id = $4 AND id = $5 AND version = $6
 `

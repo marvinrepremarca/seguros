@@ -9,6 +9,10 @@ env="$dir/.env"
 
 touch "$env"
 chmod 600 "$env"
+# Sin salto de línea final, lo siguiente quedaría pegado al último valor.
+if [[ -s "$env" && -n "$(tail -c1 "$env")" ]]; then
+  echo >> "$env"
+fi
 
 while IFS= read -r line; do
   [[ "$line" =~ ^([A-Z0-9_]+)=$ ]] || continue

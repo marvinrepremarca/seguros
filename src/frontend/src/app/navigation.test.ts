@@ -3,6 +3,18 @@ import { describe, expect, it } from "vitest";
 import { MODULE_LABELS, NAV_SECTIONS, visibleSections } from "./navigation";
 
 describe("visibleSections", () => {
+  it("Pólizas se ve con cualquiera de sus dos permisos de lectura", () => {
+    const labels = (perm: string) =>
+      visibleSections(
+        NAV_SECTIONS,
+        () => false,
+        (p) => p === perm,
+      ).flatMap((x) => x.items.map((i) => i.label));
+    expect(labels("policies.policy.read")).toContain("Pólizas");
+    expect(labels("policies.policy.read-own")).toContain("Pólizas");
+    expect(labels("parties.party.read")).not.toContain("Pólizas");
+  });
+
   it("sin flags ni permisos solo queda Inicio", () => {
     const s = visibleSections(
       NAV_SECTIONS,
@@ -22,7 +34,10 @@ describe("visibleSections", () => {
     const labels = s.flatMap((x) => x.items.map((i) => i.label));
     expect(labels).toContain("Comisiones");
     expect(labels).toContain("Funcionalidades");
-    expect(labels).toHaveLength(13); // Inicio + 11 módulos + Funcionalidades
+    expect(labels).toContain("Pólizas");
+    expect(labels).toContain("Catálogo");
+    expect(labels).toContain("Traspaso de cartera");
+    expect(labels).toHaveLength(17); // Inicio, Clientes, Pólizas + 11 módulos + Funcionalidades, Catálogo, Traspaso
   });
 
   it("cada módulo del menú tiene etiqueta", () => {

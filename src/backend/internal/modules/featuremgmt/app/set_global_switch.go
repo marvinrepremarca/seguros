@@ -17,6 +17,8 @@ type SetGlobalSwitchCommand struct {
 	Reason  string
 	// Operator identifica a la persona que ejecuta platformctl (obligatorio; queda en el historial).
 	Operator string
+	// ConfirmControl repite la clave para apagar un flag de control (ADR 0012).
+	ConfirmControl string
 }
 
 // SetGlobalSwitchHandler cambia switches globales (solo plataforma).
@@ -28,8 +30,12 @@ func NewSetGlobalSwitchHandler(d Deps) *SetGlobalSwitchHandler { return &SetGlob
 // Handle cambia un kill switch global. Solo lo invoca cmd/platformctl (rol seguros_platform); el
 // cambio queda en featuremgmt.global_switch_history con operador, valor anterior y nuevo, y motivo.
 func (s *SetGlobalSwitchHandler) Handle(ctx context.Context, cmd SetGlobalSwitchCommand) error {
-	if _, ok := s.reg.Get(cmd.Key); !ok {
+	def, ok := s.reg.Get(cmd.Key)
+	if !ok {
 		return domain.ErrUnknownFlag
+	}
+	if def.Control && cmd.Enabled != nil && !*cmd.Enabled && cmd.ConfirmControl != string(cmd.Key) {
+		return domain.ErrControlConfirmationRequired
 	}
 	reason, err := domain.NewReason(cmd.Reason)
 	if err != nil {

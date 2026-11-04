@@ -13,6 +13,25 @@ export interface SessionData {
 export const permissions = {
   featureFlagRead: "featuremgmt.flag.read",
   featureFlagUpdate: "featuremgmt.flag.update",
+  partyRead: "parties.party.read",
+  partyReadOwn: "parties.party.read-own",
+  partyUpdateOwn: "parties.party.update-own",
+  partyAssign: "parties.party.assign",
+  partyCreate: "parties.party.create",
+  partyUpdate: "parties.party.update",
+  documentReveal: "parties.document.reveal",
+  consentRead: "parties.consent.read",
+  consentCreate: "parties.consent.create",
+  catalogRead: "catalog.item.read",
+  catalogManage: "catalog.item.manage",
+  agreementRead: "catalog.commission-agreement.read",
+  agreementManage: "catalog.commission-agreement.manage",
+  policyRead: "policies.policy.read",
+  policyReadOwn: "policies.policy.read-own",
+  policyManage: "policies.policy.manage",
+  policyCancel: "policies.policy.cancel",
+  policyAssign: "policies.policy.assign",
+  endorsementManage: "policies.endorsement.manage",
 } as const;
 
 export const SessionContext = createContext<SessionData | null>(null);

@@ -1,0 +1,313 @@
+openapi: 3.0.3
+info:
+  title: Seguros — Terceros
+  version: 1.0.0
+  description: |
+    Clientes de la agencia (tomadores, asegurados, beneficiarios) y sus autorizaciones de
+    tratamiento de datos (habeas data). El número de documento es dato Restringido: nunca viaja en
+    URLs; las respuestas solo incluyen sus últimos 4 caracteres y revelarlo se audita.
+    `authenticated` se resuelve en el caso de uso: un asesor solo alcanza a sus clientes (DECISIONS N10).
+servers:
+  - url: /
+paths:
+  /api/v1/parties/parties:
+    get:
+      operationId: listParties
+      summary: Lista terceros (búsqueda opcional por nombre, paginación keyset).
+      x-permission: "parties.party.read|parties.party.read-own"
+      parameters:
+        - { name: q, in: query, schema: { type: string, minLength: 2, maxLength: 100 } }
+        - { name: cursor, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: limit, in: query, schema: { type: integer, format: int32, minimum: 1, maximum: 200, default: 50 } }
+      responses:
+        "200":
+          description: Página de terceros.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PartyPage" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: createParty
+      summary: Registra un tercero.
+      x-permission: parties.party.create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreatePartyRequest" }
+      responses:
+        "201":
+          description: Tercero creado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Party" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+  /api/v1/parties/parties/search-by-document:
+    post:
+      operationId: searchPartyByDocument
+      summary: Busca por documento exacto (POST para que el número no quede en la URL). Se audita.
+      x-permission: "parties.party.read|parties.party.read-own"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DocumentInput" }
+      responses:
+        "200":
+          description: Tercero encontrado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Party" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+  /api/v1/parties/parties/{partyId}:
+    parameters:
+      - { name: partyId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getParty
+      x-permission: "parties.party.read|parties.party.read-own"
+      responses:
+        "200":
+          description: Tercero.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Party" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+    put:
+      operationId: updateParty
+      summary: Rectifica los datos de un tercero (concurrencia optimista por version).
+      x-permission: "parties.party.update|parties.party.update-own"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdatePartyRequest" }
+      responses:
+        "200":
+          description: Tercero actualizado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Party" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+  /api/v1/parties/parties/{partyId}/responsible-agent:
+    parameters:
+      - { name: partyId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: assignPartyResponsible
+      summary: Traspasa el cliente a otro asesor activo. Queda auditado con motivo.
+      x-permission: parties.party.assign
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AssignResponsibleRequest" }
+      responses:
+        "200":
+          description: Tercero actualizado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Party" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+        "503": { $ref: "#/components/responses/Problem" }
+  /api/v1/parties/parties/{partyId}/document/reveal:
+    parameters:
+      - { name: partyId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: revealPartyDocument
+      summary: Devuelve el número de documento completo. Cada lectura queda auditada.
+      x-permission: parties.document.reveal
+      responses:
+        "200":
+          description: Documento completo.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RevealedDocument" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+  /api/v1/parties/parties/{partyId}/consents:
+    parameters:
+      - { name: partyId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listPartyConsents
+      summary: Historial de autorizaciones de tratamiento de datos.
+      x-permission: parties.consent.read
+      responses:
+        "200":
+          description: Autorizaciones, de la más reciente a la más antigua.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                additionalProperties: false
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/Consent" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+    post:
+      operationId: registerPartyConsent
+      summary: Registra una autorización o revocación (Ley 1581/2012). Es inmutable.
+      x-permission: parties.consent.create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterConsentRequest" }
+      responses:
+        "201":
+          description: Registro creado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Consent" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+components:
+  responses:
+    Problem:
+      description: Error (RFC 9457).
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        traceId: { type: string }
+        requestId: { type: string }
+    PartyKind: { type: string, enum: [person, organization] }
+    DocumentType: { type: string, enum: [CC, CE, PPT, NIT] }
+    DocumentInput:
+      type: object
+      required: [documentType, documentNumber]
+      additionalProperties: false
+      properties:
+        documentType: { $ref: "#/components/schemas/DocumentType" }
+        documentNumber: { type: string, minLength: 3, maxLength: 24 }
+    CreatePartyRequest:
+      type: object
+      required: [kind, name, documentType, documentNumber]
+      additionalProperties: false
+      properties:
+        kind: { $ref: "#/components/schemas/PartyKind" }
+        name: { type: string, minLength: 2, maxLength: 200 }
+        documentType: { $ref: "#/components/schemas/DocumentType" }
+        documentNumber: { type: string, minLength: 3, maxLength: 24 }
+        email: { type: string, maxLength: 254 }
+        phone: { type: string, maxLength: 30 }
+        address: { type: string, maxLength: 200 }
+        city: { type: string, maxLength: 100 }
+    UpdatePartyRequest:
+      type: object
+      required: [name, version]
+      additionalProperties: false
+      properties:
+        version: { type: integer, format: int32, minimum: 1 }
+        name: { type: string, minLength: 2, maxLength: 200 }
+        email: { type: string, maxLength: 254 }
+        phone: { type: string, maxLength: 30 }
+        address: { type: string, maxLength: 200 }
+        city: { type: string, maxLength: 100 }
+        document: { $ref: "#/components/schemas/DocumentInput" }
+    TransferReason:
+      type: string
+      description: Catálogo de motivos (DECISIONS N12). Con `other` la nota es obligatoria.
+      enum: [employee_departure, role_change, prolonged_absence, portfolio_redistribution, client_request, branch_change, assignment_correction, other]
+    AssignResponsibleRequest:
+      type: object
+      required: [agentId, reason, version]
+      additionalProperties: false
+      properties:
+        agentId: { type: string, format: uuid }
+        reason: { $ref: "#/components/schemas/TransferReason" }
+        note: { type: string, maxLength: 200, description: "Opcional. Texto libre: no escriba datos de salud ni documentos." }
+        version: { type: integer, format: int32, minimum: 1 }
+    Party:
+      type: object
+      required: [id, kind, name, documentType, documentLast4, version, createdAt, updatedAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        kind: { $ref: "#/components/schemas/PartyKind" }
+        name: { type: string }
+        documentType: { $ref: "#/components/schemas/DocumentType" }
+        documentLast4: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        address: { type: string }
+        city: { type: string }
+        responsibleAgentId: { type: string, format: uuid }
+        version: { type: integer, format: int32 }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    PartyPage:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/Party" }
+        nextCursor: { type: string }
+    RevealedDocument:
+      type: object
+      required: [documentType, documentNumber]
+      additionalProperties: false
+      properties:
+        documentType: { $ref: "#/components/schemas/DocumentType" }
+        documentNumber: { type: string }
+    ConsentStatus: { type: string, enum: [granted, revoked] }
+    RegisterConsentRequest:
+      type: object
+      required: [status, purpose, textVersion, consentDate]
+      additionalProperties: false
+      properties:
+        status: { $ref: "#/components/schemas/ConsentStatus" }
+        purpose: { type: string, minLength: 3, maxLength: 200 }
+        textVersion: { type: string, minLength: 1, maxLength: 40 }
+        consentDate: { type: string, format: date }
+    Consent:
+      type: object
+      required: [id, status, purpose, textVersion, consentDate, recordedAt]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        status: { $ref: "#/components/schemas/ConsentStatus" }
+        purpose: { type: string }
+        textVersion: { type: string }
+        consentDate: { type: string, format: date }
+        recordedAt: { type: string, format: date-time }

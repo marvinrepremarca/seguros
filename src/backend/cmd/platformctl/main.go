@@ -4,13 +4,16 @@
 //
 // Uso:
 //
-//	platformctl tenant create --name "Agencia X" --plan basico --org agencia-x
-//	platformctl tenant suspend --org agencia-x
-//	platformctl tenant reactivate --org agencia-x
-//	platformctl tenant set-plan --org agencia-x --plan profesional
+//	platformctl tenant create --name "Agencia X" --plan basico --org agencia-x --reason "contrato" --operator ana.ops
+//	platformctl tenant suspend --org agencia-x --reason "impago" --operator ana.ops
+//	platformctl tenant reactivate --org agencia-x --reason "pagó" --operator ana.ops
+//	platformctl tenant set-plan --org agencia-x --plan profesional --reason "upgrade" --operator ana.ops
 //	platformctl flag set --org agencia-x --key module.claims --value on|off|clear --reason "add-on"
 //	platformctl flag kill --key module.claims --reason "incidente" --operator ana.ops   (kill switch global)
+//	platformctl flag kill --key module.compliance --confirm-control module.compliance --reason "..." --operator ana.ops
 //	platformctl flag restore --key module.claims --reason "resuelto" --operator ana.ops
+//	platformctl dead-letter list --org agencia-x
+//	platformctl dead-letter retry --org agencia-x --id <uuid> --reason "falla corregida" --operator ana.ops
 //
 // Se ejecuta con el rol seguros_platform (SEGUROS_DB_URL), el único que escribe switches globales.
 //
@@ -21,11 +24,14 @@ import (
 	"context"
 	"errors"
 	"flag"
+	"fmt"
 	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/valkey-io/valkey-go"
 
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
@@ -44,13 +50,15 @@ import (
 )
 
 const usage = `uso:
-  platformctl tenant create --name <nombre> --plan <basico|profesional|empresarial> --org <alias>
-  platformctl tenant suspend --org <alias>
-  platformctl tenant reactivate --org <alias>
-  platformctl tenant set-plan --org <alias> --plan <plan>
-  platformctl flag set --org <alias> --key <flag> --value on|off|clear --reason <motivo>
-  platformctl flag kill --key <flag> --reason <motivo> --operator <persona>
-  platformctl flag restore --key <flag> --reason <motivo> --operator <persona>`
+  platformctl tenant create --name <nombre> --plan <basico|profesional|empresarial> --org <alias> --reason <motivo> --operator <persona>
+  platformctl tenant suspend --org <alias> --reason <motivo> --operator <persona>
+  platformctl tenant reactivate --org <alias> --reason <motivo> --operator <persona>
+  platformctl tenant set-plan --org <alias> --plan <plan> --reason <motivo> --operator <persona> [--confirm-control <flag>]
+  platformctl flag set --org <alias> --key <flag> --value on|off|clear --reason <motivo> [--operator <persona> --confirm-control <flag>]
+  platformctl flag kill --key <flag> --reason <motivo> --operator <persona> [--confirm-control <flag>]
+  platformctl flag restore --key <flag> --reason <motivo> --operator <persona>
+  platformctl dead-letter list --org <alias>
+  platformctl dead-letter retry --org <alias> --id <uuid> --reason <motivo> --operator <persona> [--force]`
 
 func main() {
 	if err := run(os.Args[1:]); err != nil {
@@ -60,7 +68,7 @@ func main() {
 }
 
 func run(args []string) error {
-	if len(args) < 2 || (args[0] != "tenant" && args[0] != "flag") {
+	if len(args) < 2 || (args[0] != "tenant" && args[0] != "flag" && args[0] != "dead-letter") {
 		return errors.New(usage)
 	}
 	cfg, err := config.LoadPlatformCtl(os.LookupEnv)
@@ -82,7 +90,10 @@ func run(args []string) error {
 	defer database.Close()
 	tenants := tenancy.New(database, kernel.SystemClock{})
 	if args[0] == "tenant" {
-		return runTenant(ctx, logger, tenants, args[1], args[2:])
+		return runTenant(ctx, database, logger, tenants, args[1], args[2:])
+	}
+	if args[0] == "dead-letter" {
+		return runDeadLetter(ctx, database, tenants, logger, args[1], args[2:])
 	}
 	if cfg.Valkey.URL.IsEmpty() {
 		return errors.New("los comandos de flag requieren SEGUROS_VALKEY_URL (invalidación de cachés)")
@@ -109,6 +120,7 @@ func runFlag(ctx context.Context, d flagDeps, sub string, args []string) error {
 	value := fs.String("value", "", "on | off | clear (vuelve al plan)")
 	reason := fs.String("reason", "", "motivo (queda auditado)")
 	operator := fs.String("operator", "", "persona que ejecuta el cambio (obligatorio en kill/restore)")
+	confirm := fs.String("confirm-control", "", "repite la clave para apagar un flag de control regulatorio (ADR 0012)")
 	if err := fs.Parse(args); err != nil {
 		return errors.New(usage)
 	}
@@ -139,7 +151,7 @@ func runFlag(ctx context.Context, d flagDeps, sub string, args []string) error {
 			return err
 		}
 		v, err := mod.PlatformSetFlag.Handle(reqctx.WithTenantID(ctx, info.ID),
-			fmapp.SetTenantFlagCommand{Key: flags.Key(*key), Enabled: enabled, Reason: *reason})
+			fmapp.SetTenantFlagCommand{Key: flags.Key(*key), Enabled: enabled, Reason: *reason, Operator: *operator, ConfirmControl: *confirm})
 		if err != nil {
 			return err
 		}
@@ -150,7 +162,7 @@ func runFlag(ctx context.Context, d flagDeps, sub string, args []string) error {
 			v := false
 			enabled = &v
 		}
-		if err := mod.SetGlobalSwitch.Handle(ctx, fmapp.SetGlobalSwitchCommand{Key: flags.Key(*key), Enabled: enabled, Reason: *reason, Operator: *operator}); err != nil {
+		if err := mod.SetGlobalSwitch.Handle(ctx, fmapp.SetGlobalSwitchCommand{Key: flags.Key(*key), Enabled: enabled, Reason: *reason, Operator: *operator, ConfirmControl: *confirm}); err != nil {
 			return err
 		}
 	default:
@@ -159,33 +171,117 @@ func runFlag(ctx context.Context, d flagDeps, sub string, args []string) error {
 	return nil
 }
 
-func runTenant(ctx context.Context, logger *slog.Logger, mod *tenancy.Module, sub string, args []string) error {
+func runTenant(ctx context.Context, database *db.DB, logger *slog.Logger, mod *tenancy.Module, sub string, args []string) error {
 	fs := flag.NewFlagSet("tenant "+sub, flag.ContinueOnError)
 	name := fs.String("name", "", "nombre comercial de la agencia")
 	plan := fs.String("plan", "", "plan comercial")
 	org := fs.String("org", "", "alias de la Organization de Keycloak")
+	reason := fs.String("reason", "", "motivo (queda auditado; sin datos personales)")
+	operator := fs.String("operator", "", "persona que ejecuta el cambio (queda auditada)")
+	confirm := fs.String("confirm-control", "", "repite la clave si el plan apaga un flag de control")
 	if err := fs.Parse(args); err != nil {
 		return errors.New(usage)
 	}
 	switch sub {
 	case "create":
-		id, err := mod.Provision.Handle(ctx, app.ProvisionTenantCommand{Name: *name, Plan: *plan, OrgAlias: *org})
+		id, err := mod.Provision.Handle(ctx, app.ProvisionTenantCommand{Name: *name, Plan: *plan, OrgAlias: *org, Reason: *reason, Operator: *operator})
 		if err != nil {
 			return err
 		}
 		logger.Info("tenant creado", "tenant_id", id.String(), "org", *org, "plan", *plan)
 	case "suspend", "reactivate":
-		if err := mod.ChangeStatus.Handle(ctx, app.ChangeTenantStatusCommand{OrgAlias: *org, Suspend: sub == "suspend"}); err != nil {
+		if err := mod.ChangeStatus.Handle(ctx, app.ChangeTenantStatusCommand{OrgAlias: *org, Suspend: sub == "suspend", Reason: *reason, Operator: *operator}); err != nil {
 			return err
 		}
 		logger.Info("estado del tenant actualizado", "org", *org, "operation", sub)
 	case "set-plan":
-		if err := mod.ChangePlan.Handle(ctx, app.ChangeTenantPlanCommand{OrgAlias: *org, Plan: *plan}); err != nil {
+		if err := confirmControlsKept(ctx, database, mod, logger, *org, *plan, *confirm); err != nil {
+			return err
+		}
+		if err := mod.ChangePlan.Handle(ctx, app.ChangeTenantPlanCommand{OrgAlias: *org, Plan: *plan, Reason: *reason, Operator: *operator}); err != nil {
 			return err
 		}
 		logger.Info("plan del tenant actualizado", "org", *org, "plan", *plan)
 	default:
 		return errors.New(usage)
+	}
+	return nil
+}
+
+func runDeadLetter(ctx context.Context, database *db.DB, tenants *tenancy.Module, logger *slog.Logger, sub string, args []string) error {
+	fs := flag.NewFlagSet("dead-letter", flag.ContinueOnError)
+	org := fs.String("org", "", "alias de la organización")
+	id := fs.String("id", "", "ID del mensaje")
+	reason := fs.String("reason", "", "motivo")
+	operator := fs.String("operator", "", "persona que ejecuta")
+	force := fs.Bool("force", false, "reprocesar un mensaje de más de 7 días")
+	if err := fs.Parse(args); err != nil {
+		return err
+	}
+	info, err := tenants.Directory.ResolveByOrgAlias(ctx, *org)
+	if err != nil {
+		return err
+	}
+	ctx = reqctx.WithTenantID(ctx, info.ID)
+	switch sub {
+	case "list":
+		letters, err := outbox.ListDeadLetters(ctx, database)
+		if err != nil {
+			return err
+		}
+		for _, l := range letters {
+			logger.Info("mensaje fallido", "id", l.ID.String(), "consumer", l.Consumer, "topic", l.Topic, "event_id", l.EventID.String(), "failed_at", l.FailedAt)
+		}
+		logger.Info("mensajes fallidos pendientes", "org", *org, "count", len(letters))
+		return nil
+	case "retry":
+		letter, err := uuid.Parse(*id)
+		if err != nil || *reason == "" || *operator == "" {
+			return errors.New(usage)
+		}
+		clock := kernel.SystemClock{}
+		recorder := audit.NewRecorder(clock)
+		if err := outbox.RetryDeadLetter(ctx, database, letter, clock.Now(), *force, func(ctx context.Context, tx pgx.Tx) error {
+			return recorder.Record(ctx, tx, audit.Entry{
+				Action: "messaging.dead_letter.retried", ResourceType: "messaging.dead_letter", ResourceID: letter.String(), Outcome: audit.OutcomeSuccess,
+				Details: map[string]string{"reason": *reason, "operator": *operator},
+			})
+		}); err != nil {
+			return err
+		}
+		logger.Info("mensaje reprocesado", "org", *org, "id", letter.String())
+		return nil
+	default:
+		return errors.New(usage)
+	}
+}
+
+// confirmControlsKept exige confirmar un cambio de plan que apaga un flag de control (ADR 0012).
+func confirmControlsKept(ctx context.Context, database *db.DB, mod *tenancy.Module, logger *slog.Logger, org, plan, confirm string) error {
+	info, err := mod.Directory.ResolveByOrgAlias(ctx, org)
+	if err != nil {
+		return err
+	}
+	reg, err := flags.LoadRegistry()
+	if err != nil {
+		return err
+	}
+	clock := kernel.SystemClock{}
+	store := featuremgmt.NewStore(database, audit.NewRecorder(clock), outbox.NewWriter(clock))
+	eval := flags.NewEvaluator(reg, store, nil, clock, logger)
+	before, err := eval.Snapshot(ctx, info.ID, info.Plan)
+	if err != nil {
+		return err
+	}
+	after, err := eval.Snapshot(ctx, info.ID, plan)
+	if err != nil {
+		return err
+	}
+	for key, b := range before {
+		def, ok := reg.Get(key)
+		if ok && def.Control && b.Enabled && !after[key].Enabled && confirm != string(key) {
+			return fmt.Errorf("el plan %q apaga el flag de control %s: repite su clave en --confirm-control", plan, key)
+		}
 	}
 	return nil
 }

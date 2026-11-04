@@ -1,0 +1,5 @@
+{"type":"object","x-label":"Hogar","additionalProperties":false,"required":["address","propertyType"],"properties":{
+"address":{"type":"string","x-label":"Dirección","x-order":1,"minLength":1,"maxLength":200},
+"propertyType":{"type":"string","x-label":"Tipo de inmueble","x-order":2,"minLength":1,"maxLength":60},
+"buildingValue":{"type":"string","x-label":"Valor de la construcción","x-order":3,"pattern":"^\\d{1,15}(\\.\\d{1,4})?$"},
+"contentsValue":{"type":"string","x-label":"Valor de los contenidos","x-order":4,"pattern":"^\\d{1,15}(\\.\\d{1,4})?$"}}}

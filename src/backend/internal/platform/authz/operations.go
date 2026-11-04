@@ -2,9 +2,11 @@ package authz
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/getkin/kin-openapi/openapi3"
 )
@@ -17,6 +19,9 @@ const (
 	PermPublic = "public"
 	// PermAuthenticated: basta una sesión válida (ej. /bff/me).
 	PermAuthenticated = "authenticated"
+	// permAlternative separa permisos alternativos: "x.y.read|x.y.read-own". Basta tener uno; el caso de
+	// uso decide el alcance.
+	permAlternative = "|"
 )
 
 // OperationGuard aplica el x-permission declarado en el contrato OpenAPI a cada operación. Es
@@ -42,8 +47,12 @@ func NewOperationGuard(spec *openapi3.T, policy *Policy) (*OperationGuard, error
 			if !ok || raw == "" {
 				return nil, fmt.Errorf("authz: %s %s (%s) no declara %s", method, path, op.OperationID, XPermission)
 			}
-			if raw != PermPublic && raw != PermAuthenticated && !policy.Known(Permission(raw)) {
-				return nil, fmt.Errorf("authz: %s declara un permiso fuera del catálogo: %q", op.OperationID, raw)
+			if raw != PermPublic && raw != PermAuthenticated {
+				for _, p := range strings.Split(raw, permAlternative) {
+					if !policy.Known(Permission(p)) {
+						return nil, fmt.Errorf("authz: %s declara un permiso fuera del catálogo: %q", op.OperationID, p)
+					}
+				}
 			}
 			g.reqs[op.OperationID] = raw
 		}
@@ -62,8 +71,18 @@ func (g *OperationGuard) Check(ctx context.Context, operationID string) error {
 	case req == PermAuthenticated:
 		return RequireAuthenticated(ctx)
 	default:
-		return Require(ctx, Permission(req))
+		return requireAny(ctx, strings.Split(req, permAlternative))
 	}
+}
+
+func requireAny(ctx context.Context, permissions []string) error {
+	var err error
+	for _, p := range permissions {
+		if err = Require(ctx, Permission(p)); err == nil || !errors.Is(err, ErrForbidden) {
+			return err
+		}
+	}
+	return err
 }
 
 // Requirement devuelve el x-permission declarado para la operación.

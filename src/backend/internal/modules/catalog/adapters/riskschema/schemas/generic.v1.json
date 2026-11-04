@@ -1,0 +1,2 @@
+{"type":"object","x-label":"General","additionalProperties":false,"required":["description"],"properties":{
+"description":{"type":"string","x-label":"Descripción del riesgo","x-order":1,"minLength":1,"maxLength":1000}}}

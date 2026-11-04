@@ -60,9 +60,19 @@ func TestGeneratedFilesAreUpToDate(t *testing.T) {
 	assert.Equal(t, string(flags.RenderTS(reg)), string(gotTS), "ejecuta make generate")
 }
 
+func TestComplianceIsAControlFlag(t *testing.T) {
+	t.Parallel()
+	reg, err := flags.LoadRegistry()
+	require.NoError(t, err)
+	def, ok := reg.Get(flags.ComplianceModule)
+	require.True(t, ok)
+	assert.True(t, def.Control, "ADR 0012: module.compliance activa un control regulatorio")
+}
+
 func TestParseRegistryRejects(t *testing.T) {
 	t.Parallel()
 	tests := map[string]string{
+		"control con requires":   "flags:\n  - {key: module.y, kind: module, description: d, owner: y}\n  - {key: module.x, kind: module, description: d, owner: x, control: true, requires: [module.y]}\n",
 		"campo desconocido":      "flags:\n  - {key: module.x, kind: module, description: d, owner: x, color: red}\n",
 		"tipo desconocido":       "flags:\n  - {key: module.x, kind: toggle, description: d, owner: x}\n",
 		"clave de módulo mala":   "flags:\n  - {key: claims, kind: module, description: d, owner: x}\n",
@@ -261,6 +271,31 @@ func TestFailClosedAndLastKnownValue(t *testing.T) {
 	clock.Advance(time.Minute)
 	assert.True(t, eval.IsEnabled(tenantCtx(a, "empresarial"), "module.billing"), "usa el último valor conocido")
 	assert.False(t, eval.IsEnabled(tenantCtx(b, "basico"), "module.billing"), "sin valor conocido → apagado aunque el plan lo incluya")
+}
+
+func TestControlFlagLastValueHasAMaximumAge(t *testing.T) {
+	t.Parallel()
+	reg, err := flags.LoadRegistry()
+	require.NoError(t, err)
+	store := &fakeStore{overrides: map[kernel.TenantID]map[flags.Key]bool{}}
+	clock := kernel.NewFakeClock(time.Date(2026, 11, 4, 0, 0, 0, 0, time.UTC))
+	eval := flags.NewEvaluator(reg, store, nil, clock, slog.New(slog.DiscardHandler))
+	a := newTenant()
+	store.set(a, flags.ComplianceModule, true)
+	res, err := eval.Resolve(context.Background(), a, "empresarial", flags.ComplianceModule)
+	require.NoError(t, err)
+	require.True(t, res.Enabled)
+
+	store.fail(errors.New("bd caída"))
+	clock.Advance(10 * time.Minute)
+	res, err = eval.Resolve(context.Background(), a, "empresarial", flags.ComplianceModule)
+	require.NoError(t, err)
+	assert.True(t, res.Enabled, "dentro del plazo usa el último valor")
+
+	clock.Advance(10 * time.Minute)
+	res, err = eval.Resolve(context.Background(), a, "empresarial", flags.ComplianceModule)
+	require.Error(t, err, "pasado el plazo no se puede afirmar el estado del control")
+	assert.Equal(t, flags.SourceError, res.Source)
 }
 
 func TestEvaluationWithoutTenant(t *testing.T) {

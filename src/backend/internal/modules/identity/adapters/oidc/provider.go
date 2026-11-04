@@ -84,8 +84,14 @@ func NewHTTPClient() *http.Client {
 }
 
 // AuthCodeURL construye la URL de autorización con state, nonce y PKCE S256.
-func (p *Provider) AuthCodeURL(state, nonce, verifier string) string {
-	return p.oauth.AuthCodeURL(state, gooidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier))
+// Con forceLogin el proveedor vuelve a autenticar aunque tenga sesión: sin esto, quien ya configuró el
+// segundo factor seguiría entrando con la sesión anterior, solo con contraseña.
+func (p *Provider) AuthCodeURL(state, nonce, verifier string, forceLogin bool) string {
+	opts := []oauth2.AuthCodeOption{gooidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier)}
+	if forceLogin {
+		opts = append(opts, oauth2.SetAuthURLParam("prompt", "login"))
+	}
+	return p.oauth.AuthCodeURL(state, opts...)
 }
 
 // Exchange canjea el código (con el verificador PKCE) y valida el ID token y su nonce.
@@ -95,16 +101,45 @@ func (p *Provider) Exchange(ctx context.Context, code, verifier, nonce string) (
 	if err != nil {
 		return Identity{}, fmt.Errorf("oidc: canjeando código: %w", err)
 	}
+	if tok.RefreshToken == "" {
+		return Identity{}, fmt.Errorf("%w: sin refresh_token", ErrInvalidToken)
+	}
+	id, nonceClaim, err := p.identityOf(ctx, tok)
+	if err != nil {
+		return Identity{}, err
+	}
+	if subtle.ConstantTimeCompare([]byte(nonceClaim), []byte(nonce)) != 1 || nonce == "" {
+		return Identity{}, fmt.Errorf("%w: nonce", ErrInvalidToken)
+	}
+	return id, nil
+}
+
+// Refresh confirma la sesión con el proveedor y devuelve la identidad vigente. Una sesión revocada,
+// un usuario deshabilitado o un refresh token vencido devuelven ErrSessionRevoked; cualquier otro
+// error es transitorio.
+func (p *Provider) Refresh(ctx context.Context, refreshToken string) (Identity, error) {
+	ctx = gooidc.ClientContext(ctx, p.httpClient)
+	tok, err := p.oauth.TokenSource(ctx, &oauth2.Token{RefreshToken: refreshToken}).Token()
+	if err != nil {
+		var re *oauth2.RetrieveError
+		if errors.As(err, &re) && re.ErrorCode == "invalid_grant" {
+			return Identity{}, app.ErrSessionRevoked
+		}
+		return Identity{}, fmt.Errorf("oidc: renovando sesión: %w", err)
+	}
+	id, _, err := p.identityOf(ctx, tok)
+	return id, err
+}
+
+// identityOf valida el ID token de una respuesta del proveedor y extrae sus claims.
+func (p *Provider) identityOf(ctx context.Context, tok *oauth2.Token) (Identity, string, error) {
 	raw, ok := tok.Extra("id_token").(string)
 	if !ok || raw == "" {
-		return Identity{}, fmt.Errorf("%w: sin id_token", ErrInvalidToken)
+		return Identity{}, "", fmt.Errorf("%w: sin id_token", ErrInvalidToken)
 	}
 	idt, err := p.verifier.Verify(ctx, raw)
 	if err != nil {
-		return Identity{}, fmt.Errorf("%w: %w", ErrInvalidToken, err)
-	}
-	if subtle.ConstantTimeCompare([]byte(idt.Nonce), []byte(nonce)) != 1 || nonce == "" {
-		return Identity{}, fmt.Errorf("%w: nonce", ErrInvalidToken)
+		return Identity{}, "", fmt.Errorf("%w: %w", ErrInvalidToken, err)
 	}
 	var c struct {
 		Email        string          `json:"email"`
@@ -115,11 +150,11 @@ func (p *Provider) Exchange(ctx context.Context, code, verifier, nonce string) (
 		AMR          []string        `json:"amr"`
 	}
 	if err := idt.Claims(&c); err != nil {
-		return Identity{}, fmt.Errorf("%w: claims: %w", ErrInvalidToken, err)
+		return Identity{}, "", fmt.Errorf("%w: claims: %w", ErrInvalidToken, err)
 	}
 	orgs, err := parseOrganizations(c.Organization)
 	if err != nil {
-		return Identity{}, err
+		return Identity{}, "", err
 	}
 	name := c.Name
 	if name == "" {
@@ -127,8 +162,8 @@ func (p *Provider) Exchange(ctx context.Context, code, verifier, nonce string) (
 	}
 	return Identity{
 		Subject: idt.Subject, Email: c.Email, Name: name, Roles: c.Roles,
-		Organizations: orgs, AuthMethods: c.AMR,
-	}, nil
+		Organizations: orgs, AuthMethods: c.AMR, RefreshToken: tok.RefreshToken,
+	}, idt.Nonce, nil
 }
 
 // parseOrganizations acepta los dos formatos del mapper de Keycloak: lista de alias

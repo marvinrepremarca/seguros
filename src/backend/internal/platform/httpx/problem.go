@@ -4,6 +4,7 @@
 package httpx
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -27,7 +28,11 @@ const (
 	CodeMethodNotAllowed = "platform.method_not_allowed"
 	CodeBodyTooLarge     = "platform.body_too_large"
 	CodeUnavailable      = "platform.unavailable"
+	CodeClientClosed     = "platform.client_closed"
 )
+
+// statusClientClosedRequest es el 499 de nginx: el cliente canceló antes de la respuesta.
+const statusClientClosedRequest = 499
 
 // Problem es el cuerpo problem+json. `type` es el código estable del error; nunca incluye
 // detalles internos (stack, SQL, mensajes de librerías).
@@ -69,9 +74,15 @@ func WriteError(w http.ResponseWriter, r *http.Request, logger *slog.Logger, err
 		WriteProblem(w, r, http.StatusRequestEntityTooLarge, CodeBodyTooLarge, "El cuerpo de la petición excede el tamaño permitido")
 		return
 	}
+	// El cliente se fue (cerró la página o navegó): no es una falla del servidor ni debe alertar.
+	if errors.Is(err, context.Canceled) && r.Context().Err() != nil {
+		logger.DebugContext(r.Context(), "petición cancelada por el cliente")
+		WriteProblem(w, r, statusClientClosedRequest, CodeClientClosed, "La solicitud fue cancelada")
+		return
+	}
 	if de, ok := kernel.AsDomainError(err); ok {
 		status := statusForKind(de.Kind())
-		if status >= http.StatusInternalServerError {
+		if status == http.StatusInternalServerError {
 			logger.ErrorContext(r.Context(), "error de dominio sin clase HTTP", "code", de.Code(), "error", err)
 		}
 		WriteProblem(w, r, status, de.Code(), titleForStatus(status))
@@ -93,6 +104,8 @@ func statusForKind(k kernel.ErrorKind) int {
 		return http.StatusForbidden
 	case kernel.KindUnauthorized:
 		return http.StatusUnauthorized
+	case kernel.KindUnavailable:
+		return http.StatusServiceUnavailable
 	default:
 		return http.StatusInternalServerError
 	}
@@ -111,6 +124,8 @@ func titleForStatus(status int) string {
 		return "No tiene permiso para esta operación"
 	case http.StatusUnauthorized:
 		return "Se requiere autenticación"
+	case http.StatusServiceUnavailable:
+		return "Servicio no disponible; intente de nuevo"
 	default:
 		return "Error interno"
 	}

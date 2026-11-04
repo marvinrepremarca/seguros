@@ -54,6 +54,31 @@ const maxNameLength = 120
 // orgAliasPattern acota el alias de la Organization de Keycloak (minúsculas, dígitos y guiones).
 var orgAliasPattern = regexp.MustCompile(`^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$`) //nolint:gochecknoglobals // regexp inmutable
 
+// ChangeNote justifica una operación de plataforma sobre un tenant: quién y por qué. Queda en la
+// bitácora, así que no debe contener datos personales de clientes (rules/security.md).
+type ChangeNote struct {
+	reason   string
+	operator string
+}
+
+// NewChangeNote valida motivo (3 a 200 bytes, el límite de audit.Entry) y operador (1 a 120 bytes).
+func NewChangeNote(reason, operator string) (ChangeNote, error) {
+	reason, operator = strings.TrimSpace(reason), strings.TrimSpace(operator)
+	if len(reason) < 3 || len(reason) > 200 {
+		return ChangeNote{}, ErrInvalidReason
+	}
+	if operator == "" || len(operator) > 120 {
+		return ChangeNote{}, ErrInvalidOperator
+	}
+	return ChangeNote{reason: reason, operator: operator}, nil
+}
+
+// Reason devuelve el motivo.
+func (n ChangeNote) Reason() string { return n.reason }
+
+// Operator devuelve la persona que ejecuta la operación.
+func (n ChangeNote) Operator() string { return n.operator }
+
 // Tenant es la raíz del agregado.
 type Tenant struct {
 	id          kernel.TenantID

@@ -21,7 +21,9 @@ function LoginPage() {
   const message = loginErrorMessage(error);
   // Navegación completa al BFF (no fetch): el login OIDC ocurre en Keycloak y la sesión vuelve
   // como cookie HttpOnly; el navegador nunca ve tokens.
-  const href = `/bff/auth/login?returnTo=${encodeURIComponent(safeReturnTo(returnTo))}`;
+  const href = `/bff/auth/login?returnTo=${encodeURIComponent(safeReturnTo(returnTo))}${
+    error === "identity.login.mfa_required" ? "&reauth=true" : ""
+  }`;
   return (
     <main className="grid min-h-dvh place-items-center p-4">
       <section

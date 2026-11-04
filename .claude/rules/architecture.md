@@ -6,7 +6,7 @@ paths:
 
 ## Dependencias (verificadas por go-arch-lint + depguard en CI)
 - `domain` importa solo stdlib y `internal/platform/kernel`. Sin pgx, sin net/http, sin Watermill, sin tags de JSON/DB.
-- `app` importa `domain` y define sus **puertos** (interfaces) en el propio paquete. No conoce pgx ni HTTP.
+- `app` importa `domain` y define sus **puertos** (interfaces) en el propio paquete. No conoce pgx ni HTTP. Puede usar `decimal` para recibir montos cuya moneda se conoce al cargar el agregado.
 - `adapters/*` implementan los puertos de `app`.
 - `adapters/http` solo mapea HTTP ↔ comandos/consultas. **Cero lógica de negocio en handlers HTTP.**
 - Entre módulos: únicamente `internal/modules/<otro>/contracts`. Si necesitas datos de otro módulo: (1) evento de integración y proyección local, o (2) interfaz de consulta publicada en su `contracts` e inyectada en `module.go`. Nunca acceso a sus tablas.
@@ -22,7 +22,7 @@ paths:
 - Máquinas de estado: tabla de transiciones explícita (`map[Status][]Status`) y método `transitionTo` privado.
 
 ## Aplicación
-- Un caso de uso por archivo dentro de `app/`: `issue_policy.go` con `IssuePolicyCommand`, `IssuePolicyHandler` y su `Handle(ctx, cmd) (Result, error)`.
+- Un caso de uso por archivo dentro de `app/`: `issue_policy.go` con `IssuePolicyCommand`, `IssuePolicyHandler` y su `Handle(ctx, cmd) (Result, error)`. Excepción: datos de referencia sin reglas propias (`catalog`, registros `Item`) pueden agruparse y ser valores inmutables con constructor.
 - Commands modifican; queries no modifican y usan queries sqlc de solo lectura.
 - Toda operación autoriza explícitamente (permiso + propiedad) antes de tocar el dominio, usando `authz.Require(ctx, perm)`.
 - Unidad de trabajo: `db.WithTenantTx(ctx, func(tx pgx.Tx) error {...})` envuelve carga → dominio → guardado → outbox.

@@ -216,6 +216,7 @@ func TestWriteErrorMapsDomainErrors(t *testing.T) {
 		{kernel.KindConflict, http.StatusConflict},
 		{kernel.KindForbidden, http.StatusForbidden},
 		{kernel.KindUnauthorized, http.StatusUnauthorized},
+		{kernel.KindUnavailable, http.StatusServiceUnavailable},
 		{kernel.ErrorKind(99), http.StatusInternalServerError},
 	}
 	for _, tc := range tests {

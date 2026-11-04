@@ -18,7 +18,11 @@ export SEGUROS_VALKEY_URL="redis://:$(get VALKEY_PASSWORD)@${host}:6379/0"
 export SEGUROS_OIDC_ISSUER="http://localhost:8081/realms/seguros-dev"
 export SEGUROS_OIDC_DISCOVERY_URL="http://${host}:8081/realms/seguros-dev"
 export SEGUROS_OIDC_CLIENT_SECRET="$(get KC_BFF_CLIENT_SECRET)"
+export SEGUROS_OIDC_DIRECTORY_CLIENT_SECRET="$(get KC_DIRECTORY_CLIENT_SECRET)"
 export SEGUROS_PUBLIC_URL="${SEGUROS_PUBLIC_URL:-http://localhost:5173}"
 # Los usuarios de prueba del realm no tienen OTP; en staging/producción la config lo impide.
 export SEGUROS_AUTH_MFA_REQUIRED="${SEGUROS_AUTH_MFA_REQUIRED:-false}"
+# Cifrado de campos con KEK local (solo desarrollo; staging/producción exigen OpenBao).
+export SEGUROS_CRYPTO_LOCAL_KEKS="v1:$(get SEGUROS_CRYPTO_LOCAL_KEK)"
+export SEGUROS_CRYPTO_INDEX_KEY="$(get SEGUROS_CRYPTO_INDEX_KEY)"
 exec "$@"

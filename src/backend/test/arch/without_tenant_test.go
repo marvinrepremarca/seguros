@@ -12,12 +12,14 @@ import (
 )
 
 // withoutTenantAllowed son los únicos paquetes de módulos que pueden abrir transacciones sin
-// tenant (db.WithoutTenantTx): resolver el tenant antes del login y leer los switches globales.
+// tenant (db.WithoutTenantTx): resolver el tenant antes del login, leer los switches globales y
+// listar los IDs de pólizas por vencer.
 // Cualquier otro uso podría saltarse RLS mediante funciones SECURITY DEFINER.
 func withoutTenantAllowed() []string {
 	return []string{
 		"tenancy/adapters/postgres",
 		"featuremgmt/adapters/postgres",
+		"policies/adapters/postgres", // solo policies.due_for_expiration: IDs para el job de vencimiento
 	}
 }
 

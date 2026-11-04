@@ -21,13 +21,18 @@ import (
 	"github.com/open-feature/go-sdk/openfeature"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/marvinrepremarca/seguros/internal/modules/catalog"
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity"
+	"github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/keycloak"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/oidc"
+	"github.com/marvinrepremarca/seguros/internal/modules/parties"
+	"github.com/marvinrepremarca/seguros/internal/modules/policies"
 	"github.com/marvinrepremarca/seguros/internal/modules/tenancy"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/authz"
 	"github.com/marvinrepremarca/seguros/internal/platform/config"
+	"github.com/marvinrepremarca/seguros/internal/platform/crypto"
 	"github.com/marvinrepremarca/seguros/internal/platform/db"
 	"github.com/marvinrepremarca/seguros/internal/platform/flags"
 	"github.com/marvinrepremarca/seguros/internal/platform/httpx"
@@ -105,11 +110,27 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	agentsSource, err := keycloak.New(cfg.Auth, clock)
+	if err != nil {
+		return err
+	}
+	cryptoCfg, err := config.LoadCrypto(os.LookupEnv, cfg.Env)
+	if err != nil {
+		return err
+	}
+	keyWrapper, err := crypto.NewWrapper(cryptoCfg)
+	if err != nil {
+		return err
+	}
+	cipher, err := crypto.NewService(database, keyWrapper, cryptoCfg.IndexKey.Reveal(), clock)
+	if err != nil {
+		return err
+	}
 	tenants := tenancy.New(database, clock)
 	recorder := audit.NewRecorder(clock)
 	identityMod, err := identity.New(identity.Deps{
 		DB: database, Clock: clock, Audit: recorder, Tenants: tenants.Directory,
-		Policy: policy, Provider: provider,
+		Policy: policy, Provider: provider, Cipher: cipher, ActiveAgents: agentsSource,
 		SessionStore: session.NewValkeyStore(valkeyClient, "bff:sess:", clock),
 		AuthTxStore:  session.NewValkeyStore(valkeyClient, "bff:authtx:", clock),
 		Auth:         cfg.Auth, Logger: logger,
@@ -135,6 +156,25 @@ func run() error {
 		Policy:      policy, Clock: clock, Logger: logger,
 	})
 
+	partiesMod := parties.New(parties.Deps{DB: database, Audit: recorder, Cipher: cipher, Agents: identityMod.Directory, Policy: policy, Clock: clock, Logger: logger})
+	catalogMod, err := catalog.New(catalog.Deps{DB: database, Audit: recorder, Policy: policy, Clock: clock, Logger: logger})
+	if err != nil {
+		return err
+	}
+	policiesMod := policies.New(policies.Deps{
+		DB: database, Audit: recorder, Outbox: outbox.NewWriter(clock), Parties: partiesMod.Directory,
+		Catalog: catalogMod.Directory, Schemas: catalogMod.Schemas, Users: identityMod.Directory,
+		Flags: evaluator, Policy: policy, Clock: clock, Logger: logger,
+	})
+
+	var spa http.Handler
+	if cfg.HTTP.SPADir != "" {
+		spa, err = httpx.NewSPAHandler(os.DirFS(cfg.HTTP.SPADir), logger)
+		if err != nil {
+			return err
+		}
+	}
+
 	router, err := buildRouter(routerDeps{
 		Logger: logger, Clock: clock, MaxBodyBytes: cfg.HTTP.MaxBodyBytes, ClientIPHdr: cfg.HTTP.ClientIPHeader,
 		Readiness: []httpx.ReadinessCheck{
@@ -145,6 +185,10 @@ func run() error {
 		},
 		Identity:    identityMod,
 		FeatureMgmt: featureMod,
+		Parties:     partiesMod,
+		Catalog:     catalogMod,
+		Policies:    policiesMod,
+		SPA:         spa,
 	})
 	if err != nil {
 		return err

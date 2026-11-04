@@ -13,27 +13,51 @@ import (
 	tenancysqlc "github.com/marvinrepremarca/seguros/internal/modules/tenancy/adapters/postgres/sqlc"
 	"github.com/marvinrepremarca/seguros/internal/modules/tenancy/app"
 	"github.com/marvinrepremarca/seguros/internal/modules/tenancy/domain"
+	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/db"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
+	"github.com/marvinrepremarca/seguros/internal/platform/outbox"
 )
 
 const uniqueViolation = "23505"
 
 // Store implementa app.Store.
 type Store struct {
-	db *db.DB
+	db       *db.DB
+	recorder *audit.Recorder
+	outbox   *outbox.Writer
 }
 
 var _ app.Store = (*Store)(nil)
 
 // NewStore construye el Store.
-func NewStore(database *db.DB) *Store { return &Store{db: database} }
+func NewStore(database *db.DB, recorder *audit.Recorder, writer *outbox.Writer) *Store {
+	return &Store{db: database, recorder: recorder, outbox: writer}
+}
 
 // WithinTenant implementa app.Store.
-func (s *Store) WithinTenant(ctx context.Context, fn func(ctx context.Context, repo app.TenantRepository) error) error {
+func (s *Store) WithinTenant(ctx context.Context, fn func(ctx context.Context, uow app.UnitOfWork) error) error {
 	return s.db.WithTenantTx(ctx, func(tx pgx.Tx) error {
-		return fn(ctx, &repository{q: tenancysqlc.New(tx)})
+		return fn(ctx, &unitOfWork{tx: tx, repo: &repository{q: tenancysqlc.New(tx)}, recorder: s.recorder, outbox: s.outbox})
 	})
+}
+
+type unitOfWork struct {
+	tx       pgx.Tx
+	repo     *repository
+	recorder *audit.Recorder
+	outbox   *outbox.Writer
+}
+
+func (u *unitOfWork) Tenants() app.TenantRepository { return u.repo }
+
+func (u *unitOfWork) Audit(ctx context.Context, e audit.Entry) error {
+	return u.recorder.Record(ctx, u.tx, e)
+}
+
+func (u *unitOfWork) Publish(ctx context.Context, topic string, payload any) error {
+	_, err := u.outbox.Add(ctx, u.tx, topic, payload)
+	return err
 }
 
 // ResolveOrgAlias implementa app.Store mediante la función SECURITY DEFINER (antes de conocer el

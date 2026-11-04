@@ -49,7 +49,11 @@ func TestDefaultGrantsAreValid(t *testing.T) {
 
 func TestPermissionsForUnionsRoles(t *testing.T) {
 	t.Parallel()
-	p := policy(t)
+	p, err := authz.NewPolicy(map[authz.Role][]authz.Permission{
+		authz.RoleManager:     {authz.FeatureFlagRead},
+		authz.RoleTenantAdmin: {authz.FeatureFlagUpdate, authz.FeatureFlagRead},
+	})
+	require.NoError(t, err)
 	got := p.PermissionsFor([]authz.Role{authz.RoleManager, authz.RoleTenantAdmin})
 	assert.Equal(t, []authz.Permission{authz.FeatureFlagRead, authz.FeatureFlagUpdate}, got, "ordenados y sin duplicados")
 	assert.Empty(t, p.PermissionsFor([]authz.Role{authz.RoleSalesAgent}))
@@ -118,6 +122,20 @@ func spec(ops map[string]any) *openapi3.T {
 		paths.Set("/"+id, item)
 	}
 	return &openapi3.T{Paths: paths}
+}
+
+func TestOperationGuardAlternatives(t *testing.T) {
+	t.Parallel()
+	g, err := authz.NewOperationGuard(spec(map[string]any{"listParties": string(authz.PartyRead) + "|" + string(authz.PartyReadOwn)}), policy(t))
+	require.NoError(t, err)
+	require.NoError(t, g.Check(authz.WithPrincipal(context.Background(), principal(t, authz.RoleSalesAgent)), "listParties"), "con read-own")
+	require.NoError(t, g.Check(authz.WithPrincipal(context.Background(), principal(t, authz.RoleManager)), "listParties"), "con read")
+	flagsOnly, err := authz.NewOperationGuard(spec(map[string]any{"x": string(authz.FeatureFlagRead) + "|" + string(authz.FeatureFlagUpdate)}), policy(t))
+	require.NoError(t, err)
+	require.ErrorIs(t, flagsOnly.Check(authz.WithPrincipal(context.Background(), principal(t, authz.RoleSalesAgent)), "x"), authz.ErrForbidden)
+	require.ErrorIs(t, g.Check(context.Background(), "listParties"), authz.ErrUnauthenticated)
+	_, err = authz.NewOperationGuard(spec(map[string]any{"x": string(authz.PartyRead) + "|no.existe"}), policy(t))
+	require.Error(t, err)
 }
 
 func TestOperationGuard(t *testing.T) {

@@ -46,7 +46,7 @@ func claims() oidctest.Claims {
 func TestAuthCodeURLUsesPKCEAndScopes(t *testing.T) {
 	t.Parallel()
 	_, p := setup(t)
-	u, err := url.Parse(p.AuthCodeURL("st", "nn", verifier))
+	u, err := url.Parse(p.AuthCodeURL("st", "nn", verifier, false))
 	require.NoError(t, err)
 	q := u.Query()
 	assert.Equal(t, "S256", q.Get("code_challenge_method"))
@@ -90,7 +90,7 @@ func TestExchange(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			op, p := setup(t)
-			cb, err := op.Authorize(p.AuthCodeURL("st", "n1", verifier), tt.claims())
+			cb, err := op.Authorize(p.AuthCodeURL("st", "n1", verifier, false), tt.claims())
 			require.NoError(t, err)
 
 			id, err := p.Exchange(context.Background(), cb.Get("code"), tt.verifier, tt.nonce)
@@ -112,7 +112,7 @@ func TestExchange(t *testing.T) {
 func TestCodeCanOnlyBeExchangedOnce(t *testing.T) {
 	t.Parallel()
 	op, p := setup(t)
-	cb, err := op.Authorize(p.AuthCodeURL("st", "n1", verifier), claims())
+	cb, err := op.Authorize(p.AuthCodeURL("st", "n1", verifier, false), claims())
 	require.NoError(t, err)
 	_, err = p.Exchange(context.Background(), cb.Get("code"), verifier, "n1")
 	require.NoError(t, err)
@@ -129,4 +129,11 @@ func TestLogoutURL(t *testing.T) {
 	assert.Equal(t, clientID, u.Query().Get("client_id"))
 	assert.Equal(t, public+"/", u.Query().Get("post_logout_redirect_uri"))
 	assert.Equal(t, "raw-id-token", u.Query().Get("id_token_hint"))
+}
+
+func TestAuthCodeURLForcesLoginOnlyWhenAsked(t *testing.T) {
+	t.Parallel()
+	_, p := setup(t)
+	assert.NotContains(t, p.AuthCodeURL("st", "nn", "verificador", false), "prompt=")
+	assert.Contains(t, p.AuthCodeURL("st", "nn", "verificador", true), "prompt=login")
 }

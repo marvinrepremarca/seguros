@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 	"unicode"
 
 	"github.com/alexedwards/scs/v2"
@@ -38,9 +39,11 @@ const maxReturnTo = 512
 
 // IdentityProvider es el puerto hacia el proveedor OIDC (implementado por adapters/oidc).
 type IdentityProvider interface {
-	AuthCodeURL(state, nonce, verifier string) string
+	AuthCodeURL(state, nonce, verifier string, forceLogin bool) string
 	Exchange(ctx context.Context, code, verifier, nonce string) (app.VerifiedIdentity, error)
 	LogoutURL(idTokenHint string) string
+	// Refresh confirma la sesión; app.ErrSessionRevoked si el proveedor ya no la reconoce.
+	Refresh(ctx context.Context, refreshToken string) (app.VerifiedIdentity, error)
 }
 
 // LoginCompleter es el caso de uso que completa el login.
@@ -50,7 +53,9 @@ type LoginCompleter interface {
 
 // Options configura el servidor BFF.
 type Options struct {
+	Clock     kernel.Clock
 	Provider  IdentityProvider
+	Cipher    TokenCipher
 	Login     LoginCompleter
 	Tenants   tenancy.Directory
 	Policy    *authz.Policy
@@ -136,7 +141,7 @@ func (s *Server) Login(ctx context.Context, req LoginRequestObject) (LoginRespon
 	s.opts.AuthTx.Put(ctx, keyNonce, nonce)
 	s.opts.AuthTx.Put(ctx, keyVerifier, verifier)
 	s.opts.AuthTx.Put(ctx, keyReturnTo, sanitizeReturnTo(deref(req.Params.ReturnTo)))
-	location := s.opts.Provider.AuthCodeURL(state, nonce, verifier)
+	location := s.opts.Provider.AuthCodeURL(state, nonce, verifier, req.Params.Reauth != nil && *req.Params.Reauth)
 	return Login302Response{Headers: Login302ResponseHeaders{Location: &location}}, nil
 }
 
@@ -204,8 +209,14 @@ func (s *Server) LoginCallback(ctx context.Context, req LoginCallbackRequestObje
 	if err != nil {
 		return nil, err
 	}
+	refresh, err := sealRefresh(ctx, s.opts.Cipher, uuid.UUID(res.TenantID), uuid.UUID(res.UserID), id.RefreshToken)
+	if err != nil {
+		return nil, err
+	}
 	s.opts.Sessions.Put(ctx, keyPrincipal, string(raw))
 	s.opts.Sessions.Put(ctx, keyCSRF, csrf)
+	s.opts.Sessions.Put(ctx, keyRefresh, refresh)
+	s.opts.Sessions.Put(ctx, keyRevalidatedAt, s.opts.Clock.Now().UTC().Format(time.RFC3339Nano))
 	return redirectPage(returnTo)
 }
 

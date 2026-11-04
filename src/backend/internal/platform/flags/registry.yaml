@@ -10,6 +10,8 @@
 #   plans          planes que lo tienen encendido por defecto (DECISIONS.md §3)
 #   requires       flags que deben estar encendidos (los módulos núcleo no tienen flag)
 #   tenantEditable el TenantAdmin puede cambiarlo (solo kind=feature); los módulos los gestiona la plataforma
+#   control        activa un control regulatorio: si no se puede evaluar se bloquea la operación y
+#                  el kill switch exige confirmación adicional (ADR 0012)
 #   removeBy       fecha límite de retiro (obligatoria en kind=release)
 #
 # Los módulos núcleo (tenancy, identity, featuremgmt, audit, parties, catalog, policies) no tienen flag.
@@ -78,6 +80,7 @@ flags:
     owner: compliance
     default: false
     plans: [empresarial]
+    control: true
 
   - key: module.reporting
     kind: module

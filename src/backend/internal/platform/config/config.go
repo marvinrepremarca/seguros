@@ -74,6 +74,9 @@ type HTTP struct {
 	// ClientIPHeader es la cabecera con la IP del cliente que fija el proxy de confianza (Traefik).
 	// Vacía = RemoteAddr (sin proxy, desarrollo).
 	ClientIPHeader string
+	// SPADir es la carpeta con la SPA compilada (src/frontend/dist). Vacía = la API no sirve la SPA
+	// (desarrollo con Vite). Obligatoria en staging/producción: la CSP con nonces la emite la API.
+	SPADir string
 }
 
 // Database configura el pool de la aplicación (rol seguros_app, sujeto a RLS).
@@ -102,6 +105,12 @@ type Auth struct {
 	MFARequired     bool
 	SessionIdle     time.Duration
 	SessionLifetime time.Duration
+	// SessionRevalidate cada cuánto se confirma la sesión contra el proveedor: una baja o un cambio
+	// de rol en Keycloak se aplica en este plazo.
+	SessionRevalidate time.Duration
+	// DirectoryClientID/Secret: cuenta de servicio de solo lectura para saber qué asesores siguen activos.
+	DirectoryClientID     string
+	DirectoryClientSecret Secret
 }
 
 // Crypto configura el cifrado de campos (platform/crypto).
@@ -154,6 +163,7 @@ func LoadAPI(lookup LookupFunc) (API, error) {
 			ShutdownTimeout:   r.duration("SEGUROS_HTTP_SHUTDOWN_TIMEOUT", 20*time.Second),
 			MaxBodyBytes:      r.int64("SEGUROS_HTTP_MAX_BODY_BYTES", 1<<20),
 			ClientIPHeader:    r.str("SEGUROS_HTTP_CLIENT_IP_HEADER", ""),
+			SPADir:            r.str("SEGUROS_SPA_DIR", ""),
 		},
 		DB:     r.database("SEGUROS_DB_URL"),
 		Auth:   r.auth(),
@@ -176,6 +186,9 @@ func LoadAPI(lookup LookupFunc) (API, error) {
 	}
 	if cfg.Env.IsProductionLike() && cfg.HTTP.ClientIPHeader == "" {
 		r.fail("SEGUROS_HTTP_CLIENT_IP_HEADER", "obligatoria en staging/producción (detrás de Traefik RemoteAddr es el proxy)")
+	}
+	if cfg.Env.IsProductionLike() && cfg.HTTP.SPADir == "" {
+		r.fail("SEGUROS_SPA_DIR", "obligatoria en staging/producción (la API sirve la SPA con su CSP)")
 	}
 	r.postgresURL("SEGUROS_DB_URL", cfg.DB.URL, cfg.Env)
 	r.validateAuth(cfg.Auth, cfg.Env)
@@ -460,14 +473,17 @@ func (r *reader) bool(key string, def bool) bool {
 
 func (r *reader) auth() Auth {
 	return Auth{
-		Issuer:          r.required("SEGUROS_OIDC_ISSUER"),
-		DiscoveryURL:    r.str("SEGUROS_OIDC_DISCOVERY_URL", ""),
-		ClientID:        r.str("SEGUROS_OIDC_CLIENT_ID", "seguros-bff"),
-		ClientSecret:    NewSecret(r.required("SEGUROS_OIDC_CLIENT_SECRET")),
-		PublicURL:       strings.TrimRight(r.required("SEGUROS_PUBLIC_URL"), "/"),
-		MFARequired:     r.bool("SEGUROS_AUTH_MFA_REQUIRED", true),
-		SessionIdle:     r.duration("SEGUROS_SESSION_IDLE_TIMEOUT", 30*time.Minute),
-		SessionLifetime: r.duration("SEGUROS_SESSION_LIFETIME", 8*time.Hour),
+		Issuer:                r.required("SEGUROS_OIDC_ISSUER"),
+		DiscoveryURL:          r.str("SEGUROS_OIDC_DISCOVERY_URL", ""),
+		ClientID:              r.str("SEGUROS_OIDC_CLIENT_ID", "seguros-bff"),
+		ClientSecret:          NewSecret(r.required("SEGUROS_OIDC_CLIENT_SECRET")),
+		PublicURL:             strings.TrimRight(r.required("SEGUROS_PUBLIC_URL"), "/"),
+		MFARequired:           r.bool("SEGUROS_AUTH_MFA_REQUIRED", true),
+		SessionIdle:           r.duration("SEGUROS_SESSION_IDLE_TIMEOUT", 30*time.Minute),
+		SessionLifetime:       r.duration("SEGUROS_SESSION_LIFETIME", 8*time.Hour),
+		SessionRevalidate:     r.duration("SEGUROS_SESSION_REVALIDATE_INTERVAL", 5*time.Minute),
+		DirectoryClientID:     r.str("SEGUROS_OIDC_DIRECTORY_CLIENT_ID", "seguros-directory"),
+		DirectoryClientSecret: NewSecret(r.required("SEGUROS_OIDC_DIRECTORY_CLIENT_SECRET")),
 	}
 }
 

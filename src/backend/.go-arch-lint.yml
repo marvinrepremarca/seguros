@@ -18,6 +18,7 @@ excludeFiles:
 vendors:
   decimal: { in: github.com/shopspring/decimal }
   uuid: { in: github.com/google/uuid }
+  testify: { in: github.com/stretchr/testify/** }
 
 components:
   kernel: { in: internal/platform/kernel/** }
@@ -36,7 +37,8 @@ components:
       - internal/platform/audit/**
       - internal/platform/session/**
   module: { in: internal/modules/* }
-  domain: { in: internal/modules/*/domain/** }
+  domain: { in: internal/modules/*/domain }
+  domaintest: { in: internal/modules/*/domain/domaintest }
   app: { in: internal/modules/*/app/** }
   adapters: { in: internal/modules/*/adapters/** }
   sqlc: { in: internal/modules/*/adapters/postgres/sqlc } # código generado por sqlc
@@ -54,9 +56,12 @@ deps:
   domain:
     mayDependOn: [kernel]
     canUse: [uuid]
+  domaintest:
+    mayDependOn: [kernel, domain]
+    canUse: [uuid, testify]
   app:
     mayDependOn: [kernel, domain, platform, contracts]
-    canUse: [uuid]
+    canUse: [uuid, decimal]
   sqlc:
     mayDependOn: [kernel]
     anyVendorDeps: true

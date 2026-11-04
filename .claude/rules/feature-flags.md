@@ -29,6 +29,7 @@ El producto vende módulos y funcionalidades que cada tenant puede tener **encen
 - Contexto obligatorio: `tenantId`, `plan`, `userId`, `roles`. Nunca evalúes sin tenant (excepto flags `ops.*` globales).
 - Precedencia: `ops` kill switch global → override de tenant → plan → default.
 - **Fail-closed** para no-núcleo; los módulos núcleo no tienen flag de apagado.
+- **Flags que activan un control (`control: true`, ej. `module.compliance`):** apagado por error omitiría el control, así que quien lo aplica usa `Evaluator.Resolve` y **bloquea** la operación si no se puede evaluar. Ver ADR 0012.
 - El frontend NO es autoridad: el backend revalida siempre.
 - Prohibido ramificar lógica de dominio por flag dentro de agregados. El flag se evalúa en `adapters/http` o `app` y se selecciona la implementación del puerto (interfaz) correspondiente.
 

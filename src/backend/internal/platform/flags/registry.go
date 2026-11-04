@@ -52,6 +52,7 @@ type Definition struct {
 	Plans          []string    `yaml:"plans"`
 	Requires       []Key       `yaml:"requires"`
 	TenantEditable bool        `yaml:"tenantEditable"`
+	Control        bool        `yaml:"control"`
 	RemoveBy       kernel.Date `yaml:"removeBy"`
 }
 
@@ -149,6 +150,9 @@ func validate(d Definition) []error {
 	}
 	if d.Kind != KindRelease && !d.RemoveBy.IsZero() {
 		fail("removeBy solo aplica a flags release")
+	}
+	if d.Control && len(d.Requires) > 0 {
+		fail("un flag de control no puede tener requires: apagar la dependencia desactivaría el control sin confirmación (ADR 0012)")
 	}
 	if d.Kind == KindOps && len(d.Plans) > 0 {
 		fail("los flags ops son globales: no se asignan por plan")

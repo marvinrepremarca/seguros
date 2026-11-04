@@ -90,6 +90,8 @@ export default defineConfig(
       "@typescript-eslint/no-explicit-any": "error",
       "@typescript-eslint/consistent-type-assertions": ["error", { assertionStyle: "never" }],
       "@typescript-eslint/consistent-type-imports": "error",
+      // Los nombres de campo de React Hook Form usan índices numéricos (`items.${i}.name`).
+      "@typescript-eslint/restrict-template-expressions": ["error", { allowNumber: true }],
 
       // Seguridad en cliente y datos (frontend.md §Seguridad, §Datos).
       "no-eval": "error",

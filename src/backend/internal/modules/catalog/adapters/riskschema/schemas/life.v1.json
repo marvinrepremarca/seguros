@@ -1,0 +1,4 @@
+{"type":"object","x-label":"Vida","additionalProperties":false,"required":["age","occupation"],"properties":{
+"age":{"type":"integer","x-label":"Edad","x-order":1,"minimum":0,"maximum":120},
+"occupation":{"type":"string","x-label":"Ocupación","x-order":2,"minLength":1,"maxLength":120},
+"desiredSum":{"type":"string","x-label":"Suma deseada","x-order":3,"pattern":"^\\d{1,15}(\\.\\d{1,4})?$"}}}
