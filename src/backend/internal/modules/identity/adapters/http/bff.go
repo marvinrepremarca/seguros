@@ -55,6 +55,7 @@ type LoginCompleter interface {
 type Options struct {
 	Clock     kernel.Clock
 	Provider  IdentityProvider
+	Cipher    TokenCipher
 	Login     LoginCompleter
 	Tenants   tenancy.Directory
 	Policy    *authz.Policy
@@ -208,9 +209,13 @@ func (s *Server) LoginCallback(ctx context.Context, req LoginCallbackRequestObje
 	if err != nil {
 		return nil, err
 	}
+	refresh, err := sealRefresh(ctx, s.opts.Cipher, uuid.UUID(res.TenantID), uuid.UUID(res.UserID), id.RefreshToken)
+	if err != nil {
+		return nil, err
+	}
 	s.opts.Sessions.Put(ctx, keyPrincipal, string(raw))
 	s.opts.Sessions.Put(ctx, keyCSRF, csrf)
-	s.opts.Sessions.Put(ctx, keyRefresh, id.RefreshToken)
+	s.opts.Sessions.Put(ctx, keyRefresh, refresh)
 	s.opts.Sessions.Put(ctx, keyRevalidatedAt, s.opts.Clock.Now().UTC().Format(time.RFC3339Nano))
 	return redirectPage(returnTo)
 }

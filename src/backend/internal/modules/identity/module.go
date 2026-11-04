@@ -29,6 +29,8 @@ type Deps struct {
 	Tenants  tenancy.Directory
 	Policy   *authz.Policy
 	Provider identityhttp.IdentityProvider
+	// Cipher cifra el refresh token dentro de la sesión.
+	Cipher identityhttp.TokenCipher
 	// ActiveAgents dice qué asesores siguen activos (cuenta de servicio de Keycloak).
 	ActiveAgents app.ActiveAgents
 	// SessionStore guarda las sesiones (Valkey en producción; memoria en pruebas).
@@ -62,13 +64,13 @@ func New(d Deps) (*Module, error) {
 	return &Module{
 		Directory: &app.AgentDirectory{Users: store, Active: d.ActiveAgents},
 		Server: identityhttp.NewServer(identityhttp.Options{
-			Provider: d.Provider, Login: login, Tenants: d.Tenants, Policy: d.Policy,
+			Provider: d.Provider, Cipher: d.Cipher, Login: login, Tenants: d.Tenants, Policy: d.Policy,
 			Sessions: sessions, AuthTx: identityhttp.NewAuthTxManager(d.AuthTxStore), Guard: guard,
 			PublicURL: d.Auth.PublicURL, Clock: d.Clock, Logger: d.Logger,
 		}),
 		Sessions: sessions,
 		authenticator: identityhttp.NewAuthenticator(identityhttp.AuthenticatorOptions{
-			Sessions: sessions, Tenants: d.Tenants, Policy: d.Policy, Provider: d.Provider, Members: store,
+			Sessions: sessions, Tenants: d.Tenants, Policy: d.Policy, Provider: d.Provider, Members: store, Cipher: d.Cipher,
 			Clock: d.Clock, Interval: d.Auth.SessionRevalidate, Logger: d.Logger,
 		}),
 		publicURL: d.Auth.PublicURL,

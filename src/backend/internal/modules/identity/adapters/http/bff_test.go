@@ -1,6 +1,7 @@
 package identityhttp_test
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -47,6 +48,32 @@ func (f *fakeTenants) failResolve(err error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.resolveErr = err
+}
+
+// fakeCipher deja reconocible lo cifrado y puede fallar como un servicio de llaves caído.
+type fakeCipher struct {
+	mu   sync.Mutex
+	down bool
+}
+
+func (f *fakeCipher) setDown(v bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.down = v
+}
+
+func (*fakeCipher) EncryptFor(_ context.Context, _, _ string, plaintext []byte) ([]byte, error) {
+	return append([]byte("sealed:"), plaintext...), nil
+}
+
+func (f *fakeCipher) DecryptFor(_ context.Context, _, _ string, ciphertext []byte) ([]byte, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	rest, ok := bytes.CutPrefix(ciphertext, []byte("sealed:"))
+	if f.down || !ok {
+		return nil, errors.New("sin llave")
+	}
+	return rest, nil
 }
 
 type fakeMembers struct {
@@ -112,6 +139,7 @@ type env struct {
 	login   *fakeLogin
 	clock   *kernel.FakeClock
 	members *fakeMembers
+	cipher  *fakeCipher
 }
 
 func newEnv(t *testing.T) *env {
@@ -136,21 +164,22 @@ func newEnv(t *testing.T) *env {
 		Roles: []authz.Role{authz.RoleManager}, DisplayName: "Ana",
 	}}
 	members := &fakeMembers{}
+	cipher := &fakeCipher{}
 	logger := slog.New(slog.DiscardHandler)
 	clock := kernel.NewFakeClock(time.Now().UTC()) //nolint:forbidigo // solo decide cuándo revalidar; go-oidc usa el reloj real
 	sessions := identityhttp.NewSessionManager(identityhttp.SessionOptions{Store: memstore.New(), IdleTimeout: 30 * time.Minute, Lifetime: 8 * time.Hour})
 	srv := identityhttp.NewServer(identityhttp.Options{
-		Provider: provider, Login: login, Tenants: tenants, Policy: policy, Sessions: sessions,
+		Provider: provider, Cipher: cipher, Login: login, Tenants: tenants, Policy: policy, Sessions: sessions,
 		AuthTx: identityhttp.NewAuthTxManager(memstore.New()), Guard: guard, PublicURL: publicURL, Clock: clock, Logger: logger,
 	})
 	root := httpx.NewRouter(httpx.RouterOptions{Logger: logger, Clock: kernel.SystemClock{}, MaxBodyBytes: 1 << 20})
 	root.Group(func(r chi.Router) {
 		r.Use(sessions.LoadAndSave, identityhttp.NewAuthenticator(identityhttp.AuthenticatorOptions{
-			Sessions: sessions, Tenants: tenants, Policy: policy, Provider: provider, Members: members, Clock: clock, Interval: revalidateEvery, Logger: logger,
+			Sessions: sessions, Tenants: tenants, Policy: policy, Provider: provider, Members: members, Cipher: cipher, Clock: clock, Interval: revalidateEvery, Logger: logger,
 		}).Middleware, identityhttp.CSRF(sessions, publicURL))
 		require.NoError(t, srv.Mount(r))
 	})
-	return &env{op: op, router: root, tenants: tenants, login: login, clock: clock, members: members}
+	return &env{op: op, router: root, tenants: tenants, login: login, clock: clock, members: members, cipher: cipher}
 }
 
 // browser guarda cookies manualmente: las cookies __Host- son Secure y httptest usa http.
@@ -550,6 +579,20 @@ func TestDirectoryFailureIsToleratedOnlyWithinTheGrace(t *testing.T) {
 	status, _ = meRoles(t, e, b)
 	assert.Equal(t, http.StatusUnauthorized, status)
 	assert.Zero(t, e.members.count())
+}
+
+func TestKeyServiceOutageIsToleratedOnlyWithinTheGrace(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	b := newBrowser()
+	e.loginFlow(t, b, "/", claims())
+	e.cipher.setDown(true)
+	e.clock.Advance(revalidateEvery)
+	status, _ := meRoles(t, e, b)
+	assert.Equal(t, http.StatusOK, status)
+	e.clock.Advance(2 * revalidateEvery)
+	status, _ = meRoles(t, e, b)
+	assert.Equal(t, http.StatusUnauthorized, status)
 }
 
 func TestProviderOutageIsToleratedOnlyWithinTheGrace(t *testing.T) {

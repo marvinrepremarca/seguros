@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"net/url"
@@ -116,6 +117,35 @@ const revalidateTimeout = 5 * time.Second
 // dentro de la gracia: un corte de Keycloak no debe sumar la espera a cada petición.
 const providerCooldown = 30 * time.Second
 
+// refreshField es el campo cifrado del refresh token en la sesión.
+const refreshField = "identity.session.refresh_token"
+
+// TokenCipher cifra el refresh token: un volcado de Valkey no debe permitir renovar sesiones.
+type TokenCipher interface {
+	EncryptFor(ctx context.Context, field, record string, plaintext []byte) ([]byte, error)
+	DecryptFor(ctx context.Context, field, record string, ciphertext []byte) ([]byte, error)
+}
+
+func sealRefresh(ctx context.Context, c TokenCipher, tenant, user uuid.UUID, token string) (string, error) {
+	sealed, err := c.EncryptFor(reqctx.WithTenantID(ctx, kernel.TenantID(tenant)), refreshField, user.String(), []byte(token))
+	if err != nil {
+		return "", fmt.Errorf("identity: cifrando refresh token: %w", err)
+	}
+	return base64.RawStdEncoding.EncodeToString(sealed), nil
+}
+
+func openRefresh(ctx context.Context, c TokenCipher, tenant, user uuid.UUID, stored string) (string, error) {
+	sealed, err := base64.RawStdEncoding.DecodeString(stored)
+	if err != nil {
+		return "", fmt.Errorf("identity: refresh token mal formado: %w", err)
+	}
+	token, err := c.DecryptFor(reqctx.WithTenantID(ctx, kernel.TenantID(tenant)), refreshField, user.String(), sealed)
+	if err != nil {
+		return "", fmt.Errorf("identity: descifrando refresh token: %w", err)
+	}
+	return string(token), nil
+}
+
 // MembershipRecorder registra que un usuario salió de la organización del tenant, para que deje de
 // ofrecerse como asesor activo.
 type MembershipRecorder interface {
@@ -129,6 +159,7 @@ type AuthenticatorOptions struct {
 	Policy   *authz.Policy
 	Provider IdentityProvider
 	Members  MembershipRecorder
+	Cipher   TokenCipher
 	Clock    kernel.Clock
 	Interval time.Duration
 	Logger   *slog.Logger
@@ -141,6 +172,7 @@ type Authenticator struct {
 	policy   *authz.Policy
 	provider IdentityProvider
 	members  MembershipRecorder
+	cipher   TokenCipher
 	clock    kernel.Clock
 	interval time.Duration
 	logger   *slog.Logger
@@ -155,7 +187,7 @@ func NewAuthenticator(o AuthenticatorOptions) *Authenticator {
 	if interval <= 0 {
 		interval = defaultRevalidateInterval
 	}
-	return &Authenticator{sessions: o.Sessions, tenants: o.Tenants, policy: o.Policy, provider: o.Provider, members: o.Members, clock: o.Clock, interval: interval, logger: o.Logger}
+	return &Authenticator{sessions: o.Sessions, tenants: o.Tenants, policy: o.Policy, provider: o.Provider, members: o.Members, cipher: o.Cipher, clock: o.Clock, interval: interval, logger: o.Logger}
 }
 
 // Middleware pone en el contexto el principal de la sesión. En cada petición revalida que el
@@ -201,8 +233,8 @@ func (a *Authenticator) Middleware(next http.Handler) http.Handler {
 // false si la sesión debe cerrarse: usuario deshabilitado, fuera de la organización, sin roles, con un
 // rol nuevo que exige MFA (el login es quien la verifica) o proveedor sin responder más allá de la gracia.
 func (a *Authenticator) revalidate(ctx context.Context, sp storedPrincipal) (storedPrincipal, bool) {
-	token := a.sessions.GetString(ctx, keyRefresh)
-	if token == "" {
+	stored := a.sessions.GetString(ctx, keyRefresh)
+	if stored == "" {
 		return sp, false
 	}
 	now := a.clock.Now()
@@ -218,6 +250,15 @@ func (a *Authenticator) revalidate(ctx context.Context, sp storedPrincipal) (sto
 	withinGrace := age < revalidateGrace*a.interval
 	if withinGrace && now.UnixNano() < a.providerDownUntil.Load() {
 		return sp, true
+	}
+	token, err := openRefresh(ctx, a.cipher, sp.TenantID, sp.UserID, stored)
+	if err != nil {
+		// El servicio de llaves puede estar caído: misma gracia que el proveedor.
+		a.logger.WarnContext(ctx, "no se pudo leer el token de la sesión", "error", err)
+		if !withinGrace {
+			a.logClosed(ctx, sp, "token_unavailable")
+		}
+		return sp, withinGrace
 	}
 	id, err := a.refreshShared(ctx, token)
 	switch {
@@ -268,11 +309,18 @@ func (a *Authenticator) revalidate(ctx context.Context, sp storedPrincipal) (sto
 		a.logger.ErrorContext(ctx, "guardando la sesión revalidada", "error", err)
 		return sp, false
 	}
+	if id.RefreshToken != "" {
+		// Si no se puede guardar el token rotado, la sesión no podrá renovarse: se cierra.
+		sealed, err := sealRefresh(ctx, a.cipher, sp.TenantID, sp.UserID, id.RefreshToken)
+		if err != nil {
+			a.logger.ErrorContext(ctx, "guardando la sesión revalidada", "error", err)
+			a.logClosed(ctx, sp, "token_unavailable")
+			return sp, false
+		}
+		a.sessions.Put(ctx, keyRefresh, sealed)
+	}
 	a.sessions.Put(ctx, keyPrincipal, string(raw))
 	a.sessions.Put(ctx, keyRevalidatedAt, now.UTC().Format(time.RFC3339Nano))
-	if id.RefreshToken != "" {
-		a.sessions.Put(ctx, keyRefresh, id.RefreshToken)
-	}
 	return sp, true
 }
 

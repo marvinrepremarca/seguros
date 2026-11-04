@@ -114,11 +114,23 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	cryptoCfg, err := config.LoadCrypto(os.LookupEnv, cfg.Env)
+	if err != nil {
+		return err
+	}
+	keyWrapper, err := crypto.NewWrapper(cryptoCfg)
+	if err != nil {
+		return err
+	}
+	cipher, err := crypto.NewService(database, keyWrapper, cryptoCfg.IndexKey.Reveal(), clock)
+	if err != nil {
+		return err
+	}
 	tenants := tenancy.New(database, clock)
 	recorder := audit.NewRecorder(clock)
 	identityMod, err := identity.New(identity.Deps{
 		DB: database, Clock: clock, Audit: recorder, Tenants: tenants.Directory,
-		Policy: policy, Provider: provider, ActiveAgents: agentsSource,
+		Policy: policy, Provider: provider, Cipher: cipher, ActiveAgents: agentsSource,
 		SessionStore: session.NewValkeyStore(valkeyClient, "bff:sess:", clock),
 		AuthTxStore:  session.NewValkeyStore(valkeyClient, "bff:authtx:", clock),
 		Auth:         cfg.Auth, Logger: logger,
@@ -144,18 +156,6 @@ func run() error {
 		Policy:      policy, Clock: clock, Logger: logger,
 	})
 
-	cryptoCfg, err := config.LoadCrypto(os.LookupEnv, cfg.Env)
-	if err != nil {
-		return err
-	}
-	keyWrapper, err := crypto.NewWrapper(cryptoCfg)
-	if err != nil {
-		return err
-	}
-	cipher, err := crypto.NewService(database, keyWrapper, cryptoCfg.IndexKey.Reveal(), clock)
-	if err != nil {
-		return err
-	}
 	partiesMod := parties.New(parties.Deps{DB: database, Audit: recorder, Cipher: cipher, Agents: identityMod.Directory, Policy: policy, Clock: clock, Logger: logger})
 	catalogMod, err := catalog.New(catalog.Deps{DB: database, Audit: recorder, Policy: policy, Clock: clock, Logger: logger})
 	if err != nil {

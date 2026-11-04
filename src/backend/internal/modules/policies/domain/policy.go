@@ -31,6 +31,7 @@ var (
 	ErrInvalidTransferReason   = kernel.NewError(kernel.KindValidation, "policies.policy.invalid_transfer_reason", "motivo de 3 a 200 caracteres")
 	ErrInvalidHolder           = kernel.NewError(kernel.KindValidation, "policies.policy.invalid_holder", "debe tener exactamente un tomador")
 	ErrInsuredRequired         = kernel.NewError(kernel.KindValidation, "policies.policy.insured_required", "debe tener al menos un asegurado")
+	ErrTooManyParties          = kernel.NewError(kernel.KindValidation, "policies.policy.too_many_parties", "la póliza supera el máximo de partes")
 	ErrInvalidParty            = kernel.NewError(kernel.KindValidation, "policies.policy.invalid_party", "parte inválida o repetida")
 	ErrInvalidCoverage         = kernel.NewError(kernel.KindValidation, "policies.policy.invalid_coverage", "cobertura inválida")
 	ErrInvalidItem             = kernel.NewError(kernel.KindValidation, "policies.policy.invalid_item", "bien asegurado inválido")
@@ -196,7 +197,13 @@ func validatePremium(net, taxes kernel.Money) error {
 }
 
 // validateParties exige exactamente un tomador y al menos un asegurado, sin repetidos.
+// maxPolicyParties es un límite técnico: el evento con las partes debe caber en el outbox (16 KiB).
+const maxPolicyParties = 400
+
 func validateParties(parties []PolicyParty) error {
+	if len(parties) > maxPolicyParties {
+		return ErrTooManyParties
+	}
 	holders, insureds := 0, 0
 	seen := make(map[PolicyParty]bool, len(parties))
 	for _, p := range parties {

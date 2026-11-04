@@ -112,6 +112,11 @@ func TestNewPolicyInvariants(t *testing.T) {
 		{"parte repetida", func(x *domain.Terms) {
 			x.Parties = []domain.PolicyParty{{PartyID: holder, Role: domain.RoleHolder}, {PartyID: other, Role: domain.RoleInsured}, {PartyID: other, Role: domain.RoleInsured}}
 		}, domain.ErrInvalidParty},
+		{"demasiadas partes", func(x *domain.Terms) {
+			for range 400 {
+				x.Parties = append(x.Parties, domain.PolicyParty{PartyID: uuid.New(), Role: domain.RoleBeneficiary})
+			}
+		}, domain.ErrTooManyParties},
 		{"papel desconocido", func(x *domain.Terms) { x.Parties = append(x.Parties, domain.PolicyParty{PartyID: other, Role: "x"}) }, domain.ErrInvalidParty},
 		{"cobertura sin nombre", func(x *domain.Terms) { x.Coverages[0].Name = " " }, domain.ErrInvalidCoverage},
 		{"cobertura en otra moneda", func(x *domain.Terms) { x.Coverages[0].SumInsured = usd }, domain.ErrInvalidCoverage},

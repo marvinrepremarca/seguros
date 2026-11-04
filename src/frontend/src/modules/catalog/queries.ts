@@ -6,22 +6,42 @@ import {
   listRiskSchemas,
 } from "./api/generated/catalog";
 
-async function fetchInsurers() {
-  const res = await listInsurers({ limit: 200 });
-  if (res.status !== 200) throw new Error("aseguradoras no disponibles");
-  return res.data.items;
+// Los selectores necesitan el catálogo completo: recorre todas las páginas.
+async function allPages<T>(
+  page: (cursor?: string) => Promise<{ items: T[]; nextCursor?: string }>,
+): Promise<T[]> {
+  const all: T[] = [];
+  let cursor: string | undefined;
+  do {
+    const { items, nextCursor } = await page(cursor);
+    all.push(...items);
+    cursor = nextCursor;
+  } while (cursor);
+  return all;
 }
 
-async function fetchLines() {
-  const res = await listLinesOfBusiness({ limit: 200 });
-  if (res.status !== 200) throw new Error("ramos no disponibles");
-  return res.data.items;
+function fetchInsurers() {
+  return allPages(async (cursor) => {
+    const res = await listInsurers({ limit: 200, ...(cursor ? { cursor } : {}) });
+    if (res.status !== 200) throw new Error("aseguradoras no disponibles");
+    return res.data;
+  });
 }
 
-async function fetchProducts() {
-  const res = await listProducts({ limit: 200 });
-  if (res.status !== 200) throw new Error("productos no disponibles");
-  return res.data.items;
+function fetchLines() {
+  return allPages(async (cursor) => {
+    const res = await listLinesOfBusiness({ limit: 200, ...(cursor ? { cursor } : {}) });
+    if (res.status !== 200) throw new Error("ramos no disponibles");
+    return res.data;
+  });
+}
+
+function fetchProducts() {
+  return allPages(async (cursor) => {
+    const res = await listProducts({ limit: 200, ...(cursor ? { cursor } : {}) });
+    if (res.status !== 200) throw new Error("productos no disponibles");
+    return res.data;
+  });
 }
 
 async function fetchRiskSchemas() {

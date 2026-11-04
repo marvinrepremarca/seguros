@@ -67,6 +67,7 @@ func buildRouter(d routerDeps) (*chi.Mux, error) {
 		r.Use(d.Identity.Middlewares()...)
 		// Datos Restringidos: por usuario, para frenar la extracción masiva de documentos.
 		r.Use(httpx.RateLimitByUser(isDocumentLookup, 30, time.Minute))
+		r.Use(httpx.RateLimitByTenant(isDocumentLookup, 300, time.Minute))
 		mountErr = errors.Join(d.Identity.Server.Mount(r), d.FeatureMgmt.Mount(r), d.Parties.Mount(r), d.Catalog.Mount(r), d.Policies.Mount(r))
 	})
 	if mountErr != nil {

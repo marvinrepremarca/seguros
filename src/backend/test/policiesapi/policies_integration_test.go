@@ -1082,3 +1082,74 @@ func TestPortfolioTransfer(t *testing.T) {
 
 	assert.Equal(t, http.StatusForbidden, transfer(from, fromID, toID).status, "un asesor no traspasa carteras")
 }
+
+// Un endoso que agrega o retira una parte cambia los clientes del asesor, entregado por el camino real:
+// relay, Dispatcher e inbox (DECISIONS N10).
+func TestEndorsementChangesAgentScopeThroughDispatcher(t *testing.T) {
+	t.Parallel()
+	e := newEnv(t)
+	w := e.world(t)
+	agent := e.as(w.tenant, authz.RoleSalesAgent)
+	e.users.list = []identity.User{{ID: uuid.UUID(agent.UserID), DisplayName: "Asesora", Active: true}}
+
+	logger := slog.New(slog.DiscardHandler)
+	ps := outbox.NewInProcessPubSub(logger)
+	d, err := outbox.NewDispatcher(outbox.DispatcherOptions{DB: workerDB, Subscriber: ps, Clock: e.clock, Logger: logger, MaxRetries: 2, InitialInterval: time.Millisecond})
+	require.NoError(t, err)
+	require.NoError(t, d.Register(partiesevents.PolicyScope()))
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan error, 1)
+	go func() { done <- d.Run(ctx) }()
+	<-d.Running()
+	t.Cleanup(func() {
+		cancel()
+		require.NoError(t, <-done)
+		require.NoError(t, ps.Close())
+	})
+	relay := outbox.NewRelay(workerDB, ps, e.clock, logger, outbox.RelayOptions{})
+	reaches := func(party string, want int) {
+		t.Helper()
+		require.Eventually(t, func() bool {
+			if _, err := relay.RelayOnce(ctx); err != nil {
+				return false
+			}
+			return e.do(t, agent, http.MethodGet, "/api/v1/parties/parties/"+party, nil).status == want //nolint:contextcheck // e.do usa su propio contexto de petición
+		}, 10*time.Second, 20*time.Millisecond)
+	}
+
+	terms := w.terms()
+	terms["agentId"] = uuid.UUID(agent.UserID).String()
+	c := e.do(t, w.ops, http.MethodPost, base, terms)
+	require.Equal(t, http.StatusCreated, c.status, c.body)
+	id := c.str(t, "id")
+	a := e.do(t, w.ops, http.MethodPost, at(id, c.version(t), "accept"), nil)
+	require.Equal(t, http.StatusOK, a.status, a.body)
+	p := e.do(t, w.ops, http.MethodPost, at(id, a.version(t), "issue"), map[string]any{"policyNumber": "POL-" + uuid.NewString()[:8]})
+	require.Equal(t, http.StatusOK, p.status, p.body)
+	reaches(w.holder, http.StatusOK)
+
+	added := e.do(t, w.ops, http.MethodPost, "/api/v1/parties/parties", map[string]any{
+		"kind": "person", "name": "Beneficiaria", "documentType": "CC", "documentNumber": fmt.Sprintf("1%09d", uuid.New().ID()%1_000_000_000),
+	})
+	require.Equal(t, http.StatusCreated, added.status, added.body)
+	addedID := added.str(t, "id")
+	assert.Equal(t, http.StatusNotFound, e.do(t, agent, http.MethodGet, "/api/v1/parties/parties/"+addedID, nil).status)
+
+	endorse := func(version int, effects map[string]any) resp {
+		req := e.do(t, w.ops, http.MethodPost, at(id, version, "endorsements"), map[string]any{"type": "party_inclusion", "description": "Cambio de partes", "effectiveDate": "2026-06-01"})
+		require.Equal(t, http.StatusCreated, req.status, req.body)
+		list, ok := req.body["endorsements"].([]any)
+		require.True(t, ok)
+		last, ok := list[len(list)-1].(map[string]any)
+		require.True(t, ok)
+		effects["number"], effects["netPremiumDelta"], effects["taxesDelta"] = "END-"+uuid.NewString()[:8], "0", "0"
+		r := e.do(t, w.ops, http.MethodPost, fmt.Sprintf("%s/%s/endorsements/%s/issue?version=%d", base, id, last["id"], req.version(t)), effects)
+		require.Equal(t, http.StatusOK, r.status, r.body)
+		return r
+	}
+	party := map[string]any{"partyId": addedID, "role": "beneficiary"}
+	withParty := endorse(p.version(t), map[string]any{"addParties": []any{party}})
+	reaches(addedID, http.StatusOK)
+	endorse(withParty.version(t), map[string]any{"removeParties": []any{party}})
+	reaches(addedID, http.StatusNotFound)
+}

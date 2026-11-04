@@ -1,5 +1,6 @@
 // Package session guarda las sesiones del BFF (alexedwards/scs) en Valkey. Las claves son el
-// SHA-256 del token de sesión, de modo que un volcado de Valkey no contiene tokens utilizables.
+// SHA-256 del token de sesión, y el refresh token del proveedor va cifrado: un volcado de Valkey no
+// contiene tokens utilizables.
 package session
 
 import (

@@ -72,3 +72,27 @@ func RateLimitByUser(match func(*http.Request) bool, requests int, window time.D
 		})
 	}
 }
+
+// RateLimitByTenant limita por tenant autenticado las rutas que cumplan match: varios usuarios de una
+// agencia no suman más que este tope. El contador es por réplica hasta mover el rate limit a Valkey.
+func RateLimitByTenant(match func(*http.Request) bool, requests int, window time.Duration) func(http.Handler) http.Handler {
+	limiter := httprate.LimitBy(requests, window,
+		func(r *http.Request) (string, error) {
+			tenant, _ := reqctx.TenantID(r.Context())
+			return tenant.String(), nil
+		},
+		httprate.WithLimitHandler(func(w http.ResponseWriter, r *http.Request) {
+			WriteProblem(w, r, http.StatusTooManyRequests, CodeRateLimited, "Demasiadas solicitudes; intente más tarde")
+		}),
+	)
+	return func(next http.Handler) http.Handler {
+		limited := limiter(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if _, ok := reqctx.TenantID(r.Context()); ok && match(r) {
+				limited.ServeHTTP(w, r)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}

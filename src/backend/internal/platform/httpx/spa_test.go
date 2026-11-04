@@ -171,6 +171,23 @@ func TestRateLimitByUser(t *testing.T) {
 	assert.Equal(t, http.StatusOK, status(ana, "/otra"), "las demás rutas no cuentan")
 }
 
+func TestRateLimitByTenant(t *testing.T) {
+	t.Parallel()
+	ok := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
+	h := httpx.RateLimitByTenant(func(r *http.Request) bool { return strings.HasSuffix(r.URL.Path, "/reveal") }, 2, time.Hour)(ok)
+	status := func(ctx context.Context) int {
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, httptest.NewRequestWithContext(ctx, http.MethodPost, "/x/reveal", nil))
+		return rec.Code
+	}
+	a := reqctx.WithTenantID(context.Background(), kernel.TenantID(uuid.Must(uuid.NewV7())))
+	b := reqctx.WithTenantID(context.Background(), kernel.TenantID(uuid.Must(uuid.NewV7())))
+	assert.Equal(t, http.StatusOK, status(a))
+	assert.Equal(t, http.StatusOK, status(a))
+	assert.Equal(t, http.StatusTooManyRequests, status(a))
+	assert.Equal(t, http.StatusOK, status(b), "el contador es por tenant")
+}
+
 func TestCanceledClientIsNotAServerError(t *testing.T) {
 	t.Parallel()
 	var logs strings.Builder
