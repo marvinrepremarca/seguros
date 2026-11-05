@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill/message"
@@ -67,6 +68,7 @@ type pending struct {
 	topic      string
 	payload    []byte
 	occurredAt time.Time
+	targets    []string
 }
 
 // RelayOnce publica hasta Batch mensajes, cada uno en su propia transacción (reclamar →
@@ -91,8 +93,8 @@ func (r *Relay) RelayOnce(ctx context.Context) (int, error) {
 func (r *Relay) relayOne(ctx context.Context) (found, ok bool, err error) {
 	err = r.db.WithoutTenantTx(ctx, func(tx pgx.Tx) error {
 		var p pending
-		err := tx.QueryRow(ctx, `SELECT id, tenant_id, topic, payload, occurred_at FROM messaging.claim_outbox(1)`).
-			Scan(&p.id, &p.tenant, &p.topic, &p.payload, &p.occurredAt)
+		err := tx.QueryRow(ctx, `SELECT id, tenant_id, topic, payload, occurred_at, target_consumers FROM messaging.claim_outbox(1)`).
+			Scan(&p.id, &p.tenant, &p.topic, &p.payload, &p.occurredAt, &p.targets)
 		if errors.Is(err, pgx.ErrNoRows) {
 			return nil
 		}
@@ -103,6 +105,7 @@ func (r *Relay) relayOne(ctx context.Context) (found, ok bool, err error) {
 		msg := message.NewMessage(p.id.String(), p.payload)
 		msg.Metadata.Set(MetaTenantID, p.tenant.String())
 		msg.Metadata.Set(MetaOccurredAt, p.occurredAt.UTC().Format(time.RFC3339Nano))
+		msg.Metadata.Set(MetaTargetConsumers, strings.Join(p.targets, ","))
 		msg.SetContext(ctx)
 		// Bloquea hasta que todos los consumidores del tópico confirmen (GoChannel con
 		// BlockPublishUntilSubscriberAck); con RabbitMQ (fase 2) confirma el broker.

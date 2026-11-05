@@ -1,0 +1,162 @@
+openapi: 3.0.3
+info:
+  title: Seguros — Renovaciones
+  version: 1.0.0
+  description: Casos de renovación, alertas y retención.
+servers:
+  - url: /
+x-problems: &problems
+  "400": { $ref: "#/components/responses/Problem" }
+  "401": { $ref: "#/components/responses/Problem" }
+  "403": { $ref: "#/components/responses/Problem" }
+  "404": { $ref: "#/components/responses/Problem" }
+  "409": { $ref: "#/components/responses/Problem" }
+  "422": { $ref: "#/components/responses/Problem" }
+paths:
+  /api/v1/renewals/cases:
+    get:
+      operationId: listCases
+      x-permission: renewals.case.read
+      x-feature: module.renewals
+      parameters:
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/CaseStatus" } }
+        - { name: cursor, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: limit, in: query, schema: { type: integer, format: int32, minimum: 1, maximum: 200, default: 200 } }
+      responses:
+        "200":
+          description: Casos.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CasePage" }
+        <<: *problems
+  /api/v1/renewals/cases/{policyId}/start:
+    parameters:
+      - { name: policyId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: startCase
+      x-permission: renewals.case.manage
+      x-feature: module.renewals
+      responses:
+        "200":
+          description: Gestión iniciada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RenewalCase" }
+        <<: *problems
+  /api/v1/renewals/cases/{policyId}/lost:
+    parameters:
+      - { name: policyId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: markCaseLost
+      x-permission: renewals.case.manage
+      x-feature: module.renewals
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [reason]
+              properties:
+                reason: { type: string, minLength: 3, maxLength: 500 }
+      responses:
+        "200":
+          description: Caso perdido.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RenewalCase" }
+        <<: *problems
+  /api/v1/renewals/retention:
+    get:
+      operationId: getRetention
+      x-permission: renewals.case.read
+      x-feature: module.renewals
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' } }
+        - { name: to, in: query, required: true, schema: { type: string, pattern: '^\d{4}-\d{2}-\d{2}$' } }
+      responses:
+        "200":
+          description: Pólizas renovadas / por vencer en el periodo.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Retention" }
+        <<: *problems
+  /api/v1/renewals/settings:
+    get:
+      operationId: getRenewalSettings
+      x-permission: renewals.settings.manage
+      x-feature: module.renewals
+      responses:
+        "200":
+          description: Días de alerta.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RenewalSettings" }
+        <<: *problems
+    put:
+      operationId: setRenewalSettings
+      x-permission: renewals.settings.manage
+      x-feature: module.renewals
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RenewalSettings" }
+      responses:
+        "204": { description: Guardado. }
+        <<: *problems
+components:
+  responses:
+    Problem:
+      description: Error.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+  schemas:
+    Problem:
+      type: object
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer, format: int32 }
+        detail: { type: string }
+        traceId: { type: string }
+    CaseStatus: { type: string, enum: [open, in_progress, renewed, lost, closed] }
+    RenewalCase:
+      type: object
+      required: [id, policyId, policyNumber, insurerId, holderPartyId, holderName, effectiveTo, status, version]
+      properties:
+        id: { type: string, format: uuid }
+        policyId: { type: string, format: uuid }
+        policyNumber: { type: string }
+        insurerId: { type: string, format: uuid }
+        holderPartyId: { type: string, format: uuid }
+        holderName: { type: string }
+        effectiveTo: { type: string, format: date }
+        status: { $ref: "#/components/schemas/CaseStatus" }
+        lostReason: { type: string }
+        renewedByPolicyId: { type: string, format: uuid }
+        version: { type: integer, format: int32 }
+    CasePage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/RenewalCase" } }
+        nextCursor: { type: string }
+    Retention:
+      type: object
+      required: [due, renewed]
+      properties:
+        due: { type: integer, format: int32 }
+        renewed: { type: integer, format: int32 }
+    RenewalSettings:
+      type: object
+      additionalProperties: false
+      required: [alertDays]
+      properties:
+        alertDays:
+          type: array
+          minItems: 1
+          maxItems: 10
+          items: { type: integer, format: int32, minimum: 1, maximum: 365 }

@@ -163,6 +163,22 @@ func (q *Queries) GetPolicy(ctx context.Context, arg GetPolicyParams) (GetPolicy
 	return i, err
 }
 
+const getRenewalSettings = `-- name: GetRenewalSettings :one
+SELECT keep_holder, keep_line FROM policies.renewal_settings WHERE tenant_id = $1
+`
+
+type GetRenewalSettingsRow struct {
+	KeepHolder bool
+	KeepLine   bool
+}
+
+func (q *Queries) GetRenewalSettings(ctx context.Context, tenantID uuid.UUID) (GetRenewalSettingsRow, error) {
+	row := q.db.QueryRow(ctx, getRenewalSettings, tenantID)
+	var i GetRenewalSettingsRow
+	err := row.Scan(&i.KeepHolder, &i.KeepLine)
+	return i, err
+}
+
 const insertAgentHistory = `-- name: InsertAgentHistory :exec
 INSERT INTO policies.policy_agent_history (id, tenant_id, policy_id, previous_agent_id, agent_id, effective_at, reason, note, changed_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -701,6 +717,67 @@ func (q *Queries) ListReassignablePolicyIDs(ctx context.Context, arg ListReassig
 		return nil, err
 	}
 	return items, nil
+}
+
+const renewalsOf = `-- name: RenewalsOf :many
+SELECT id, status FROM policies.policies
+WHERE tenant_id = $1 AND renewed_from_policy_id = $2 AND status NOT IN ('rejected', 'cancelled')
+`
+
+type RenewalsOfParams struct {
+	TenantID uuid.UUID
+	Previous uuid.NullUUID
+}
+
+type RenewalsOfRow struct {
+	ID     uuid.UUID
+	Status string
+}
+
+// Nuevas vigencias de una póliza que siguen en curso o ya se expidieron.
+func (q *Queries) RenewalsOf(ctx context.Context, arg RenewalsOfParams) ([]RenewalsOfRow, error) {
+	rows, err := q.db.Query(ctx, renewalsOf, arg.TenantID, arg.Previous)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RenewalsOfRow{}
+	for rows.Next() {
+		var i RenewalsOfRow
+		if err := rows.Scan(&i.ID, &i.Status); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setRenewalSettings = `-- name: SetRenewalSettings :exec
+INSERT INTO policies.renewal_settings (tenant_id, keep_holder, keep_line, updated_at, updated_by)
+VALUES ($1, $2, $3, $4, $5)
+ON CONFLICT (tenant_id) DO UPDATE SET keep_holder = EXCLUDED.keep_holder, keep_line = EXCLUDED.keep_line, updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by
+`
+
+type SetRenewalSettingsParams struct {
+	TenantID   uuid.UUID
+	KeepHolder bool
+	KeepLine   bool
+	At         time.Time
+	Actor      uuid.NullUUID
+}
+
+func (q *Queries) SetRenewalSettings(ctx context.Context, arg SetRenewalSettingsParams) error {
+	_, err := q.db.Exec(ctx, setRenewalSettings,
+		arg.TenantID,
+		arg.KeepHolder,
+		arg.KeepLine,
+		arg.At,
+		arg.Actor,
+	)
+	return err
 }
 
 const updatePolicy = `-- name: UpdatePolicy :execrows

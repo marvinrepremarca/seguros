@@ -10,6 +10,7 @@ import { ErrorMessage, Field, Input, QueryState, Select } from "@/shared/ui/fiel
 import {
   createPolicy,
   getPolicy,
+  renewPolicy,
   updatePolicyTerms,
   type Policy,
   type PolicyTerms,
@@ -63,7 +64,15 @@ function fromPolicy(p: Policy): PolicyFormValues {
   };
 }
 
-export function PolicyFormPage({ deps, policyId }: { deps: PolicyDeps; policyId?: string }) {
+export function PolicyFormPage({
+  deps,
+  policyId,
+  renew = false,
+}: {
+  deps: PolicyDeps;
+  policyId?: string;
+  renew?: boolean;
+}) {
   const existing = useQuery({
     queryKey: ["policies", "detail", policyId],
     enabled: policyId !== undefined,
@@ -83,10 +92,20 @@ export function PolicyFormPage({ deps, policyId }: { deps: PolicyDeps; policyId?
       />
     );
   }
-  return <PolicyForm deps={deps} {...(existing.data ? { policy: existing.data } : {})} />;
+  return (
+    <PolicyForm deps={deps} renew={renew} {...(existing.data ? { policy: existing.data } : {})} />
+  );
 }
 
-function PolicyForm({ deps, policy }: { deps: PolicyDeps; policy?: Policy }) {
+function PolicyForm({
+  deps,
+  policy,
+  renew,
+}: {
+  deps: PolicyDeps;
+  policy?: Policy;
+  renew: boolean;
+}) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const insurers = useQuery(deps.insurers);
@@ -96,7 +115,10 @@ function PolicyForm({ deps, policy }: { deps: PolicyDeps; policy?: Policy }) {
   const agents = useQuery(agentsQuery());
   const form = useForm({
     resolver: zodResolver(policyFormSchema),
-    defaultValues: policy ? fromPolicy(policy) : EMPTY,
+    // Una renovación parte de los datos vigentes, con la nueva vigencia por diligenciar.
+    defaultValues: policy
+      ? { ...fromPolicy(policy), ...(renew ? { effectiveFrom: "", effectiveTo: "" } : {}) }
+      : EMPTY,
   });
   const parties = useFieldArray({ control: form.control, name: "parties" });
   const coverages = useFieldArray({ control: form.control, name: "coverages" });
@@ -134,6 +156,11 @@ function PolicyForm({ deps, policy }: { deps: PolicyDeps; policy?: Policy }) {
           riskData: toRiskData(fields, i.risk),
         })),
       };
+      if (policy && renew) {
+        const res = await renewPolicy(policy.id, terms);
+        if (res.status !== 201) throw new Error("no renovada");
+        return res.data;
+      }
       if (policy) {
         const res = await updatePolicyTerms(policy.id, terms, { version: policy.version });
         if (res.status !== 200) throw new Error("no guardada");
@@ -153,7 +180,7 @@ function PolicyForm({ deps, policy }: { deps: PolicyDeps; policy?: Policy }) {
   return (
     <section aria-labelledby="policy-form-title" className="max-w-3xl space-y-6">
       <h1 id="policy-form-title" className="text-2xl font-semibold">
-        {policy ? "Ajustar póliza" : "Nueva póliza"}
+        {renew ? "Renovar póliza" : policy ? "Ajustar póliza" : "Nueva póliza"}
       </h1>
       <form
         noValidate

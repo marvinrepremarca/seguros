@@ -44,7 +44,7 @@ func TestDefaultGrantsAreValid(t *testing.T) {
 			assert.True(t, p.Known(perm), "%s → %s", role, perm)
 		}
 	}
-	assert.False(t, p.Known("billing.payment.reverse"))
+	assert.False(t, p.Known("claims.claim.approve"))
 }
 
 func TestPermissionsForUnionsRoles(t *testing.T) {
@@ -171,7 +171,7 @@ func TestOperationGuardRejectsUndeclaredOrUnknownPermissions(t *testing.T) {
 	require.Error(t, err)
 	_, err = authz.NewOperationGuard(spec(map[string]any{"a": 3}), p)
 	require.Error(t, err)
-	_, err = authz.NewOperationGuard(spec(map[string]any{"a": "billing.payment.reverse"}), p)
+	_, err = authz.NewOperationGuard(spec(map[string]any{"a": "claims.claim.approve"}), p)
 	require.ErrorContains(t, err, "fuera del catálogo")
 	_, err = authz.NewOperationGuard(nil, p)
 	require.Error(t, err)

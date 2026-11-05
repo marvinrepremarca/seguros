@@ -118,3 +118,16 @@ SELECT id FROM policies.policies
 WHERE tenant_id = @tenant_id AND (sqlc.narg('after')::uuid IS NULL OR id > sqlc.narg('after')::uuid)
 ORDER BY id
 LIMIT @page_size;
+
+-- name: RenewalsOf :many
+-- Nuevas vigencias de una póliza que siguen en curso o ya se expidieron.
+SELECT id, status FROM policies.policies
+WHERE tenant_id = @tenant_id AND renewed_from_policy_id = @previous AND status NOT IN ('rejected', 'cancelled');
+
+-- name: GetRenewalSettings :one
+SELECT keep_holder, keep_line FROM policies.renewal_settings WHERE tenant_id = @tenant_id;
+
+-- name: SetRenewalSettings :exec
+INSERT INTO policies.renewal_settings (tenant_id, keep_holder, keep_line, updated_at, updated_by)
+VALUES (@tenant_id, @keep_holder, @keep_line, @at, @actor)
+ON CONFLICT (tenant_id) DO UPDATE SET keep_holder = EXCLUDED.keep_holder, keep_line = EXCLUDED.keep_line, updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by;

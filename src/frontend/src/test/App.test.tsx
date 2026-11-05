@@ -23,6 +23,7 @@ describe("App", () => {
   it("muestra solo los módulos encendidos y lo permitido al rol", async () => {
     signedIn({
       flags: { "module.billing": true, "module.claims": false, "module.renewals": true },
+      permissions: ["featuremgmt.flag.read", "billing.plan.read", "renewals.case.read"],
     });
     renderAt("/");
     const nav = await screen.findByRole("navigation", { name: "Menú principal" });
@@ -54,10 +55,10 @@ describe("App", () => {
   });
 
   it("la ruta de un módulo encendido se muestra", async () => {
-    signedIn({ flags: { "module.billing": true } });
-    renderAt("/modulos/billing");
+    signedIn({ flags: { "module.claims": true } });
+    renderAt("/modulos/claims");
     expect(
-      await screen.findByRole("heading", { level: 1, name: "Cartera y cobro" }),
+      await screen.findByRole("heading", { level: 1, name: "Siniestros" }),
     ).toBeInTheDocument();
   });
 

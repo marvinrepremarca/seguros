@@ -1,5 +1,6 @@
 // Package policies es el módulo núcleo de pólizas: máquina de estados, coberturas, bienes asegurados,
-// endosos y cancelación (Flujos 3, 5 y 8). No es apagable y no depende de ningún módulo apagable: el
+// endosos y cancelación (Flujos 3, 5 y 8). No es apagable y funciona sin los módulos apagables: solo reacciona a
+// sus eventos, si existen. El
 // control de SARLAFT se resuelve por flag (ADR 0012).
 package policies
 
@@ -65,7 +66,9 @@ func (m *Module) Mount(r chi.Router) error { return m.server.Mount(r) }
 
 // Consumers devuelve los consumidores de eventos del módulo (los registra cmd/worker).
 func Consumers(database *db.DB, recorder *audit.Recorder, writer *outbox.Writer, clock kernel.Clock) []outbox.Consumer {
-	return []outbox.Consumer{policiesevents.PortfolioTransfer(postgres.NewStore(database, recorder, writer), clock)}
+	store := postgres.NewStore(database, recorder, writer)
+	out := append([]outbox.Consumer{policiesevents.PortfolioTransfer(store, clock)}, policiesevents.Arrears(store, clock)...)
+	return append(out, policiesevents.Renewal(store, clock)...)
 }
 
 // RebuildScopes republica el alcance de las pólizas del tenant del contexto (rol seguros_worker).

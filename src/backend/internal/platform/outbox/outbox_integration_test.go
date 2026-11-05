@@ -118,6 +118,17 @@ func (r *recorder) handle(ctx context.Context, tx pgx.Tx, e outbox.Event) error 
 	return nil
 }
 
+// handleShared sirve a varios consumidores del mismo evento: el inbox tiene una fila por cada uno.
+func (r *recorder) handleShared(_ context.Context, _ pgx.Tx, e outbox.Event) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.fail {
+		return errors.New("falla siempre")
+	}
+	r.events = append(r.events, e)
+	return nil
+}
+
 func (r *recorder) count() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -266,8 +277,84 @@ func TestFailingConsumerGoesToDeadLetters(t *testing.T) {
 	assert.Zero(t, n2, "el evento quedó publicado: el relay no se bloquea")
 }
 
+// Un consumidor apagado cuando ocurrió el evento no debe procesarlo por el reproceso de otro.
+func TestDeadLetterRetryOnlyReachesTheFailedConsumers(t *testing.T) {
+	failing := &recorder{fail: true}
+	alsoFailing := &recorder{fail: true}
+	flagged := &recorder{}
+	h := start(t,
+		outbox.Consumer{Name: "test.target-a", Topic: "test.targeted", Handle: failing.handleShared},
+		outbox.Consumer{Name: "test.target-b", Topic: "test.targeted", Handle: alsoFailing.handleShared},
+		outbox.Consumer{Name: "test.target-off", Topic: "test.targeted", Flag: flags.ClaimsModule, Handle: flagged.handleShared},
+	)
+	ctx := newTenant()
+	tid, _ := reqctx.TenantID(ctx)
+	write(ctx, t, h, "test.targeted", true)
+	drain(t, h)
+
+	letters, err := outbox.ListDeadLetters(ctx, platformDB)
+	require.NoError(t, err)
+	require.Len(t, letters, 2)
+
+	checker.mu.Lock()
+	checker.on[tid] = true
+	checker.mu.Unlock()
+	failing.mu.Lock()
+	failing.fail = false
+	failing.mu.Unlock()
+	alsoFailing.mu.Lock()
+	alsoFailing.fail = false
+	alsoFailing.mu.Unlock()
+
+	noop := func(context.Context, pgx.Tx) error { return nil }
+	now := time.Now() //nolint:forbidigo // instante informativo
+	// Los dos antes de que el relay publique: el segundo no debe desplazar al primero.
+	require.NoError(t, outbox.RetryDeadLetter(ctx, platformDB, letters[0].ID, now, false, noop))
+	require.NoError(t, outbox.RetryDeadLetter(ctx, platformDB, letters[1].ID, now, false, noop))
+	drain(t, h)
+
+	assert.Equal(t, 1, failing.count())
+	assert.Equal(t, 1, alsoFailing.count())
+	assert.Zero(t, flagged.count(), "el reproceso no llega a quien no falló")
+}
+
+func TestInboxPurgeAndHealth(t *testing.T) {
+	rec := &recorder{}
+	h := start(t, outbox.Consumer{Name: "test.purge", Topic: "test.purge_event", Handle: rec.handle})
+	ctx := newTenant()
+	id := write(ctx, t, h, "test.purge_event", true)
+	inInbox := func() int {
+		var n int
+		require.NoError(t, database.WithTenantTx(ctx, func(tx pgx.Tx) error {
+			return tx.QueryRow(ctx, `SELECT count(*) FROM messaging.inbox WHERE event_id = $1`, id).Scan(&n)
+		}))
+		return n
+	}
+
+	now := time.Now() //nolint:forbidigo // instante informativo
+	before, err := outbox.ReadHealth(context.Background(), database, now.Add(time.Hour))
+	require.NoError(t, err)
+	assert.GreaterOrEqual(t, before.OldestPending, 59*time.Minute, "mide el retraso del pendiente")
+
+	drain(t, h)
+	require.Equal(t, 1, inInbox())
+
+	purge := func(at time.Time) {
+		require.NoError(t, database.WithoutTenantTx(context.Background(), func(tx pgx.Tx) error {
+			_, err := tx.Exec(context.Background(), `SELECT messaging.purge_inbox($1)`, at)
+			return err
+		}))
+	}
+	purge(now.Add(-time.Hour))
+	assert.Equal(t, 1, inInbox(), "conserva lo reciente")
+	purge(now.Add(time.Hour))
+	assert.Zero(t, inInbox())
+}
+
 func TestAPIRoleCannotRelay(t *testing.T) {
 	for _, q := range []string{
+		`SELECT messaging.purge_inbox(now())`,
+		`SELECT * FROM messaging.health(now())`,
 		`SELECT * FROM messaging.claim_outbox(10)`,
 		`SELECT messaging.mark_published(ARRAY[gen_random_uuid()], now())`,
 		`SELECT messaging.purge_published(now())`,

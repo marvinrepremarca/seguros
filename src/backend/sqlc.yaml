@@ -120,6 +120,48 @@ sql:
         emit_empty_slices: true
         emit_result_struct_pointers: false
         emit_enum_valid_method: true
+  - name: billing
+    engine: postgresql
+    schema: migrations/billing
+    queries: queries/billing
+    strict_function_checks: true
+    gen:
+      go:
+        package: billingsqlc
+        out: internal/modules/billing/adapters/postgres/sqlc
+        sql_package: pgx/v5
+        emit_interface: true
+        emit_empty_slices: true
+        emit_result_struct_pointers: false
+        emit_enum_valid_method: true
+  - name: commissions
+    engine: postgresql
+    schema: migrations/commissions
+    queries: queries/commissions
+    strict_function_checks: true
+    gen:
+      go:
+        package: commissionssqlc
+        out: internal/modules/commissions/adapters/postgres/sqlc
+        sql_package: pgx/v5
+        emit_interface: true
+        emit_empty_slices: true
+        emit_result_struct_pointers: false
+        emit_enum_valid_method: true
+  - name: renewals
+    engine: postgresql
+    schema: migrations/renewals
+    queries: queries/renewals
+    strict_function_checks: true
+    gen:
+      go:
+        package: renewalssqlc
+        out: internal/modules/renewals/adapters/postgres/sqlc
+        sql_package: pgx/v5
+        emit_interface: true
+        emit_empty_slices: true
+        emit_result_struct_pointers: false
+        emit_enum_valid_method: true
 # Plantilla por módulo:
 #  - name: policies
 #    engine: postgresql

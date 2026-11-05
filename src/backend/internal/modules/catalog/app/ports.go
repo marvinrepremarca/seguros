@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 
+	"github.com/marvinrepremarca/seguros/internal/modules/catalog/contracts"
 	"github.com/marvinrepremarca/seguros/internal/modules/catalog/domain"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/authz"
@@ -33,6 +34,7 @@ type Repository interface {
 
 	InsertAgreement(ctx context.Context, a domain.CommissionAgreement) error
 	GetAgreement(ctx context.Context, id uuid.UUID) (domain.CommissionAgreement, error)
+	AgreementFor(ctx context.Context, ref contracts.PolicyRef, on kernel.Date) (contracts.Agreement, bool, error)
 	ListAgreements(ctx context.Context, after uuid.NullUUID, limit int32) ([]domain.CommissionAgreement, error)
 	UpdateAgreement(ctx context.Context, a domain.CommissionAgreement) error
 }

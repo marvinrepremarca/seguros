@@ -234,6 +234,33 @@ func (s *Server) CreatePolicy(ctx context.Context, req CreatePolicyRequestObject
 	return respond[CreatePolicyResponseObject](v, err, func(p PolicyJSONResponse) CreatePolicyResponseObject { return CreatePolicy201JSONResponse{p} })
 }
 
+// GetRenewalRules implementa StrictServerInterface.
+func (s *Server) GetRenewalRules(ctx context.Context, _ GetRenewalRulesRequestObject) (GetRenewalRulesResponseObject, error) {
+	v, err := s.svc.GetRenewalSettings(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return GetRenewalRules200JSONResponse{KeepHolder: v.KeepHolder, KeepLine: v.KeepLine}, nil
+}
+
+// SetRenewalRules implementa StrictServerInterface.
+func (s *Server) SetRenewalRules(ctx context.Context, req SetRenewalRulesRequestObject) (SetRenewalRulesResponseObject, error) {
+	if err := s.svc.SetRenewalSettings(ctx, app.RenewalSettings{KeepHolder: req.Body.KeepHolder, KeepLine: req.Body.KeepLine}); err != nil {
+		return nil, err
+	}
+	return SetRenewalRules204Response{}, nil
+}
+
+// RenewPolicy implementa StrictServerInterface.
+func (s *Server) RenewPolicy(ctx context.Context, req RenewPolicyRequestObject) (RenewPolicyResponseObject, error) {
+	in, err := toTerms(*req.Body)
+	if err != nil {
+		return nil, err
+	}
+	v, err := s.svc.Renew(ctx, domain.PolicyID(req.PolicyId), in)
+	return respond[RenewPolicyResponseObject](v, err, func(p PolicyJSONResponse) RenewPolicyResponseObject { return RenewPolicy201JSONResponse{p} })
+}
+
 // GetPolicy implementa StrictServerInterface.
 func (s *Server) GetPolicy(ctx context.Context, req GetPolicyRequestObject) (GetPolicyResponseObject, error) {
 	v, err := s.svc.Get(ctx, domain.PolicyID(req.PolicyId))
@@ -254,6 +281,12 @@ func (s *Server) UpdatePolicyTerms(ctx context.Context, req UpdatePolicyTermsReq
 func (s *Server) AcceptPolicy(ctx context.Context, req AcceptPolicyRequestObject) (AcceptPolicyResponseObject, error) {
 	v, err := s.svc.Accept(ctx, domain.PolicyID(req.PolicyId), req.Params.Version)
 	return respond[AcceptPolicyResponseObject](v, err, func(p PolicyJSONResponse) AcceptPolicyResponseObject { return AcceptPolicy200JSONResponse{p} })
+}
+
+// ReinstatePolicy implementa StrictServerInterface.
+func (s *Server) ReinstatePolicy(ctx context.Context, req ReinstatePolicyRequestObject) (ReinstatePolicyResponseObject, error) {
+	v, err := s.svc.Reinstate(ctx, domain.PolicyID(req.PolicyId), req.Params.Version)
+	return respond[ReinstatePolicyResponseObject](v, err, func(p PolicyJSONResponse) ReinstatePolicyResponseObject { return ReinstatePolicy200JSONResponse{p} })
 }
 
 // IssuePolicy implementa StrictServerInterface.

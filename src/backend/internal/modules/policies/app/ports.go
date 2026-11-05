@@ -43,6 +43,15 @@ type Summary struct {
 	EffectiveTo      kernel.Date
 }
 
+// RenewalSettings dice qué debe conservar una renovación (DECISIONS N25). Por defecto, tomador y ramo.
+type RenewalSettings struct{ KeepHolder, KeepLine bool }
+
+// Renewal es una nueva vigencia de una póliza.
+type Renewal struct {
+	ID     domain.PolicyID
+	Status domain.Status
+}
+
 // PolicyRepository persiste el agregado Policy del tenant del contexto.
 type PolicyRepository interface {
 	Insert(ctx context.Context, p *domain.Policy) error
@@ -57,6 +66,10 @@ type PolicyRepository interface {
 	// ReassignableByAgent lista pólizas no terminadas del asesor, sin las que se le asignaron después de cutoff.
 	ReassignableByAgent(ctx context.Context, agent uuid.UUID, cutoff time.Time, limit int32) ([]domain.PolicyID, error)
 	InsertTransferRequest(ctx context.Context, q TransferRequest) error
+	// RenewalsOf lista las nuevas vigencias no rechazadas ni canceladas de la póliza.
+	RenewalsOf(ctx context.Context, previous domain.PolicyID) ([]Renewal, error)
+	RenewalSettings(ctx context.Context) (RenewalSettings, error)
+	SetRenewalSettings(ctx context.Context, v RenewalSettings, at time.Time) error
 	// IDsAfter recorre las pólizas del tenant en orden de ID.
 	IDsAfter(ctx context.Context, after uuid.NullUUID, limit int32) ([]domain.PolicyID, error)
 }

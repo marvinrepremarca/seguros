@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log/slog"
 	"regexp"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/ThreeDotsLabs/watermill"
@@ -149,6 +151,9 @@ func eventOf(msg *message.Message, topic string) (Event, error) {
 }
 
 func (d *Dispatcher) process(c Consumer, msg *message.Message) error {
+	if t := msg.Metadata.Get(MetaTargetConsumers); t != "" && !slices.Contains(strings.Split(t, ","), c.Name) {
+		return nil // reproceso dirigido a otro consumidor
+	}
 	e, err := eventOf(msg, c.Topic)
 	if err != nil {
 		// Mensaje imposible de atribuir a un tenant: no se puede reintentar ni guardar con RLS.

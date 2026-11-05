@@ -16,6 +16,7 @@ type Querier interface {
 	DeletePolicyParties(ctx context.Context, arg DeletePolicyPartiesParams) error
 	DueForExpiration(ctx context.Context, arg DueForExpirationParams) ([]DueForExpirationRow, error)
 	GetPolicy(ctx context.Context, arg GetPolicyParams) (GetPolicyRow, error)
+	GetRenewalSettings(ctx context.Context, tenantID uuid.UUID) (GetRenewalSettingsRow, error)
 	InsertAgentHistory(ctx context.Context, arg InsertAgentHistoryParams) error
 	InsertCoverage(ctx context.Context, arg InsertCoverageParams) error
 	InsertInsuredItem(ctx context.Context, arg InsertInsuredItemParams) error
@@ -29,6 +30,9 @@ type Querier interface {
 	ListPolicyIDsAfter(ctx context.Context, arg ListPolicyIDsAfterParams) ([]uuid.UUID, error)
 	ListPolicyParties(ctx context.Context, arg ListPolicyPartiesParams) ([]ListPolicyPartiesRow, error)
 	ListReassignablePolicyIDs(ctx context.Context, arg ListReassignablePolicyIDsParams) ([]uuid.UUID, error)
+	// Nuevas vigencias de una póliza que siguen en curso o ya se expidieron.
+	RenewalsOf(ctx context.Context, arg RenewalsOfParams) ([]RenewalsOfRow, error)
+	SetRenewalSettings(ctx context.Context, arg SetRenewalSettingsParams) error
 	UpdatePolicy(ctx context.Context, arg UpdatePolicyParams) (int64, error)
 	UpsertEndorsement(ctx context.Context, arg UpsertEndorsementParams) error
 }

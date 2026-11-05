@@ -8,6 +8,10 @@ export type NavLink =
   | { to: "/" }
   | { to: "/clientes" }
   | { to: "/polizas" }
+  | { to: "/configuracion/parametros" }
+  | { to: "/cartera" }
+  | { to: "/renovaciones" }
+  | { to: "/comisiones" }
   | { to: "/configuracion/catalogo" }
   | { to: "/configuracion/traspaso-cartera" }
   | { to: "/configuracion/funcionalidades" }
@@ -55,8 +59,18 @@ export const NAV_SECTIONS: readonly NavSection[] = [
   {
     title: "Operación",
     items: [
-      { label: "Cartera y cobro", link: moduleLink("billing"), flag: features.billing.module },
-      { label: "Renovaciones", link: moduleLink("renewals"), flag: features.renewals.module },
+      {
+        label: "Cartera y cobro",
+        link: { to: "/cartera" },
+        flag: features.billing.module,
+        permissions: [permissions.billingPlanRead],
+      },
+      {
+        label: "Renovaciones",
+        link: { to: "/renovaciones" },
+        flag: features.renewals.module,
+        permissions: [permissions.renewalRead],
+      },
       { label: "Siniestros", link: moduleLink("claims"), flag: features.claims.module },
       { label: "Documentos", link: moduleLink("documents"), flag: features.documents.module },
       {
@@ -69,7 +83,12 @@ export const NAV_SECTIONS: readonly NavSection[] = [
   {
     title: "Finanzas y control",
     items: [
-      { label: "Comisiones", link: moduleLink("commissions"), flag: features.commissions.module },
+      {
+        label: "Comisiones",
+        link: { to: "/comisiones" },
+        flag: features.commissions.module,
+        permissions: [permissions.commissionRead],
+      },
       { label: "Cumplimiento", link: moduleLink("compliance"), flag: features.compliance.module },
       { label: "Reportes", link: moduleLink("reporting"), flag: features.reporting.module },
       {
@@ -91,6 +110,16 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         label: "Catálogo",
         link: { to: "/configuracion/catalogo" },
         permissions: [permissions.catalogRead],
+      },
+      {
+        label: "Parámetros",
+        link: { to: "/configuracion/parametros" },
+        permissions: [
+          permissions.policySettingsManage,
+          permissions.billingSettingsManage,
+          permissions.renewalSettingsManage,
+          permissions.commissionRateManage,
+        ],
       },
       {
         label: "Traspaso de cartera",

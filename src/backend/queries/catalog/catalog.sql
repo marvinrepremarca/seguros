@@ -70,3 +70,11 @@ UPDATE catalog.commission_agreements
 SET basis = @basis, percentage = @percentage, valid_from = @valid_from, valid_to = @valid_to,
     updated_at = @now, updated_by = @actor, version = version + 1
 WHERE tenant_id = @tenant_id AND id = @id AND version = @version;
+
+-- name: AgreementFor :one
+-- El acuerdo del producto prevalece sobre el general del ramo.
+SELECT basis, percentage FROM catalog.commission_agreements
+WHERE tenant_id = @tenant_id AND insurer_id = @insurer_id AND line_of_business_id = @line_of_business_id
+  AND (product_id = sqlc.narg('product_id')::uuid OR product_id IS NULL)
+  AND valid_from <= sqlc.arg('on_date')::date AND valid_to >= sqlc.arg('on_date')::date
+ORDER BY product_id NULLS LAST LIMIT 1;

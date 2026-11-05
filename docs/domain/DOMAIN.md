@@ -61,7 +61,7 @@
   - Un endoso solo aplica a póliza `Vigente` o `EnMora`; su fecha efectiva está dentro de la vigencia. Estados: `Solicitado → Emitido | Rechazado` (DECISIONS N9). Al emitirse aplica variación de prima e impuestos (resultado ≥ 0), sumas aseguradas, partes y datos de bienes; debe quedar ≥1 `Insured`. Un endoso **no cambia el `PolicyHolder`** (eludiría el KYC de N4).
   - La cancelación registra lo que expidió la aseguradora: causa (solicitud del cliente, venta del bien, mora, revocación de la aseguradora, otra), fecha efectiva dentro de la vigencia y prima no devengada informada, entre 0 y la prima neta (DECISIONS T7). Un endoso `Solicitado` no impide cancelar, pero ya no se puede emitir.
   - El asesor se cambia en cualquier estado no terminal (DECISIONS N11), sin cambiar el estado; queda en `policy_agent_history` con fecha y motivo. Una póliza terminada conserva el suyo.
-  - La renovación crea una **nueva** `Policy` con `RenewedFromPolicyId`; nunca muta la anterior.
+  - La renovación crea una **nueva** `Policy` con `RenewedFromPolicyId`, que puede expedirse antes de que venza la anterior, con vigencia futura (DECISIONS N17). La anterior no cambia al expedirla: sigue `Vigente` y, al vencer, pasa automáticamente a `Vencida → Renovada`.
 - Máquina de estados:
 
 ```
@@ -78,10 +78,11 @@ Cualquier otra transición devuelve el error de dominio `ErrInvalidPolicyTransit
 - Eventos: `PolicyIssued`, `PolicyEndorsed(netPremiumDelta, taxesDelta)`, `PolicyCancelled(effectiveDate, unearnedPremium)`, `PolicyExpired`, `PolicyRenewed`, `PolicyFellIntoArrears`, `PolicyReinstated`.
 
 ### PaymentPlan (Billing)
-- Se crea al consumir `PolicyIssued` (si `module.billing` ON).
+- Se crea al consumir `PolicyIssued` (si `module.billing` ON), con las cuotas que dicta la forma de pago; Operaciones puede ajustar fechas y número de cuotas (DECISIONS N15).
 - Σ `Installment.Amount` = prima total (+ ajustes de endosos). La diferencia por redondeo se asigna a la **última** cuota.
 - Un `Payment` se aplica a la cuota vencida más antigua primero (FIFO); sobrante a la siguiente; sobrante final = saldo a favor (DECISIONS N6).
 - Cuota vencida + días configurables (default 30, por tenant/aseguradora) → evento `InstallmentOverdue` → Policies marca `EnMora` (DECISIONS N2).
+- Un endoso reparte su variación entre las cuotas sin pagar (DECISIONS N18). Una póliza sale de mora cuando no le quedan cuotas fuera de los días de gracia (N19). Una cancelación anula las cuotas pendientes y registra la devolución informada, sin tocar los pagos (N20).
 - **El cliente siempre paga directo a la aseguradora** (DECISIONS N1). Billing registra pagos **informados** (soporte del cliente o reporte de la aseguradora) y gestiona cartera y cobro; la agencia nunca custodia dinero de primas.
 - Pagos son **inmutables**: corrección = reverso + nuevo pago. Comandos de pago requieren idempotency key.
 
@@ -93,7 +94,8 @@ Cualquier otra transición devuelve el error de dominio `ErrInvalidPolicyTransit
 
 ### Commissions
 - `ExpectedCommission` = base × % de `CommissionAgreement(insurer, lineOfBusiness, product, vigencia)`.
-- Base según `CommissionAgreement.basis`: default **prima pagada** (consume `PaymentApplied`); alternativa prima emitida (DECISIONS N3).
+- Base según `CommissionAgreement.basis`: default **prima pagada** (consume `PaymentApplied`); alternativa prima emitida (DECISIONS N3). En ambos casos solo cuenta la prima neta: cada pago aporta su parte proporcional a neta/total (DECISIONS N14).
+- En un traspaso, lo causado antes de `PolicyAgentChanged.EffectiveAt` sigue con el asesor original y lo posterior es del nuevo (DECISIONS N16).
 - Cancelación con prima no devengada (valor informado por la aseguradora) → `CommissionClawback` negativo.
 - Conciliación: `ExpectedCommission` vs líneas de `InsurerStatement`; diferencias > tolerancia (default COP 1.000) generan `ReconciliationDiscrepancy`.
 - `AgentCommission` = comisión **conciliada** × % del asesor para el ramo (fallback: % general del asesor; sin tasa → 0 % + alerta) (DECISIONS N5).
@@ -119,7 +121,8 @@ Cualquier otra transición devuelve el error de dominio `ErrInvalidPolicyTransit
 | `PolicyFellIntoArrears` / `PolicyReinstated` | Policies | Notifications, Reporting |
 | `PolicyExpiring(daysLeft)` | Renewals (job) | Notifications, Crm |
 | `InstallmentOverdue` | Billing | Policies, Notifications |
-| `PaymentApplied` | Billing | Commissions, Policies (reinstate) |
+| `PaymentApplied` / `PaymentReversed` | Billing | Commissions, Policies (reinstate, solo `PaymentApplied`) |
+| `RenewalLost` | Renewals | Policies (`Vencida → NoRenovada`) |
 | `ClaimReported` / `ClaimStatusChanged` | Claims | Notifications, Reporting |
 | `KycCheckCompleted` | Compliance | Policies |
 

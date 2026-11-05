@@ -17,9 +17,13 @@ import (
 	"github.com/riverqueue/river"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/marvinrepremarca/seguros/internal/modules/billing"
+	"github.com/marvinrepremarca/seguros/internal/modules/catalog"
+	"github.com/marvinrepremarca/seguros/internal/modules/commissions"
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
 	"github.com/marvinrepremarca/seguros/internal/modules/parties"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies"
+	"github.com/marvinrepremarca/seguros/internal/modules/renewals"
 	"github.com/marvinrepremarca/seguros/internal/modules/tenancy"
 	tenancycontracts "github.com/marvinrepremarca/seguros/internal/modules/tenancy/contracts"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
@@ -122,6 +126,13 @@ func run() error {
 	consumers := featuremgmt.Consumers(invalidator)
 	consumers = append(consumers, parties.Consumers(audit.NewRecorder(clock))...)
 	consumers = append(consumers, policies.Consumers(database, audit.NewRecorder(clock), outbox.NewWriter(clock), clock)...)
+	consumers = append(consumers, billing.Consumers(database, audit.NewRecorder(clock), outbox.NewWriter(clock), clock)...)
+	catalogMod, err := catalog.New(catalog.Deps{DB: database, Audit: audit.NewRecorder(clock), Clock: clock, Logger: logger})
+	if err != nil {
+		return err
+	}
+	consumers = append(consumers, commissions.Consumers(database, audit.NewRecorder(clock), catalogMod.Directory, clock)...)
+	consumers = append(consumers, renewals.Consumers(database, audit.NewRecorder(clock), outbox.NewWriter(clock), clock)...)
 	for _, c := range consumers {
 		if err := dispatcher.Register(c); err != nil {
 			return err
@@ -131,8 +142,10 @@ func run() error {
 
 	// Jobs River (periódicos de plataforma; los módulos añadirán los suyos).
 	workers := river.NewWorkers()
-	periodic := jobs.PlatformJobs(workers, database, clock)
+	periodic := jobs.PlatformJobs(workers, database, clock, logger)
 	periodic = append(periodic, policies.RegisterJobs(workers, database, audit.NewRecorder(clock), outbox.NewWriter(clock), clock)...)
+	periodic = append(periodic, billing.RegisterJobs(workers, database, audit.NewRecorder(clock), outbox.NewWriter(clock), evaluator, tenantPlans{dir: tenants.Directory}, clock, logger)...)
+	periodic = append(periodic, renewals.RegisterJobs(workers, database, audit.NewRecorder(clock), outbox.NewWriter(clock), evaluator, tenantPlans{dir: tenants.Directory}, clock, logger)...)
 	riverClient, _, err := jobs.NewWorkerClient(database.Pool(), jobs.WorkerOptions{Workers: workers, Periodic: periodic, Logger: logger})
 	if err != nil {
 		return err

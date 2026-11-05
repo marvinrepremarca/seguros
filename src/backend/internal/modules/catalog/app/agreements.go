@@ -173,3 +173,15 @@ func (d *Directory) ResolvePolicyRef(ctx context.Context, ref contracts.PolicyRe
 	})
 	return key, err
 }
+
+// AgreementFor implementa contracts.Directory.
+func (d *Directory) AgreementFor(ctx context.Context, ref contracts.PolicyRef, on kernel.Date) (contracts.Agreement, bool, error) {
+	var out contracts.Agreement
+	var found bool
+	err := d.Store.WithinTenant(ctx, func(ctx context.Context, uow UnitOfWork) error {
+		var err error
+		out, found, err = uow.Catalog().AgreementFor(ctx, ref, on)
+		return err
+	})
+	return out, found, err
+}
