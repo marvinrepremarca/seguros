@@ -46,7 +46,7 @@ Con ~500 usuarios concurrentes, picos de 10.000 y un VPS de Hostinger, los micro
 | `Catalog` | 2,3,9 | Aseguradoras, ramos, productos, tablas de comisión pactada | ❌ núcleo |
 | `Policies` | 3,5,8 | Póliza, coberturas, bienes asegurados, endosos, cancelación, máquina de estados | ❌ núcleo |
 | `Crm` | 1 | Prospectos, embudo, asignación de asesor, seguimientos | ✅ |
-| `Quoting` | 2 | Solicitudes de cotización, propuestas, comparativo | ✅ |
+| `Quoting` | 2 | Solicitudes de cotización, propuestas, comparativo; al aceptar publica los términos de la póliza | ✅ |
 | `Renewals` | 6 | Alertas, recotización, retención | ✅ |
 | `Billing` | 4 | Planes de pago, cuotas, registro de pagos informados (el cliente paga directo a la aseguradora), cartera, gestión de cobro | ✅ |
 | `Claims` | 7 | Siniestros, documentación, seguimiento con aseguradora | ✅ |

@@ -26,7 +26,7 @@ func AllRoles() []Role {
 
 // MFARoles son los roles que exigen MFA (rules/security.md §Autenticación).
 func MFARoles() []Role {
-	return []Role{RoleTenantAdmin, RoleManager, RoleOperations, RoleCollections, RoleAccounting, RoleComplianceOfficer}
+	return []Role{RoleTenantAdmin, RoleManager, RoleOperations, RoleCollections, RoleAccounting, RoleComplianceOfficer, RoleClaimsAnalyst}
 }
 
 // Permission es un permiso fino `<modulo>.<recurso>.<accion>`.
@@ -76,17 +76,36 @@ const (
 	RenewalRead           Permission = "renewals.case.read"
 	RenewalManage         Permission = "renewals.case.manage"
 	RenewalSettingsManage Permission = "renewals.settings.manage"
+
+	LeadRead      Permission = "crm.lead.read"
+	LeadReadOwn   Permission = "crm.lead.read-own"
+	LeadCreate    Permission = "crm.lead.create"
+	LeadManageOwn Permission = "crm.lead.manage-own"
+	LeadAssign    Permission = "crm.lead.assign"
+
+	QuoteRead           Permission = "quoting.quote.read"
+	QuoteReadOwn        Permission = "quoting.quote.read-own"
+	QuoteManageOwn      Permission = "quoting.quote.manage-own"
+	QuoteSettingsManage Permission = "quoting.settings.manage"
+
+	ClaimRead            Permission = "claims.claim.read"
+	ClaimReadOwn         Permission = "claims.claim.read-own"
+	ClaimReport          Permission = "claims.claim.report"
+	ClaimManage          Permission = "claims.claim.manage"
+	ClaimOverridePayment Permission = "claims.claim.override-payment"
+	ClaimHealthRead      Permission = "claims.health.read"
+	ClaimHealthWrite     Permission = "claims.health.write"
 )
 
 // DefaultGrants es la asignación base rol → permisos (DOMAIN.md §4). Se devuelve una copia nueva
 // en cada llamada (sin estado global mutable).
 func DefaultGrants() map[Role][]Permission {
 	return map[Role][]Permission{
-		RoleTenantAdmin:       {FeatureFlagRead, FeatureFlagUpdate, CatalogRead, CatalogManage, AgreementRead, AgreementManage, BillingSettingsManage, RenewalSettingsManage, PolicySettingsManage},
-		RoleManager:           {FeatureFlagRead, PartyRead, DocumentReveal, ConsentRead, CatalogRead, AgreementRead, AgreementManage, PolicyRead, PartyAssign, PolicyAssign, BillingPlanRead, CommissionRead, CommissionRateManage, RenewalRead},
-		RoleSalesAgent:        {PartyReadOwn, PartyCreate, PartyUpdateOwn, ConsentRead, ConsentCreate, CatalogRead, PolicyReadOwn},
-		RoleOperations:        {PartyRead, PartyCreate, PartyUpdate, DocumentRectify, DocumentReveal, ConsentRead, ConsentCreate, CatalogRead, PolicyRead, PolicyManage, PolicyCancel, EndorsementManage, PartyAssign, PolicyAssign, BillingPlanRead, BillingPlanAdjust, RenewalRead, RenewalManage},
-		RoleClaimsAnalyst:     {PartyRead, CatalogRead, PolicyRead},
+		RoleTenantAdmin:       {FeatureFlagRead, FeatureFlagUpdate, CatalogRead, CatalogManage, AgreementRead, AgreementManage, BillingSettingsManage, RenewalSettingsManage, PolicySettingsManage, QuoteSettingsManage},
+		RoleManager:           {FeatureFlagRead, PartyRead, DocumentReveal, ConsentRead, CatalogRead, AgreementRead, AgreementManage, PolicyRead, PartyAssign, PolicyAssign, BillingPlanRead, CommissionRead, CommissionRateManage, RenewalRead, LeadRead, LeadCreate, LeadAssign, QuoteRead, ClaimRead, ClaimOverridePayment, ClaimHealthRead},
+		RoleSalesAgent:        {PartyReadOwn, PartyCreate, PartyUpdateOwn, ConsentRead, ConsentCreate, CatalogRead, PolicyReadOwn, LeadReadOwn, LeadCreate, LeadManageOwn, QuoteReadOwn, QuoteManageOwn, ClaimReadOwn, ClaimReport},
+		RoleOperations:        {PartyRead, PartyCreate, PartyUpdate, DocumentRectify, DocumentReveal, ConsentRead, ConsentCreate, CatalogRead, PolicyRead, PolicyManage, PolicyCancel, EndorsementManage, PartyAssign, PolicyAssign, BillingPlanRead, BillingPlanAdjust, RenewalRead, RenewalManage, LeadRead, LeadAssign, QuoteRead},
+		RoleClaimsAnalyst:     {PartyRead, CatalogRead, PolicyRead, ClaimRead, ClaimReport, ClaimManage, ClaimHealthRead, ClaimHealthWrite},
 		RoleCollections:       {PartyRead, CatalogRead, PolicyRead, BillingPlanRead, BillingPaymentRegister, BillingPaymentReverse, BillingCollectionManage},
 		RoleAccounting:        {PartyRead, CatalogRead, AgreementRead, PolicyRead, BillingPlanRead, CommissionRead, CommissionStatementManage},
 		RoleComplianceOfficer: {PartyRead, PartyUpdate, DocumentRectify, DocumentReveal, ConsentRead, ConsentCreate, CatalogRead, PolicyRead},

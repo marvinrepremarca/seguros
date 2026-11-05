@@ -1,0 +1,241 @@
+openapi: 3.0.3
+info:
+  title: Seguros — CRM
+  version: 1.0.0
+  description: Prospectos y embudo.
+servers:
+  - url: /
+x-problems: &problems
+  "400": { $ref: "#/components/responses/Problem" }
+  "401": { $ref: "#/components/responses/Problem" }
+  "403": { $ref: "#/components/responses/Problem" }
+  "404": { $ref: "#/components/responses/Problem" }
+  "409": { $ref: "#/components/responses/Problem" }
+  "422": { $ref: "#/components/responses/Problem" }
+paths:
+  /api/v1/crm/leads:
+    get:
+      operationId: listLeads
+      x-permission: crm.lead.read|crm.lead.read-own
+      x-feature: module.crm
+      parameters:
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/LeadStatus" } }
+        - { name: cursor, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: limit, in: query, schema: { type: integer, format: int32, minimum: 1, maximum: 200 } }
+      responses:
+        "200":
+          description: Prospectos.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LeadPage" }
+        <<: *problems
+    post:
+      operationId: createLead
+      x-permission: crm.lead.create
+      x-feature: module.crm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateLead" }
+      responses:
+        "201":
+          description: Creado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Lead" }
+        <<: *problems
+  /api/v1/crm/leads/{leadId}:
+    parameters:
+      - { name: leadId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getLead
+      x-permission: crm.lead.read|crm.lead.read-own
+      x-feature: module.crm
+      responses:
+        "200":
+          description: Prospecto.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Lead" }
+        <<: *problems
+  /api/v1/crm/leads/{leadId}/contacted:
+    parameters:
+      - { name: leadId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: markLeadContacted
+      x-permission: crm.lead.manage-own
+      x-feature: module.crm
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Lead" }
+        <<: *problems
+  /api/v1/crm/leads/{leadId}/interested:
+    parameters:
+      - { name: leadId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: markLeadInterested
+      x-permission: crm.lead.manage-own
+      x-feature: module.crm
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Lead" }
+        <<: *problems
+  /api/v1/crm/leads/{leadId}/follow-up:
+    parameters:
+      - { name: leadId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: scheduleLeadFollowUp
+      x-permission: crm.lead.manage-own
+      x-feature: module.crm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/FollowUp" }
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Lead" }
+        <<: *problems
+  /api/v1/crm/leads/{leadId}/lost:
+    parameters:
+      - { name: leadId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: markLeadLost
+      x-permission: crm.lead.manage-own
+      x-feature: module.crm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LostReason" }
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Lead" }
+        <<: *problems
+  /api/v1/crm/leads/{leadId}/start-quoting:
+    parameters:
+      - { name: leadId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: startLeadQuoting
+      x-permission: crm.lead.manage-own
+      x-feature: module.crm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StartQuoting" }
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Lead" }
+        <<: *problems
+  /api/v1/crm/leads/{leadId}/assign:
+    parameters:
+      - { name: leadId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: assignLead
+      x-permission: crm.lead.assign
+      x-feature: module.crm
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AssignLead" }
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Lead" }
+        <<: *problems
+components:
+  responses:
+    Problem:
+      description: Error.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+  schemas:
+    Problem:
+      type: object
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer, format: int32 }
+        detail: { type: string }
+        traceId: { type: string }
+    LeadStatus: { type: string, enum: [new, contacted, interested, quoting, won, lost, follow_up] }
+    LeadSource: { type: string, enum: [referral, social, website, partner, cross_sell, call, event, other] }
+    Lead:
+      type: object
+      required: [id, name, source, status, version]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        source: { $ref: "#/components/schemas/LeadSource" }
+        lineOfBusinessId: { type: string, format: uuid }
+        agentId: { type: string, format: uuid }
+        partyId: { type: string, format: uuid }
+        status: { $ref: "#/components/schemas/LeadStatus" }
+        lostReason: { type: string }
+        followUpOn: { type: string, format: date }
+        contactedAt: { type: string, format: date-time }
+        version: { type: integer, format: int32 }
+    LeadPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Lead" } }
+        nextCursor: { type: string }
+    CreateLead:
+      type: object
+      additionalProperties: false
+      required: [name, source]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 200 }
+        email: { type: string, maxLength: 254 }
+        phone: { type: string, maxLength: 30 }
+        source: { $ref: "#/components/schemas/LeadSource" }
+        lineOfBusinessId: { type: string, format: uuid }
+        agentId: { type: string, format: uuid }
+    FollowUp:
+      type: object
+      additionalProperties: false
+      required: [followUpOn]
+      properties:
+        followUpOn: { type: string, format: date }
+    LostReason:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 3, maxLength: 500 }
+    StartQuoting:
+      type: object
+      additionalProperties: false
+      required: [partyId]
+      properties:
+        partyId: { type: string, format: uuid }
+    AssignLead:
+      type: object
+      additionalProperties: false
+      required: [agentId]
+      properties:
+        agentId: { type: string, format: uuid }

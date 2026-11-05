@@ -22,7 +22,9 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/modules/billing"
 	"github.com/marvinrepremarca/seguros/internal/modules/catalog"
 	cataloghttp "github.com/marvinrepremarca/seguros/internal/modules/catalog/adapters/http"
+	"github.com/marvinrepremarca/seguros/internal/modules/claims"
 	"github.com/marvinrepremarca/seguros/internal/modules/commissions"
+	"github.com/marvinrepremarca/seguros/internal/modules/crm"
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
 	featuremgmthttp "github.com/marvinrepremarca/seguros/internal/modules/featuremgmt/adapters/http"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity"
@@ -33,6 +35,7 @@ import (
 	partieshttp "github.com/marvinrepremarca/seguros/internal/modules/parties/adapters/http"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies"
 	policieshttp "github.com/marvinrepremarca/seguros/internal/modules/policies/adapters/http"
+	"github.com/marvinrepremarca/seguros/internal/modules/quoting"
 	"github.com/marvinrepremarca/seguros/internal/modules/renewals"
 	tenancy "github.com/marvinrepremarca/seguros/internal/modules/tenancy/contracts"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
@@ -90,6 +93,9 @@ func testRouter(t *testing.T) *chi.Mux {
 		Billing:     billing.New(billing.Deps{Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger}),
 		Commissions: commissions.New(commissions.Deps{Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger}),
 		Renewals:    renewals.New(renewals.Deps{Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger}),
+		Crm:         crm.New(crm.Deps{Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger}),
+		Quoting:     quoting.New(quoting.Deps{Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger}),
+		Claims:      claims.New(claims.Deps{Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger}),
 	})
 	require.NoError(t, err)
 	return r
@@ -212,7 +218,7 @@ func TestMainWiresEveryRouterModule(t *testing.T) {
 	t.Parallel()
 	src, err := os.ReadFile("main.go")
 	require.NoError(t, err)
-	for _, field := range []string{"Identity:", "FeatureMgmt:", "Parties:", "Catalog:", "Policies:", "Billing:", "Commissions:", "Renewals:"} {
+	for _, field := range []string{"Identity:", "FeatureMgmt:", "Parties:", "Catalog:", "Policies:", "Billing:", "Commissions:", "Renewals:", "Crm:", "Quoting:", "Claims:"} {
 		assert.Contains(t, string(src), field)
 	}
 }

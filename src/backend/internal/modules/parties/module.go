@@ -39,7 +39,9 @@ type Deps struct {
 // Module expone las rutas y el directorio para otros módulos.
 type Module struct {
 	Directory contracts.Directory
-	server    *partieshttp.Server
+	// Scope dice si un tercero es cliente de un asesor.
+	Scope  contracts.AgentScope
+	server *partieshttp.Server
 }
 
 // New compone el módulo.
@@ -47,6 +49,7 @@ func New(d Deps) *Module {
 	deps := app.Deps{Store: postgres.NewStore(d.DB, d.Audit), Cipher: d.Cipher, Agents: d.Agents, Clock: d.Clock}
 	return &Module{
 		Directory: &app.Directory{Deps: deps},
+		Scope:     &app.Directory{Deps: deps},
 		server: partieshttp.NewServer(partieshttp.Handlers{
 			Create: &app.CreatePartyHandler{Deps: deps}, Update: &app.UpdatePartyHandler{Deps: deps},
 			Get: &app.GetPartyHandler{Deps: deps}, List: &app.ListPartiesHandler{Deps: deps},

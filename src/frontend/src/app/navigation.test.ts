@@ -41,7 +41,7 @@ describe("visibleSections", () => {
   });
 
   it("cada módulo del menú tiene etiqueta", () => {
-    expect(MODULE_LABELS["claims"]).toBe("Siniestros");
+    expect(MODULE_LABELS["documents"]).toBe("Documentos");
     expect(MODULE_LABELS["integrations"]).toBe("Integraciones");
   });
 });

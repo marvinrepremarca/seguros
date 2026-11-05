@@ -105,7 +105,21 @@ Revisiones de la Fase 3 (2026-11-05). Corregidos: el cableado de `main.go`, pago
 Revisiones finales de la Fase 3 (2026-11-05), sin Críticos ni Altos abiertos tras corregir la conciliación por IDs, el reverso en plan cancelado y el tope de tolerancia fuera de COP. Abiertos además de los anteriores: un `PaymentApplied` reintentado tarde puede sacar de mora sin revalidar; pagos o endosos entregados antes de la proyección se dan por procesados; leer-sumar-guardar sin `version` en `commissions.policy_terms`; `Case` sin constructor y `Installment` con campos exportados; archivos de `app` con varias operaciones; `/configuracion/parametros` sin carga lazy por módulo; `support` del ajuste en la bitácora (texto libre); `PUT .../installments` sin rate limit propio; 403 sin probar en los parámetros de cartera y en `reinstate`. Cobertura de `domain` bajo 90 %: excepción aceptada por el dueño del producto.
 
 ## Fase 4 — Venta y servicio
-Orden: **Crm → Quoting → Claims**.
+Orden: **Crm → Quoting → Claims**. Decisiones N27–N31.
+
+Abiertos de construcción (2026-11-05):
+- **`PolicyExpiring` → Crm (DOMAIN §3):** sin consumidor: ningún documento dice qué debe hacer CRM con él. Definirlo con el dueño del producto.
+- **Habeas data del prospecto:** un `Lead` guarda nombre y contacto sin `Consent` (N27: el consentimiento vive en `Party`). Validar con asesor legal antes de la Fase 6.
+- **`QuoteAccepted` fallido:** si Policies rechaza el evento queda en `dead_letters` y la solicitud sigue aceptada; el reproceso es manual (alertas: Fase 6). Quoting valida catálogo, partes y asesor antes de publicar.
+- **Traspaso con CRM apagado:** el evento no se reprocesa: los prospectos siguen con el asesor anterior hasta reasignarlos.
+- **Alcance del asesor en siniestros:** tope de 5.000 pólizas por asesor en el listado; lo que exceda no aparece (falla cerrado).
+- **Despliegue:** añadir `ClaimsAnalyst` a `keycloak-mfa.sh` en staging y producción.
+- **Auditorías (2026-11-05), corregidos:** traspaso de solicitudes (Alto), soporte de decisión oculto al asesor (Alto), asegurados repetidos, riesgo validado al crear, valor anterior de lo reclamado en bitácora, vigor por lista positiva, traspaso de prospectos auditado.
+- **Riesgo aceptado (N32):** `Claim.description` es texto libre visible para el asesor y podría contener salud; solo hay advertencia en la UI.
+- **Medios abiertos:** consumidores `crm.*` y `quoting.*` sin prueba de flag OFF por el despachador; `quoting.offers` y `claims.checklist_items` sin columnas estándar de auditoría/versión (migración nueva).
+- **Bajos abiertos:** motivo y soporte del override solo en gestiones, sin cifrar, y lectura de gestiones sin auditoría; `SetHealth` sin control de versión ni historial; `expired` calculado en el handler de quoting; `create_from_quote` en `app` usa el DTO de Quoting.
+- **E2E:** `make e2e-full` en verde (2026-11-05). `sales.spec.ts` cubre prospecto y apertura de cotizaciones y siniestros; oferta→póliza y siniestro completo solo en integración. Una corrida sin stdin duplicó ejecuciones del flujo MFA local (reparado a mano): corregir `keycloak-mfa.sh` antes de CI y Fase 6.
+- **UI:** la oferta registra una cobertura desde el formulario (la API admite 20); asegurados distintos del tomador solo por API.
 
 ## Fase 5 — Transversales
 **Compliance → Documents → Notifications → Reporting → Integrations.Insurers** (una aseguradora piloto primero).
@@ -123,7 +137,7 @@ Pruebas k6 (objetivos en testing.md), ZAP, restauración de backup probada, runb
 | Fase 1 | ✅ Hecho | 2026-11-03 | 1.1 ✅ · 1.2 ✅ · 1.3 ✅ · 1.4 ✅ (sesión A, PR #2) · 1.5 ✅ · 1.6 ✅ · 1.7 ✅ · 1.8 ✅ · 1.9 ✅ (adelantada: la usan login y flags; `platform/audit` + `migrations/audit`) · 1.10 ✅ (`platform/crypto`; se cablea en api/worker con el primer módulo con datos Restringidos, Fase 2) · 1.11 ✅ · 1.12 ✅ (`make e2e-full`). DoD verificada: make check, integración, pnpm check, E2E 3/3; architecture-guardian y security-auditor sin Altos/Críticos (hallazgos Medios/Bajos abiertos arriba) |
 | Fase 2 | ✅ Hecho | 2026-11-04 | Previos ✅ (CSP de la SPA, auditoría de tenants) · ADR 0012 ✅ · `parties` ✅ · `catalog` ✅ · `policies` ✅ · UI ✅. DoD verificada: make check, integración (`-p 1`), pnpm check, E2E (`make e2e-full`, bajo la CSP real). Sin hallazgos Altos/Críticos abiertos; Medios y Bajos arriba. Transiciones de mora y renovación: sin endpoint hasta la Fase 3, probadas en dominio y persistencia |
 | Fase 3 | ✅ Hecho | 2026-11-05 | `billing` ✅ · `commissions` ✅ · `renewals` ✅ · decisiones N14–N26. Verificado: make check, integración, pnpm check, E2E (`make e2e-full`). Sin Críticos ni Altos abiertos en la última auditoría. **Excepción aceptada por el dueño del producto:** cobertura de `domain` bajo 90 % (billing 86,9 %, commissions 84,6 %), sobre todo ramas de error defensivas. Medios y Bajos arriba |
-| Fase 4 | ⬜ Pendiente | | |
+| Fase 4 | ✅ Hecho | 2026-11-05 | `crm` ✅ · `quoting` ✅ · `claims` ✅ · decisiones N27–N32. Verificado: make check, integración, pnpm check, E2E. Sin Críticos ni Altos abiertos; Medios y Bajos arriba |
 | Fase 5 | ⬜ Pendiente | | |
 | Fase 6 | ⬜ Pendiente | | |
 

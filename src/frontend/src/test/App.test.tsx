@@ -39,7 +39,11 @@ describe("App", () => {
   });
 
   it("oculta la configuración a quien no tiene el permiso", async () => {
-    signedIn({ roles: ["SalesAgent"], permissions: [], flags: { "module.crm": true } });
+    signedIn({
+      roles: ["SalesAgent"],
+      permissions: ["crm.lead.read-own"],
+      flags: { "module.crm": true },
+    });
     renderAt("/");
     const nav = await screen.findByRole("navigation", { name: "Menú principal" });
     expect(within(nav).getByRole("link", { name: "Prospectos (CRM)" })).toBeInTheDocument();
@@ -55,12 +59,26 @@ describe("App", () => {
   });
 
   it("la ruta de un módulo encendido se muestra", async () => {
-    signedIn({ flags: { "module.claims": true } });
-    renderAt("/modulos/claims");
+    signedIn({ flags: { "module.documents": true } });
+    renderAt("/modulos/documents");
     expect(
-      await screen.findByRole("heading", { level: 1, name: "Siniestros" }),
+      await screen.findByRole("heading", { level: 1, name: "Documentos" }),
     ).toBeInTheDocument();
   });
+
+  it.each(["/prospectos", "/cotizaciones", "/siniestros"])(
+    "%s con su módulo apagado responde como inexistente",
+    async (path) => {
+      signedIn({
+        flags: { "module.crm": false, "module.quoting": false, "module.claims": false },
+        permissions: ["crm.lead.read", "quoting.quote.read", "claims.claim.read"],
+      });
+      renderAt(path);
+      expect(
+        await screen.findByRole("heading", { name: "Página no encontrada" }),
+      ).toBeInTheDocument();
+    },
+  );
 
   it("un módulo desconocido responde como inexistente", async () => {
     signedIn({ flags: { "module.billing": true } });

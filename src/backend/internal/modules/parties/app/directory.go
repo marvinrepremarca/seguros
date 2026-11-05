@@ -6,6 +6,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/marvinrepremarca/seguros/internal/modules/parties/contracts"
+	"github.com/marvinrepremarca/seguros/internal/modules/parties/domain"
 )
 
 // Directory implementa contracts.Directory para otros módulos.
@@ -23,4 +24,17 @@ func (d *Directory) Summaries(ctx context.Context, ids []uuid.UUID) (map[uuid.UU
 		return err
 	})
 	return out, err
+}
+
+var _ contracts.AgentScope = (*Directory)(nil)
+
+// VisibleToAgent implementa contracts.AgentScope.
+func (d *Directory) VisibleToAgent(ctx context.Context, party, agent uuid.UUID) (bool, error) {
+	var visible bool
+	err := d.Store.WithinTenant(ctx, func(ctx context.Context, uow UnitOfWork) error {
+		var err error
+		visible, err = uow.Parties().IsVisibleTo(ctx, domain.PartyID(party), agent)
+		return err
+	})
+	return visible, err
 }

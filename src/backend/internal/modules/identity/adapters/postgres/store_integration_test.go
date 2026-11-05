@@ -88,7 +88,7 @@ func newTenant(t *testing.T, d *directory) (kernel.TenantID, string) {
 func loginCmd(subject, alias string) app.CompleteLoginCommand {
 	return app.CompleteLoginCommand{
 		Subject: subject, Profile: domain.Profile{Email: "ana@example.test", DisplayName: "Ana"},
-		Roles: []string{"ClaimsAnalyst"}, Organizations: []string{alias},
+		Roles: []string{"SalesAgent"}, Organizations: []string{alias},
 	}
 }
 

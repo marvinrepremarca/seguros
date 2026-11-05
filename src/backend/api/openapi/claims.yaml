@@ -1,0 +1,357 @@
+openapi: 3.0.3
+info:
+  title: Seguros — Siniestros
+  version: 1.0.0
+  description: Reporte, seguimiento con la aseguradora y datos de salud.
+servers:
+  - url: /
+x-problems: &problems
+  "400": { $ref: "#/components/responses/Problem" }
+  "401": { $ref: "#/components/responses/Problem" }
+  "403": { $ref: "#/components/responses/Problem" }
+  "404": { $ref: "#/components/responses/Problem" }
+  "409": { $ref: "#/components/responses/Problem" }
+  "422": { $ref: "#/components/responses/Problem" }
+paths:
+  /api/v1/claims/claims:
+    get:
+      operationId: listClaims
+      x-permission: claims.claim.read|claims.claim.read-own
+      x-feature: module.claims
+      parameters:
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/ClaimStatus" } }
+        - { name: cursor, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: limit, in: query, schema: { type: integer, format: int32, minimum: 1, maximum: 200 } }
+      responses:
+        "200":
+          description: Siniestros.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ClaimPage" }
+        <<: *problems
+    post:
+      operationId: reportClaim
+      x-permission: claims.claim.report
+      x-feature: module.claims
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReportClaim" }
+      responses:
+        "201":
+          description: Reportado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Claim" }
+        <<: *problems
+  /api/v1/claims/claims/{claimId}:
+    parameters:
+      - { name: claimId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getClaim
+      x-permission: claims.claim.read|claims.claim.read-own
+      x-feature: module.claims
+      responses:
+        "200":
+          description: Siniestro.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Claim" }
+        <<: *problems
+  /api/v1/claims/claims/{claimId}/status:
+    parameters:
+      - { name: claimId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: advanceClaim
+      x-permission: claims.claim.manage
+      x-feature: module.claims
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdvanceClaim" }
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Claim" }
+        <<: *problems
+  /api/v1/claims/claims/{claimId}/claimed-amount:
+    parameters:
+      - { name: claimId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: setClaimedAmount
+      x-permission: claims.claim.manage
+      x-feature: module.claims
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ClaimedAmount" }
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Claim" }
+        <<: *problems
+  /api/v1/claims/claims/{claimId}/payment:
+    parameters:
+      - { name: claimId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: recordClaimPayment
+      x-permission: claims.claim.manage
+      x-feature: module.claims
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ClaimPayment" }
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Claim" }
+        <<: *problems
+  /api/v1/claims/claims/{claimId}/payment-override:
+    parameters:
+      - { name: claimId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: overrideClaimPayment
+      x-permission: claims.claim.override-payment
+      x-feature: module.claims
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ClaimPaymentOverride" }
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Claim" }
+        <<: *problems
+  /api/v1/claims/claims/{claimId}/health-details:
+    parameters:
+      - { name: claimId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getClaimHealth
+      x-permission: claims.health.read
+      x-feature: module.claims
+      responses:
+        "200":
+          description: Detalle de salud; la lectura queda auditada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HealthDetails" }
+        <<: *problems
+    put:
+      operationId: setClaimHealth
+      x-permission: claims.health.write
+      x-feature: module.claims
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HealthDetails" }
+      responses:
+        "204": { description: Guardado. }
+        <<: *problems
+  /api/v1/claims/claims/{claimId}/tracking:
+    parameters:
+      - { name: claimId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getClaimTracking
+      x-permission: claims.claim.read
+      x-feature: module.claims
+      responses:
+        "200":
+          description: Lista de control y gestiones.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Tracking" }
+        <<: *problems
+  /api/v1/claims/claims/{claimId}/checklist:
+    parameters:
+      - { name: claimId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: addChecklistItem
+      x-permission: claims.claim.manage
+      x-feature: module.claims
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NewChecklistItem" }
+      responses:
+        "204": { description: Agregado. }
+        <<: *problems
+  /api/v1/claims/claims/{claimId}/checklist/{itemId}:
+    parameters:
+      - { name: claimId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: itemId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: setChecklistItem
+      x-permission: claims.claim.manage
+      x-feature: module.claims
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ChecklistState" }
+      responses:
+        "204": { description: Guardado. }
+        <<: *problems
+  /api/v1/claims/claims/{claimId}/notes:
+    parameters:
+      - { name: claimId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: addClaimNote
+      x-permission: claims.claim.manage
+      x-feature: module.claims
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/NewNote" }
+      responses:
+        "204": { description: Agregada. }
+        <<: *problems
+components:
+  responses:
+    Problem:
+      description: Error.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+  schemas:
+    Problem:
+      type: object
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer, format: int32 }
+        detail: { type: string }
+        traceId: { type: string }
+    ClaimStatus: { type: string, enum: [reported, notified, documenting, evaluating, approved, objected, paid, closed] }
+    Claim:
+      type: object
+      required: [id, policyId, insurerId, holderPartyId, holderName, occurredOn, location, claimType, description, currency, status, alertOutOfCoverage, alertInArrears, alertNotInForce, reportedAt, version]
+      properties:
+        id: { type: string, format: uuid }
+        policyId: { type: string, format: uuid }
+        policyNumber: { type: string }
+        insurerId: { type: string, format: uuid }
+        holderPartyId: { type: string, format: uuid }
+        holderName: { type: string }
+        occurredOn: { type: string, format: date }
+        location: { type: string }
+        claimType: { type: string }
+        description: { type: string }
+        currency: { type: string }
+        claimedAmount: { type: string, format: decimal }
+        paidAmount: { type: string, format: decimal }
+        status: { $ref: "#/components/schemas/ClaimStatus" }
+        insurerClaimNumber: { type: string }
+        decisionSupport: { type: string }
+        alertOutOfCoverage: { type: boolean }
+        alertInArrears: { type: boolean }
+        alertNotInForce: { type: boolean }
+        hasHealthDetails: { type: boolean, description: Solo para quien puede leerlos. }
+        reportedAt: { type: string, format: date-time }
+        notifiedAt: { type: string, format: date-time }
+        version: { type: integer, format: int32 }
+    ClaimPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Claim" } }
+        nextCursor: { type: string }
+    ReportClaim:
+      type: object
+      additionalProperties: false
+      required: [policyId, occurredOn, location, claimType, description]
+      properties:
+        policyId: { type: string, format: uuid }
+        occurredOn: { type: string, format: date }
+        location: { type: string, minLength: 2, maxLength: 200 }
+        claimType: { type: string, minLength: 2, maxLength: 100 }
+        description: { type: string, minLength: 3, maxLength: 2000 }
+        claimedAmount: { type: string, format: decimal }
+    AdvanceClaim:
+      type: object
+      additionalProperties: false
+      required: [to]
+      properties:
+        to: { type: string, enum: [notified, documenting, evaluating, approved, objected, closed] }
+        insurerClaimNumber: { type: string, maxLength: 60 }
+        support: { type: string, maxLength: 200 }
+    ClaimedAmount:
+      type: object
+      additionalProperties: false
+      required: [amount, reason]
+      properties:
+        amount: { type: string, format: decimal }
+        reason: { type: string, minLength: 3, maxLength: 500 }
+    ClaimPayment:
+      type: object
+      additionalProperties: false
+      required: [amount]
+      properties:
+        amount: { type: string, format: decimal }
+    ClaimPaymentOverride:
+      type: object
+      additionalProperties: false
+      required: [amount, reason, support]
+      properties:
+        amount: { type: string, format: decimal }
+        reason: { type: string, minLength: 3, maxLength: 500 }
+        support: { type: string, minLength: 3, maxLength: 200 }
+    HealthDetails:
+      type: object
+      additionalProperties: false
+      required: [details]
+      properties:
+        details: { type: string, minLength: 3, maxLength: 4000 }
+    Tracking:
+      type: object
+      required: [checklist, notes]
+      properties:
+        checklist: { type: array, items: { $ref: "#/components/schemas/ChecklistItem" } }
+        notes: { type: array, items: { $ref: "#/components/schemas/ClaimNote" } }
+    ChecklistItem:
+      type: object
+      required: [id, label, received]
+      properties:
+        id: { type: string, format: uuid }
+        label: { type: string }
+        received: { type: boolean }
+    ClaimNote:
+      type: object
+      required: [id, body, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        body: { type: string }
+        createdAt: { type: string, format: date-time }
+    NewChecklistItem:
+      type: object
+      additionalProperties: false
+      required: [label]
+      properties:
+        label: { type: string, minLength: 2, maxLength: 200 }
+    ChecklistState:
+      type: object
+      additionalProperties: false
+      required: [received]
+      properties:
+        received: { type: boolean }
+    NewNote:
+      type: object
+      additionalProperties: false
+      required: [body]
+      properties:
+        body: { type: string, minLength: 3, maxLength: 2000 }

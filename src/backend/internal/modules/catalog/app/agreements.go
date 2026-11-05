@@ -185,3 +185,20 @@ func (d *Directory) AgreementFor(ctx context.Context, ref contracts.PolicyRef, o
 	})
 	return out, found, err
 }
+
+// RiskSchemaKeyOfLine implementa contracts.LineSchemas.
+func (d *Directory) RiskSchemaKeyOfLine(ctx context.Context, id uuid.UUID) (string, error) {
+	var key string
+	err := d.Store.WithinTenant(ctx, func(ctx context.Context, uow UnitOfWork) error {
+		line, err := uow.Catalog().GetLine(ctx, id)
+		if err := asInvalidReference(err); err != nil {
+			return err
+		}
+		if !line.Active {
+			return contracts.ErrInvalidReference
+		}
+		key = line.RiskSchemaKey
+		return nil
+	})
+	return key, err
+}

@@ -1,0 +1,254 @@
+openapi: 3.0.3
+info:
+  title: Seguros — Cotización
+  version: 1.0.0
+  description: Solicitudes, ofertas y comparativo.
+servers:
+  - url: /
+x-problems: &problems
+  "400": { $ref: "#/components/responses/Problem" }
+  "401": { $ref: "#/components/responses/Problem" }
+  "403": { $ref: "#/components/responses/Problem" }
+  "404": { $ref: "#/components/responses/Problem" }
+  "409": { $ref: "#/components/responses/Problem" }
+  "422": { $ref: "#/components/responses/Problem" }
+paths:
+  /api/v1/quoting/requests:
+    get:
+      operationId: listQuoteRequests
+      x-permission: quoting.quote.read|quoting.quote.read-own
+      x-feature: module.quoting
+      parameters:
+        - { name: status, in: query, schema: { $ref: "#/components/schemas/RequestStatus" } }
+        - { name: cursor, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: limit, in: query, schema: { type: integer, format: int32, minimum: 1, maximum: 200 } }
+      responses:
+        "200":
+          description: Solicitudes.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RequestPage" }
+        <<: *problems
+    post:
+      operationId: createQuoteRequest
+      x-permission: quoting.quote.manage-own
+      x-feature: module.quoting
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateRequest" }
+      responses:
+        "201":
+          description: Creada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuoteRequest" }
+        <<: *problems
+  /api/v1/quoting/requests/{requestId}:
+    parameters:
+      - { name: requestId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getQuoteRequest
+      x-permission: quoting.quote.read|quoting.quote.read-own
+      x-feature: module.quoting
+      responses:
+        "200":
+          description: Solicitud con sus ofertas.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuoteRequest" }
+        <<: *problems
+  /api/v1/quoting/requests/{requestId}/offers:
+    parameters:
+      - { name: requestId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: addQuoteOffer
+      x-permission: quoting.quote.manage-own
+      x-feature: module.quoting
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddOffer" }
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuoteRequest" }
+        <<: *problems
+  /api/v1/quoting/requests/{requestId}/accept:
+    parameters:
+      - { name: requestId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: acceptQuoteOffer
+      x-permission: quoting.quote.manage-own
+      x-feature: module.quoting
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AcceptOffer" }
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuoteRequest" }
+        <<: *problems
+  /api/v1/quoting/requests/{requestId}/decline:
+    parameters:
+      - { name: requestId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: declineQuoteRequest
+      x-permission: quoting.quote.manage-own
+      x-feature: module.quoting
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeclineRequest" }
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuoteRequest" }
+        <<: *problems
+  /api/v1/quoting/settings:
+    get:
+      operationId: getQuotingSettings
+      x-permission: quoting.settings.manage
+      x-feature: module.quoting
+      responses:
+        "200":
+          description: Parámetros.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuotingSettings" }
+        <<: *problems
+    put:
+      operationId: setQuotingSettings
+      x-permission: quoting.settings.manage
+      x-feature: module.quoting
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/QuotingSettings" }
+      responses:
+        "204": { description: Guardado. }
+        <<: *problems
+components:
+  responses:
+    Problem:
+      description: Error.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+  schemas:
+    Problem:
+      type: object
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer, format: int32 }
+        detail: { type: string }
+        traceId: { type: string }
+    RequestStatus: { type: string, enum: [open, accepted, declined] }
+    OfferStatus: { type: string, enum: [offered, accepted, discarded] }
+    PaymentForm: { type: string, enum: [single_payment, monthly_installments, quarterly_installments, automatic_debit, premium_financing] }
+    Coverage:
+      type: object
+      additionalProperties: false
+      required: [name, sumInsured]
+      properties:
+        name: { type: string, minLength: 2, maxLength: 100 }
+        sumInsured: { type: string, format: decimal }
+        deductible: { type: string, maxLength: 100 }
+    QuoteOffer:
+      type: object
+      required: [id, insurerId, currency, netPremium, taxes, effectiveFrom, effectiveTo, validUntil, status, expired, coverages]
+      properties:
+        id: { type: string, format: uuid }
+        insurerId: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        reference: { type: string }
+        currency: { type: string }
+        netPremium: { type: string, format: decimal }
+        taxes: { type: string, format: decimal }
+        effectiveFrom: { type: string, format: date }
+        effectiveTo: { type: string, format: date }
+        validUntil: { type: string, format: date }
+        status: { $ref: "#/components/schemas/OfferStatus" }
+        expired: { type: boolean }
+        coverages: { type: array, items: { $ref: "#/components/schemas/Coverage" } }
+    QuoteRequest:
+      type: object
+      required: [id, holderPartyId, holderName, lineOfBusinessId, agentId, riskDescription, riskData, status, offers, version]
+      properties:
+        id: { type: string, format: uuid }
+        leadId: { type: string, format: uuid }
+        holderPartyId: { type: string, format: uuid }
+        holderName: { type: string }
+        lineOfBusinessId: { type: string, format: uuid }
+        agentId: { type: string, format: uuid }
+        riskDescription: { type: string }
+        riskData: { type: object, additionalProperties: true }
+        status: { $ref: "#/components/schemas/RequestStatus" }
+        declineReason: { type: string }
+        policyId: { type: string, format: uuid }
+        offers: { type: array, items: { $ref: "#/components/schemas/QuoteOffer" } }
+        version: { type: integer, format: int32 }
+    RequestPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/QuoteRequest" } }
+        nextCursor: { type: string }
+    CreateRequest:
+      type: object
+      additionalProperties: false
+      required: [holderPartyId, lineOfBusinessId, riskDescription, riskData]
+      properties:
+        leadId: { type: string, format: uuid }
+        holderPartyId: { type: string, format: uuid }
+        lineOfBusinessId: { type: string, format: uuid }
+        riskDescription: { type: string, minLength: 2, maxLength: 200 }
+        riskData: { type: object, additionalProperties: true }
+    AddOffer:
+      type: object
+      additionalProperties: false
+      required: [insurerId, currency, netPremium, taxes, effectiveFrom, effectiveTo, coverages]
+      properties:
+        insurerId: { type: string, format: uuid }
+        productId: { type: string, format: uuid }
+        reference: { type: string, maxLength: 60 }
+        currency: { type: string, minLength: 3, maxLength: 3 }
+        netPremium: { type: string, format: decimal }
+        taxes: { type: string, format: decimal }
+        effectiveFrom: { type: string, format: date }
+        effectiveTo: { type: string, format: date }
+        validUntil: { type: string, format: date }
+        coverages: { type: array, maxItems: 20, items: { $ref: "#/components/schemas/Coverage" } }
+    AcceptOffer:
+      type: object
+      additionalProperties: false
+      required: [offerId, paymentForm]
+      properties:
+        offerId: { type: string, format: uuid }
+        paymentForm: { $ref: "#/components/schemas/PaymentForm" }
+        insuredPartyIds: { type: array, maxItems: 50, items: { type: string, format: uuid } }
+    DeclineRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 3, maxLength: 500 }
+    QuotingSettings:
+      type: object
+      additionalProperties: false
+      required: [offerValidDays]
+      properties:
+        offerValidDays: { type: integer, format: int32, minimum: 1, maximum: 365 }

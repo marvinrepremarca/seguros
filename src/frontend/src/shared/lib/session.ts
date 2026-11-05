@@ -45,6 +45,22 @@ export const permissions = {
   billingSettingsManage: "billing.settings.manage",
   commissionRateManage: "commissions.rate.manage",
   policySettingsManage: "policies.settings.manage",
+  leadRead: "crm.lead.read",
+  leadReadOwn: "crm.lead.read-own",
+  leadCreate: "crm.lead.create",
+  leadManageOwn: "crm.lead.manage-own",
+  leadAssign: "crm.lead.assign",
+  quoteRead: "quoting.quote.read",
+  quoteReadOwn: "quoting.quote.read-own",
+  quoteManageOwn: "quoting.quote.manage-own",
+  quoteSettingsManage: "quoting.settings.manage",
+  claimRead: "claims.claim.read",
+  claimReadOwn: "claims.claim.read-own",
+  claimReport: "claims.claim.report",
+  claimManage: "claims.claim.manage",
+  claimOverridePayment: "claims.claim.override-payment",
+  claimHealthRead: "claims.health.read",
+  claimHealthWrite: "claims.health.write",
 } as const;
 
 export const SessionContext = createContext<SessionData | null>(null);

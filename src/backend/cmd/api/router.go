@@ -11,11 +11,14 @@ import (
 
 	"github.com/marvinrepremarca/seguros/internal/modules/billing"
 	"github.com/marvinrepremarca/seguros/internal/modules/catalog"
+	"github.com/marvinrepremarca/seguros/internal/modules/claims"
 	"github.com/marvinrepremarca/seguros/internal/modules/commissions"
+	"github.com/marvinrepremarca/seguros/internal/modules/crm"
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity"
 	"github.com/marvinrepremarca/seguros/internal/modules/parties"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies"
+	"github.com/marvinrepremarca/seguros/internal/modules/quoting"
 	"github.com/marvinrepremarca/seguros/internal/modules/renewals"
 	"github.com/marvinrepremarca/seguros/internal/platform/httpx"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
@@ -36,6 +39,9 @@ type routerDeps struct {
 	Billing      *billing.Module
 	Commissions  *commissions.Module
 	Renewals     *renewals.Module
+	Crm          *crm.Module
+	Quoting      *quoting.Module
+	Claims       *claims.Module
 	// SPA sirve la aplicación web con su CSP; nil en desarrollo con Vite.
 	SPA http.Handler
 }
@@ -53,6 +59,11 @@ func isMoneyWrite(r *http.Request) bool {
 	p := r.URL.Path
 	return r.Method == http.MethodPost && (p == "/api/v1/commissions/statements" ||
 		(strings.HasPrefix(p, "/api/v1/billing/plans/") && (strings.HasSuffix(p, "/payments") || strings.HasSuffix(p, "/reverse"))))
+}
+
+// isHealthRead indica la lectura de datos de salud (Restringidos).
+func isHealthRead(r *http.Request) bool {
+	return r.Method == http.MethodGet && strings.HasPrefix(r.URL.Path, "/api/v1/claims/claims/") && strings.HasSuffix(r.URL.Path, "/health-details")
 }
 
 // isNameSearch indica la búsqueda de clientes por nombre.
@@ -104,7 +115,8 @@ func buildRouter(d routerDeps) (*chi.Mux, error) {
 		r.Use(httpx.RateLimitByUser(isNameSearch, 60, time.Minute))
 		r.Use(httpx.RateLimitByUser(isAgentList, 60, time.Minute))
 		r.Use(httpx.RateLimitByUser(isMoneyWrite, 120, time.Minute))
-		mountErr = errors.Join(d.Identity.Server.Mount(r), d.FeatureMgmt.Mount(r), d.Parties.Mount(r), d.Catalog.Mount(r), d.Policies.Mount(r), d.Billing.Mount(r), d.Commissions.Mount(r), d.Renewals.Mount(r))
+		r.Use(httpx.RateLimitByUser(isHealthRead, 30, time.Minute))
+		mountErr = errors.Join(d.Identity.Server.Mount(r), d.FeatureMgmt.Mount(r), d.Parties.Mount(r), d.Catalog.Mount(r), d.Policies.Mount(r), d.Billing.Mount(r), d.Commissions.Mount(r), d.Renewals.Mount(r), d.Crm.Mount(r), d.Quoting.Mount(r), d.Claims.Mount(r))
 	})
 	if mountErr != nil {
 		return nil, mountErr

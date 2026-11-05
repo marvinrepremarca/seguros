@@ -22,7 +22,7 @@ Los eventos de integración transportan **IDs**, no datos Restringidos.
 
 ## Autenticación y sesión (A07)
 - Solo vía Keycloak/OIDC con PKCE; el BFF guarda tokens server-side; cookies `__Host-` `HttpOnly; Secure; SameSite=Strict`.
-- MFA obligatoria para `TenantAdmin`, `Manager`, `Operations`, `Collections`, `Accounting`, `ComplianceOfficer` (`Operations` revela documentos: DECISIONS N13; `Collections` registra y reversa pagos: N21).
+- MFA obligatoria para `TenantAdmin`, `Manager`, `Operations`, `Collections`, `Accounting`, `ComplianceOfficer`, `ClaimsAnalyst` (`Operations` revela documentos: DECISIONS N13; `Collections` registra y reversa pagos: N21; `ClaimsAnalyst` maneja datos de salud: N29).
 - No implementes login, hashing de contraseñas ni JWT propios. Validación de tokens solo con `go-oidc` (verificar `iss`, `aud`, `exp`, algoritmo fijo).
 
 ## Inyección (A05)

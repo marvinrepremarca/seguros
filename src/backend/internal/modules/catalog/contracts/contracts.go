@@ -56,3 +56,9 @@ type Directory interface {
 	// el general del ramo. found es false si no hay ninguno.
 	AgreementFor(ctx context.Context, ref PolicyRef, on kernel.Date) (agreement Agreement, found bool, err error)
 }
+
+// LineSchemas resuelve el esquema de riesgo de un ramo activo. Interfaz aparte: solo la necesita quien
+// recibe datos de riesgo antes de conocer la aseguradora. Devuelve ErrInvalidReference si no aplica.
+type LineSchemas interface {
+	RiskSchemaKeyOfLine(ctx context.Context, line uuid.UUID) (string, error)
+}

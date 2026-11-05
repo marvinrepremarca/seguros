@@ -53,8 +53,8 @@ test("login y menú filtrado por los flags del plan profesional", async ({ page,
   // Un módulo fuera del plan responde como inexistente aunque se escriba la URL.
   await page.goto("/modulos/commissions");
   await expect(page.getByRole("heading", { name: "Página no encontrada" })).toBeVisible();
-  await page.goto("/modulos/claims");
-  await expect(page.getByRole("heading", { level: 1, name: "Siniestros" })).toBeVisible();
+  await page.goto("/modulos/documents");
+  await expect(page.getByRole("heading", { level: 1, name: "Documentos" })).toBeVisible();
 
   const axe = await new AxeBuilder({ page })
     .withTags(["wcag2a", "wcag2aa", "wcag21aa", "wcag22aa"])

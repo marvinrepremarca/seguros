@@ -22,10 +22,15 @@ import { Route as AppConfiguracionCatalogoRouteImport } from './routes/_app/conf
 import { Route as AppConfiguracionFuncionalidadesRouteImport } from './routes/_app/configuracion/funcionalidades'
 import { Route as AppConfiguracionParametrosRouteImport } from './routes/_app/configuracion/parametros'
 import { Route as AppConfiguracionTraspasoCarteraRouteImport } from './routes/_app/configuracion/traspaso-cartera'
+import { Route as AppCotizacionesIndexRouteImport } from './routes/_app/cotizaciones/index'
+import { Route as AppCotizacionesRequestIdRouteImport } from './routes/_app/cotizaciones/$requestId'
 import { Route as AppModulosModuloRouteImport } from './routes/_app/modulos/$modulo'
 import { Route as AppPolizasIndexRouteImport } from './routes/_app/polizas/index'
 import { Route as AppPolizasNuevaRouteImport } from './routes/_app/polizas/nueva'
+import { Route as AppProspectosIndexRouteImport } from './routes/_app/prospectos/index'
 import { Route as AppRenovacionesIndexRouteImport } from './routes/_app/renovaciones/index'
+import { Route as AppSiniestrosIndexRouteImport } from './routes/_app/siniestros/index'
+import { Route as AppSiniestrosClaimIdRouteImport } from './routes/_app/siniestros/$claimId'
 import { Route as AppPolizasPolicyIdIndexRouteImport } from './routes/_app/polizas/$policyId/index'
 import { Route as AppPolizasPolicyIdEditarRouteImport } from './routes/_app/polizas/$policyId/editar'
 import { Route as AppPolizasPolicyIdRenovarRouteImport } from './routes/_app/polizas/$policyId/renovar'
@@ -98,6 +103,17 @@ const AppConfiguracionTraspasoCarteraRoute =
     path: '/configuracion/traspaso-cartera',
     getParentRoute: () => AppRoute,
   } as any)
+const AppCotizacionesIndexRoute = AppCotizacionesIndexRouteImport.update({
+  id: '/cotizaciones/',
+  path: '/cotizaciones/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppCotizacionesRequestIdRoute =
+  AppCotizacionesRequestIdRouteImport.update({
+    id: '/cotizaciones/$requestId',
+    path: '/cotizaciones/$requestId',
+    getParentRoute: () => AppRoute,
+  } as any)
 const AppModulosModuloRoute = AppModulosModuloRouteImport.update({
   id: '/modulos/$modulo',
   path: '/modulos/$modulo',
@@ -113,9 +129,24 @@ const AppPolizasNuevaRoute = AppPolizasNuevaRouteImport.update({
   path: '/polizas/nueva',
   getParentRoute: () => AppRoute,
 } as any)
+const AppProspectosIndexRoute = AppProspectosIndexRouteImport.update({
+  id: '/prospectos/',
+  path: '/prospectos/',
+  getParentRoute: () => AppRoute,
+} as any)
 const AppRenovacionesIndexRoute = AppRenovacionesIndexRouteImport.update({
   id: '/renovaciones/',
   path: '/renovaciones/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSiniestrosIndexRoute = AppSiniestrosIndexRouteImport.update({
+  id: '/siniestros/',
+  path: '/siniestros/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppSiniestrosClaimIdRoute = AppSiniestrosClaimIdRouteImport.update({
+  id: '/siniestros/$claimId',
+  path: '/siniestros/$claimId',
   getParentRoute: () => AppRoute,
 } as any)
 const AppPolizasPolicyIdIndexRoute = AppPolizasPolicyIdIndexRouteImport.update({
@@ -146,13 +177,18 @@ export interface FileRoutesByFullPath {
   '/configuracion/funcionalidades': typeof AppConfiguracionFuncionalidadesRoute
   '/configuracion/parametros': typeof AppConfiguracionParametrosRoute
   '/configuracion/traspaso-cartera': typeof AppConfiguracionTraspasoCarteraRoute
+  '/cotizaciones/$requestId': typeof AppCotizacionesRequestIdRoute
   '/modulos/$modulo': typeof AppModulosModuloRoute
   '/polizas/nueva': typeof AppPolizasNuevaRoute
+  '/siniestros/$claimId': typeof AppSiniestrosClaimIdRoute
   '/cartera/': typeof AppCarteraIndexRoute
   '/clientes/': typeof AppClientesIndexRoute
   '/comisiones/': typeof AppComisionesIndexRoute
+  '/cotizaciones/': typeof AppCotizacionesIndexRoute
   '/polizas/': typeof AppPolizasIndexRoute
+  '/prospectos/': typeof AppProspectosIndexRoute
   '/renovaciones/': typeof AppRenovacionesIndexRoute
+  '/siniestros/': typeof AppSiniestrosIndexRoute
   '/polizas/$policyId/editar': typeof AppPolizasPolicyIdEditarRoute
   '/polizas/$policyId/renovar': typeof AppPolizasPolicyIdRenovarRoute
   '/polizas/$policyId/': typeof AppPolizasPolicyIdIndexRoute
@@ -167,13 +203,18 @@ export interface FileRoutesByTo {
   '/configuracion/funcionalidades': typeof AppConfiguracionFuncionalidadesRoute
   '/configuracion/parametros': typeof AppConfiguracionParametrosRoute
   '/configuracion/traspaso-cartera': typeof AppConfiguracionTraspasoCarteraRoute
+  '/cotizaciones/$requestId': typeof AppCotizacionesRequestIdRoute
   '/modulos/$modulo': typeof AppModulosModuloRoute
   '/polizas/nueva': typeof AppPolizasNuevaRoute
+  '/siniestros/$claimId': typeof AppSiniestrosClaimIdRoute
   '/cartera': typeof AppCarteraIndexRoute
   '/clientes': typeof AppClientesIndexRoute
   '/comisiones': typeof AppComisionesIndexRoute
+  '/cotizaciones': typeof AppCotizacionesIndexRoute
   '/polizas': typeof AppPolizasIndexRoute
+  '/prospectos': typeof AppProspectosIndexRoute
   '/renovaciones': typeof AppRenovacionesIndexRoute
+  '/siniestros': typeof AppSiniestrosIndexRoute
   '/polizas/$policyId/editar': typeof AppPolizasPolicyIdEditarRoute
   '/polizas/$policyId/renovar': typeof AppPolizasPolicyIdRenovarRoute
   '/polizas/$policyId': typeof AppPolizasPolicyIdIndexRoute
@@ -190,13 +231,18 @@ export interface FileRoutesById {
   '/_app/configuracion/funcionalidades': typeof AppConfiguracionFuncionalidadesRoute
   '/_app/configuracion/parametros': typeof AppConfiguracionParametrosRoute
   '/_app/configuracion/traspaso-cartera': typeof AppConfiguracionTraspasoCarteraRoute
+  '/_app/cotizaciones/$requestId': typeof AppCotizacionesRequestIdRoute
   '/_app/modulos/$modulo': typeof AppModulosModuloRoute
   '/_app/polizas/nueva': typeof AppPolizasNuevaRoute
+  '/_app/siniestros/$claimId': typeof AppSiniestrosClaimIdRoute
   '/_app/cartera/': typeof AppCarteraIndexRoute
   '/_app/clientes/': typeof AppClientesIndexRoute
   '/_app/comisiones/': typeof AppComisionesIndexRoute
+  '/_app/cotizaciones/': typeof AppCotizacionesIndexRoute
   '/_app/polizas/': typeof AppPolizasIndexRoute
+  '/_app/prospectos/': typeof AppProspectosIndexRoute
   '/_app/renovaciones/': typeof AppRenovacionesIndexRoute
+  '/_app/siniestros/': typeof AppSiniestrosIndexRoute
   '/_app/polizas/$policyId/editar': typeof AppPolizasPolicyIdEditarRoute
   '/_app/polizas/$policyId/renovar': typeof AppPolizasPolicyIdRenovarRoute
   '/_app/polizas/$policyId/': typeof AppPolizasPolicyIdIndexRoute
@@ -213,13 +259,18 @@ export interface FileRouteTypes {
     | '/configuracion/funcionalidades'
     | '/configuracion/parametros'
     | '/configuracion/traspaso-cartera'
+    | '/cotizaciones/$requestId'
     | '/modulos/$modulo'
     | '/polizas/nueva'
+    | '/siniestros/$claimId'
     | '/cartera/'
     | '/clientes/'
     | '/comisiones/'
+    | '/cotizaciones/'
     | '/polizas/'
+    | '/prospectos/'
     | '/renovaciones/'
+    | '/siniestros/'
     | '/polizas/$policyId/editar'
     | '/polizas/$policyId/renovar'
     | '/polizas/$policyId/'
@@ -234,13 +285,18 @@ export interface FileRouteTypes {
     | '/configuracion/funcionalidades'
     | '/configuracion/parametros'
     | '/configuracion/traspaso-cartera'
+    | '/cotizaciones/$requestId'
     | '/modulos/$modulo'
     | '/polizas/nueva'
+    | '/siniestros/$claimId'
     | '/cartera'
     | '/clientes'
     | '/comisiones'
+    | '/cotizaciones'
     | '/polizas'
+    | '/prospectos'
     | '/renovaciones'
+    | '/siniestros'
     | '/polizas/$policyId/editar'
     | '/polizas/$policyId/renovar'
     | '/polizas/$policyId'
@@ -256,13 +312,18 @@ export interface FileRouteTypes {
     | '/_app/configuracion/funcionalidades'
     | '/_app/configuracion/parametros'
     | '/_app/configuracion/traspaso-cartera'
+    | '/_app/cotizaciones/$requestId'
     | '/_app/modulos/$modulo'
     | '/_app/polizas/nueva'
+    | '/_app/siniestros/$claimId'
     | '/_app/cartera/'
     | '/_app/clientes/'
     | '/_app/comisiones/'
+    | '/_app/cotizaciones/'
     | '/_app/polizas/'
+    | '/_app/prospectos/'
     | '/_app/renovaciones/'
+    | '/_app/siniestros/'
     | '/_app/polizas/$policyId/editar'
     | '/_app/polizas/$policyId/renovar'
     | '/_app/polizas/$policyId/'
@@ -366,6 +427,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppConfiguracionTraspasoCarteraRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/cotizaciones/': {
+      id: '/_app/cotizaciones/'
+      path: '/cotizaciones'
+      fullPath: '/cotizaciones/'
+      preLoaderRoute: typeof AppCotizacionesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/cotizaciones/$requestId': {
+      id: '/_app/cotizaciones/$requestId'
+      path: '/cotizaciones/$requestId'
+      fullPath: '/cotizaciones/$requestId'
+      preLoaderRoute: typeof AppCotizacionesRequestIdRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/modulos/$modulo': {
       id: '/_app/modulos/$modulo'
       path: '/modulos/$modulo'
@@ -387,11 +462,32 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppPolizasNuevaRouteImport
       parentRoute: typeof AppRoute
     }
+    '/_app/prospectos/': {
+      id: '/_app/prospectos/'
+      path: '/prospectos'
+      fullPath: '/prospectos/'
+      preLoaderRoute: typeof AppProspectosIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
     '/_app/renovaciones/': {
       id: '/_app/renovaciones/'
       path: '/renovaciones'
       fullPath: '/renovaciones/'
       preLoaderRoute: typeof AppRenovacionesIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/siniestros/': {
+      id: '/_app/siniestros/'
+      path: '/siniestros'
+      fullPath: '/siniestros/'
+      preLoaderRoute: typeof AppSiniestrosIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/siniestros/$claimId': {
+      id: '/_app/siniestros/$claimId'
+      path: '/siniestros/$claimId'
+      fullPath: '/siniestros/$claimId'
+      preLoaderRoute: typeof AppSiniestrosClaimIdRouteImport
       parentRoute: typeof AppRoute
     }
     '/_app/polizas/$policyId/': {
@@ -427,13 +523,18 @@ interface AppRouteChildren {
   AppConfiguracionFuncionalidadesRoute: typeof AppConfiguracionFuncionalidadesRoute
   AppConfiguracionParametrosRoute: typeof AppConfiguracionParametrosRoute
   AppConfiguracionTraspasoCarteraRoute: typeof AppConfiguracionTraspasoCarteraRoute
+  AppCotizacionesRequestIdRoute: typeof AppCotizacionesRequestIdRoute
   AppModulosModuloRoute: typeof AppModulosModuloRoute
   AppPolizasNuevaRoute: typeof AppPolizasNuevaRoute
+  AppSiniestrosClaimIdRoute: typeof AppSiniestrosClaimIdRoute
   AppCarteraIndexRoute: typeof AppCarteraIndexRoute
   AppClientesIndexRoute: typeof AppClientesIndexRoute
   AppComisionesIndexRoute: typeof AppComisionesIndexRoute
+  AppCotizacionesIndexRoute: typeof AppCotizacionesIndexRoute
   AppPolizasIndexRoute: typeof AppPolizasIndexRoute
+  AppProspectosIndexRoute: typeof AppProspectosIndexRoute
   AppRenovacionesIndexRoute: typeof AppRenovacionesIndexRoute
+  AppSiniestrosIndexRoute: typeof AppSiniestrosIndexRoute
   AppPolizasPolicyIdEditarRoute: typeof AppPolizasPolicyIdEditarRoute
   AppPolizasPolicyIdRenovarRoute: typeof AppPolizasPolicyIdRenovarRoute
   AppPolizasPolicyIdIndexRoute: typeof AppPolizasPolicyIdIndexRoute
@@ -448,13 +549,18 @@ const AppRouteChildren: AppRouteChildren = {
   AppConfiguracionFuncionalidadesRoute: AppConfiguracionFuncionalidadesRoute,
   AppConfiguracionParametrosRoute: AppConfiguracionParametrosRoute,
   AppConfiguracionTraspasoCarteraRoute: AppConfiguracionTraspasoCarteraRoute,
+  AppCotizacionesRequestIdRoute: AppCotizacionesRequestIdRoute,
   AppModulosModuloRoute: AppModulosModuloRoute,
   AppPolizasNuevaRoute: AppPolizasNuevaRoute,
+  AppSiniestrosClaimIdRoute: AppSiniestrosClaimIdRoute,
   AppCarteraIndexRoute: AppCarteraIndexRoute,
   AppClientesIndexRoute: AppClientesIndexRoute,
   AppComisionesIndexRoute: AppComisionesIndexRoute,
+  AppCotizacionesIndexRoute: AppCotizacionesIndexRoute,
   AppPolizasIndexRoute: AppPolizasIndexRoute,
+  AppProspectosIndexRoute: AppProspectosIndexRoute,
   AppRenovacionesIndexRoute: AppRenovacionesIndexRoute,
+  AppSiniestrosIndexRoute: AppSiniestrosIndexRoute,
   AppPolizasPolicyIdEditarRoute: AppPolizasPolicyIdEditarRoute,
   AppPolizasPolicyIdRenovarRoute: AppPolizasPolicyIdRenovarRoute,
   AppPolizasPolicyIdIndexRoute: AppPolizasPolicyIdIndexRoute,

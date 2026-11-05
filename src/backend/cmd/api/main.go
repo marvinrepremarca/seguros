@@ -23,13 +23,16 @@ import (
 
 	"github.com/marvinrepremarca/seguros/internal/modules/billing"
 	"github.com/marvinrepremarca/seguros/internal/modules/catalog"
+	"github.com/marvinrepremarca/seguros/internal/modules/claims"
 	"github.com/marvinrepremarca/seguros/internal/modules/commissions"
+	"github.com/marvinrepremarca/seguros/internal/modules/crm"
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/keycloak"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/oidc"
 	"github.com/marvinrepremarca/seguros/internal/modules/parties"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies"
+	"github.com/marvinrepremarca/seguros/internal/modules/quoting"
 	"github.com/marvinrepremarca/seguros/internal/modules/renewals"
 	"github.com/marvinrepremarca/seguros/internal/modules/tenancy"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
@@ -194,6 +197,9 @@ func run() error {
 		Commissions: commissions.New(commissions.Deps{DB: database, Audit: recorder, Checker: flags.NewOpenFeatureChecker(openfeature.NewClient(flags.ProviderName)), Policy: policy, Clock: clock, Logger: logger}),
 		Renewals:    renewals.New(renewals.Deps{DB: database, Audit: recorder, Outbox: outbox.NewWriter(clock), Parties: partiesMod.Directory, Checker: flags.NewOpenFeatureChecker(openfeature.NewClient(flags.ProviderName)), Policy: policy, Clock: clock, Logger: logger}),
 		Billing:     billing.New(billing.Deps{DB: database, Audit: recorder, Outbox: outbox.NewWriter(clock), Parties: partiesMod.Directory, Checker: flags.NewOpenFeatureChecker(openfeature.NewClient(flags.ProviderName)), Policy: policy, Clock: clock, Logger: logger}),
+		Crm:         crm.New(crm.Deps{DB: database, Audit: recorder, Scope: partiesMod.Scope, Users: identityMod.Directory, Checker: flags.NewOpenFeatureChecker(openfeature.NewClient(flags.ProviderName)), Policy: policy, Clock: clock, Logger: logger}),
+		Quoting:     quoting.New(quoting.Deps{DB: database, Audit: recorder, Outbox: outbox.NewWriter(clock), Scope: partiesMod.Scope, Parties: partiesMod.Directory, Users: identityMod.Directory, Catalog: catalogMod.Directory, Schemas: catalogMod.Schemas, Lines: catalogMod.LineSchemas, Checker: flags.NewOpenFeatureChecker(openfeature.NewClient(flags.ProviderName)), Policy: policy, Clock: clock, Logger: logger}),
+		Claims:      claims.New(claims.Deps{DB: database, Audit: recorder, Outbox: outbox.NewWriter(clock), Policies: policiesMod.Directory, Parties: partiesMod.Directory, Cipher: cipher, Checker: flags.NewOpenFeatureChecker(openfeature.NewClient(flags.ProviderName)), Policy: policy, Clock: clock, Logger: logger}),
 		SPA:         spa,
 	})
 	if err != nil {

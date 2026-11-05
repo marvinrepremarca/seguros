@@ -11,6 +11,9 @@ export type NavLink =
   | { to: "/configuracion/parametros" }
   | { to: "/cartera" }
   | { to: "/renovaciones" }
+  | { to: "/prospectos" }
+  | { to: "/cotizaciones" }
+  | { to: "/siniestros" }
   | { to: "/comisiones" }
   | { to: "/configuracion/catalogo" }
   | { to: "/configuracion/traspaso-cartera" }
@@ -52,8 +55,18 @@ export const NAV_SECTIONS: readonly NavSection[] = [
   {
     title: "Venta",
     items: [
-      { label: "Prospectos (CRM)", link: moduleLink("crm"), flag: features.crm.module },
-      { label: "Cotizaciones", link: moduleLink("quoting"), flag: features.quoting.module },
+      {
+        label: "Prospectos (CRM)",
+        link: { to: "/prospectos" },
+        flag: features.crm.module,
+        permissions: [permissions.leadRead, permissions.leadReadOwn],
+      },
+      {
+        label: "Cotizaciones",
+        link: { to: "/cotizaciones" },
+        flag: features.quoting.module,
+        permissions: [permissions.quoteRead, permissions.quoteReadOwn],
+      },
     ],
   },
   {
@@ -71,7 +84,12 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         flag: features.renewals.module,
         permissions: [permissions.renewalRead],
       },
-      { label: "Siniestros", link: moduleLink("claims"), flag: features.claims.module },
+      {
+        label: "Siniestros",
+        link: { to: "/siniestros" },
+        flag: features.claims.module,
+        permissions: [permissions.claimRead, permissions.claimReadOwn],
+      },
       { label: "Documentos", link: moduleLink("documents"), flag: features.documents.module },
       {
         label: "Notificaciones",
@@ -119,6 +137,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
           permissions.billingSettingsManage,
           permissions.renewalSettingsManage,
           permissions.commissionRateManage,
+          permissions.quoteSettingsManage,
         ],
       },
       {

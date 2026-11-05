@@ -19,6 +19,7 @@ import (
 	policiesjobs "github.com/marvinrepremarca/seguros/internal/modules/policies/adapters/jobs"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies/adapters/postgres"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies/app"
+	"github.com/marvinrepremarca/seguros/internal/modules/policies/contracts"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/authz"
 	"github.com/marvinrepremarca/seguros/internal/platform/db"
@@ -46,6 +47,8 @@ type Deps struct {
 // Module expone las rutas.
 type Module struct {
 	server *policieshttp.Server
+	// Directory es la consulta pública de pólizas.
+	Directory contracts.Directory
 }
 
 // New compone el módulo.
@@ -54,11 +57,12 @@ func New(d Deps) *Module {
 	if kyc == nil {
 		kyc = app.NoKycRecords{}
 	}
+	store := postgres.NewStore(d.DB, d.Audit, d.Outbox)
 	svc := &app.Service{Deps: app.Deps{
-		Store: postgres.NewStore(d.DB, d.Audit, d.Outbox), Parties: d.Parties, Catalog: d.Catalog, Schemas: d.Schemas, Users: d.Users,
+		Store: store, Parties: d.Parties, Catalog: d.Catalog, Schemas: d.Schemas, Users: d.Users,
 		Gate: &app.KycGate{Flags: d.Flags, Kyc: kyc, Logger: d.Logger}, Clock: d.Clock, Logger: d.Logger,
 	}}
-	return &Module{server: policieshttp.NewServer(svc, d.Policy, d.Logger)}
+	return &Module{server: policieshttp.NewServer(svc, d.Policy, d.Logger), Directory: &app.Directory{Store: store}}
 }
 
 // Mount registra las rutas del módulo.
@@ -68,7 +72,7 @@ func (m *Module) Mount(r chi.Router) error { return m.server.Mount(r) }
 func Consumers(database *db.DB, recorder *audit.Recorder, writer *outbox.Writer, clock kernel.Clock) []outbox.Consumer {
 	store := postgres.NewStore(database, recorder, writer)
 	out := append([]outbox.Consumer{policiesevents.PortfolioTransfer(store, clock)}, policiesevents.Arrears(store, clock)...)
-	return append(out, policiesevents.Renewal(store, clock)...)
+	return append(append(out, policiesevents.Renewal(store, clock)...), policiesevents.QuoteAccepted(store, clock))
 }
 
 // RebuildScopes republica el alcance de las pólizas del tenant del contexto (rol seguros_worker).

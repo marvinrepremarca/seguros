@@ -20,9 +20,11 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/modules/billing"
 	"github.com/marvinrepremarca/seguros/internal/modules/catalog"
 	"github.com/marvinrepremarca/seguros/internal/modules/commissions"
+	"github.com/marvinrepremarca/seguros/internal/modules/crm"
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
 	"github.com/marvinrepremarca/seguros/internal/modules/parties"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies"
+	"github.com/marvinrepremarca/seguros/internal/modules/quoting"
 	"github.com/marvinrepremarca/seguros/internal/modules/renewals"
 	"github.com/marvinrepremarca/seguros/internal/modules/tenancy"
 	tenancycontracts "github.com/marvinrepremarca/seguros/internal/modules/tenancy/contracts"
@@ -133,6 +135,8 @@ func run() error {
 	}
 	consumers = append(consumers, commissions.Consumers(database, audit.NewRecorder(clock), catalogMod.Directory, clock)...)
 	consumers = append(consumers, renewals.Consumers(database, audit.NewRecorder(clock), outbox.NewWriter(clock), clock)...)
+	consumers = append(consumers, crm.Consumers(database, audit.NewRecorder(clock), clock)...)
+	consumers = append(consumers, quoting.Consumers(audit.NewRecorder(clock))...)
 	for _, c := range consumers {
 		if err := dispatcher.Register(c); err != nil {
 			return err
