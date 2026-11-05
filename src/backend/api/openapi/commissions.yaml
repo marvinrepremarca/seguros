@@ -1,0 +1,258 @@
+openapi: 3.0.3
+info:
+  title: Seguros — Comisiones
+  version: 1.0.0
+  description: Comisión esperada, liquidaciones de la aseguradora, conciliación y comisión interna.
+servers:
+  - url: /
+x-problems: &problems
+  "400": { $ref: "#/components/responses/Problem" }
+  "401": { $ref: "#/components/responses/Problem" }
+  "403": { $ref: "#/components/responses/Problem" }
+  "404": { $ref: "#/components/responses/Problem" }
+  "409": { $ref: "#/components/responses/Problem" }
+  "422": { $ref: "#/components/responses/Problem" }
+x-pagination: &pagination
+  - { name: cursor, in: query, schema: { type: string, maxLength: 64 } }
+  - { name: limit, in: query, schema: { type: integer, format: int32, minimum: 1, maximum: 200, default: 200 } }
+paths:
+  /api/v1/commissions/accruals:
+    get:
+      operationId: listAccruals
+      x-permission: commissions.accrual.read
+      x-feature: module.commissions
+      parameters:
+        - { name: pending, in: query, schema: { type: boolean } }
+        - { name: cursor, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: limit, in: query, schema: { type: integer, format: int32, minimum: 1, maximum: 200, default: 200 } }
+      responses:
+        "200":
+          description: Comisión causada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AccrualPage" }
+        <<: *problems
+  /api/v1/commissions/statements:
+    post:
+      operationId: registerStatement
+      x-permission: commissions.statement.manage
+      x-feature: module.commissions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterStatementRequest" }
+      responses:
+        "201":
+          description: Liquidación registrada y conciliada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StatementResult" }
+        <<: *problems
+  /api/v1/commissions/discrepancies:
+    get:
+      operationId: listDiscrepancies
+      x-permission: commissions.accrual.read
+      x-feature: module.commissions
+      parameters: *pagination
+      responses:
+        "200":
+          description: Diferencias abiertas.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DiscrepancyPage" }
+        <<: *problems
+  /api/v1/commissions/agent-commissions:
+    get:
+      operationId: listAgentCommissions
+      x-permission: commissions.accrual.read
+      x-feature: module.commissions
+      parameters:
+        - { name: agentId, in: query, schema: { type: string, format: uuid } }
+        - { name: cursor, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: limit, in: query, schema: { type: integer, format: int32, minimum: 1, maximum: 200, default: 200 } }
+      responses:
+        "200":
+          description: Comisión interna.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentCommissionPage" }
+        <<: *problems
+  /api/v1/commissions/agent-rates:
+    get:
+      operationId: listAgentRates
+      x-permission: commissions.rate.manage
+      x-feature: module.commissions
+      responses:
+        "200":
+          description: Tasas de asesores.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/AgentRate" } }
+        <<: *problems
+    post:
+      operationId: createAgentRate
+      x-permission: commissions.rate.manage
+      x-feature: module.commissions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateAgentRateRequest" }
+      responses:
+        "201":
+          description: Tasa creada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentRate" }
+        <<: *problems
+  /api/v1/commissions/settings:
+    get:
+      operationId: getCommissionSettings
+      x-permission: commissions.rate.manage
+      x-feature: module.commissions
+      responses:
+        "200":
+          description: Tolerancia.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/CommissionSettings" } }
+        <<: *problems
+    put:
+      operationId: setCommissionSettings
+      x-permission: commissions.rate.manage
+      x-feature: module.commissions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CommissionSettings" }
+      responses:
+        "204": { description: Guardado. }
+        <<: *problems
+components:
+  responses:
+    Problem:
+      description: Error.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+  schemas:
+    Problem:
+      type: object
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer, format: int32 }
+        detail: { type: string }
+        traceId: { type: string }
+    Decimal: { type: string, format: decimal, maxLength: 24 }
+    Accrual:
+      type: object
+      required: [id, policyId, policyNumber, kind, base, percentage, amount, currency, accruedOn, missingAgreement, reconciled]
+      properties:
+        id: { type: string, format: uuid }
+        policyId: { type: string, format: uuid }
+        policyNumber: { type: string }
+        kind: { type: string, enum: [payment, payment_reversal, written, endorsement, clawback] }
+        base: { $ref: "#/components/schemas/Decimal" }
+        percentage: { $ref: "#/components/schemas/Decimal" }
+        amount: { $ref: "#/components/schemas/Decimal" }
+        currency: { type: string }
+        agentId: { type: string, format: uuid }
+        accruedOn: { type: string, format: date }
+        missingAgreement: { type: boolean }
+        reconciled: { type: boolean }
+    AccrualPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Accrual" } }
+        nextCursor: { type: string }
+    RegisterStatementRequest:
+      type: object
+      additionalProperties: false
+      required: [insurerId, reference, receivedOn, lines]
+      properties:
+        insurerId: { type: string, format: uuid }
+        reference: { type: string, minLength: 1, maxLength: 100 }
+        receivedOn: { type: string, format: date }
+        lines:
+          type: array
+          minItems: 1
+          maxItems: 2000
+          items:
+            type: object
+            additionalProperties: false
+            required: [policyNumber, amount]
+            properties:
+              policyNumber: { type: string, minLength: 1, maxLength: 60 }
+              amount: { $ref: "#/components/schemas/Decimal" }
+    StatementResult:
+      type: object
+      required: [id, matched, discrepancies]
+      properties:
+        id: { type: string, format: uuid }
+        matched: { type: integer, format: int32 }
+        discrepancies: { type: integer, format: int32 }
+    Discrepancy:
+      type: object
+      required: [id, statementReference, insurerId, policyNumber, reported, expected]
+      properties:
+        id: { type: string, format: uuid }
+        statementReference: { type: string }
+        insurerId: { type: string, format: uuid }
+        policyNumber: { type: string }
+        policyId: { type: string, format: uuid }
+        reported: { $ref: "#/components/schemas/Decimal" }
+        expected: { $ref: "#/components/schemas/Decimal" }
+    DiscrepancyPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Discrepancy" } }
+        nextCursor: { type: string }
+    AgentCommission:
+      type: object
+      required: [id, accrualId, agentId, percentage, amount, currency, missingRate]
+      properties:
+        id: { type: string, format: uuid }
+        accrualId: { type: string, format: uuid }
+        agentId: { type: string, format: uuid }
+        percentage: { $ref: "#/components/schemas/Decimal" }
+        amount: { $ref: "#/components/schemas/Decimal" }
+        currency: { type: string }
+        missingRate: { type: boolean }
+    AgentCommissionPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/AgentCommission" } }
+        nextCursor: { type: string }
+    CreateAgentRateRequest:
+      type: object
+      additionalProperties: false
+      required: [agentId, percentage, validFrom]
+      properties:
+        agentId: { type: string, format: uuid }
+        lineOfBusinessId: { type: string, format: uuid }
+        percentage: { $ref: "#/components/schemas/Decimal" }
+        validFrom: { type: string, format: date }
+        validTo: { type: string, format: date }
+    AgentRate:
+      type: object
+      required: [id, agentId, percentage, validFrom]
+      properties:
+        id: { type: string, format: uuid }
+        agentId: { type: string, format: uuid }
+        lineOfBusinessId: { type: string, format: uuid }
+        percentage: { $ref: "#/components/schemas/Decimal" }
+        validFrom: { type: string, format: date }
+        validTo: { type: string, format: date }
+    CommissionSettings:
+      type: object
+      additionalProperties: false
+      required: [currency, tolerance]
+      properties:
+        currency: { type: string, pattern: '^[A-Z]{3}$' }
+        tolerance: { $ref: "#/components/schemas/Decimal" }

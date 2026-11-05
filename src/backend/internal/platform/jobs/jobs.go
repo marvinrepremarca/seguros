@@ -19,10 +19,12 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/riverqueue/river"
 	"github.com/riverqueue/river/riverdriver/riverpgxv5"
+	"go.opentelemetry.io/otel"
 
 	"github.com/marvinrepremarca/seguros/internal/platform/db"
 	"github.com/marvinrepremarca/seguros/internal/platform/db/migrate"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
+	"github.com/marvinrepremarca/seguros/internal/platform/outbox"
 )
 
 // Client es el cliente River sobre pgx.
@@ -124,12 +126,91 @@ func (w *OutboxPurgeWorker) Work(ctx context.Context, _ *river.Job[OutboxPurgeAr
 	})
 }
 
-// PlatformJobs registra los workers y jobs periódicos de plataforma (diarios; también al arrancar).
-func PlatformJobs(workers *river.Workers, database *db.DB, clock kernel.Clock) []*river.PeriodicJob {
+// InboxPurgeArgs borra marcas de procesado con más de 30 días. Supera con holgura los 7 días del
+// outbox y las reentregas; un reproceso solo llega a quien falló, y ese no dejó marca.
+type InboxPurgeArgs struct{}
+
+// Kind implementa river.JobArgs.
+func (InboxPurgeArgs) Kind() string { return "platform.inbox_purge" }
+
+// InboxPurgeWorker ejecuta messaging.purge_inbox (SECURITY DEFINER).
+type InboxPurgeWorker struct {
+	river.WorkerDefaults[InboxPurgeArgs]
+	DB    *db.DB
+	Clock kernel.Clock
+}
+
+// Work implementa river.Worker.
+func (w *InboxPurgeWorker) Work(ctx context.Context, _ *river.Job[InboxPurgeArgs]) error {
+	before := w.Clock.Now().Add(-30 * 24 * time.Hour)
+	return w.DB.WithoutTenantTx(ctx, func(tx pgx.Tx) error {
+		var n int
+		if err := tx.QueryRow(ctx, `SELECT messaging.purge_inbox($1)`, before).Scan(&n); err != nil {
+			return fmt.Errorf("jobs: limpiando inbox: %w", err)
+		}
+		return nil
+	})
+}
+
+// outboxDelayWarning es el retraso a partir del cual el relay se considera atrasado.
+const outboxDelayWarning = 5 * time.Minute
+
+// MessagingHealthArgs mide la salud de la mensajería.
+type MessagingHealthArgs struct{}
+
+// Kind implementa river.JobArgs.
+func (MessagingHealthArgs) Kind() string { return "platform.messaging_health" }
+
+// MessagingHealthWorker publica las métricas sobre las que se definen las alertas y deja un aviso en
+// el log cuando hay mensajes fallidos o retraso.
+type MessagingHealthWorker struct {
+	river.WorkerDefaults[MessagingHealthArgs]
+	DB     *db.DB
+	Clock  kernel.Clock
+	Logger *slog.Logger
+}
+
+// Work implementa river.Worker.
+func (w *MessagingHealthWorker) Work(ctx context.Context, _ *river.Job[MessagingHealthArgs]) error {
+	h, err := outbox.ReadHealth(ctx, w.DB, w.Clock.Now())
+	if err != nil {
+		return err
+	}
+	meter := otel.Meter("seguros/messaging")
+	gauges := []struct {
+		name  string
+		value int64
+	}{
+		{"messaging.dead_letters.pending", h.DeadLettersPending},
+		{"messaging.outbox.stuck", h.Stuck},
+		{"messaging.outbox.oldest_pending_seconds", int64(h.OldestPending / time.Second)},
+	}
+	for _, g := range gauges {
+		gauge, err := meter.Int64Gauge(g.name)
+		if err != nil {
+			return fmt.Errorf("jobs: métrica %s: %w", g.name, err)
+		}
+		gauge.Record(ctx, g.value)
+	}
+	if h.DeadLettersPending > 0 || h.Stuck > 0 || h.OldestPending > outboxDelayWarning {
+		w.Logger.WarnContext(ctx, "mensajería con atención pendiente",
+			"dead_letters", h.DeadLettersPending, "stuck", h.Stuck, "oldest_pending_seconds", int64(h.OldestPending/time.Second))
+	}
+	return nil
+}
+
+// PlatformJobs registra los workers y jobs periódicos de plataforma (también al arrancar).
+func PlatformJobs(workers *river.Workers, database *db.DB, clock kernel.Clock, logger *slog.Logger) []*river.PeriodicJob {
 	river.AddWorker(workers, &AuditPartitionsWorker{DB: database, Clock: clock})
 	river.AddWorker(workers, &OutboxPurgeWorker{DB: database, Clock: clock})
+	river.AddWorker(workers, &InboxPurgeWorker{DB: database, Clock: clock})
+	river.AddWorker(workers, &MessagingHealthWorker{DB: database, Clock: clock, Logger: logger})
 	daily := river.PeriodicInterval(24 * time.Hour)
 	return []*river.PeriodicJob{
+		river.NewPeriodicJob(daily, func() (river.JobArgs, *river.InsertOpts) { return InboxPurgeArgs{}, nil },
+			&river.PeriodicJobOpts{RunOnStart: true, ID: "platform.inbox_purge"}),
+		river.NewPeriodicJob(river.PeriodicInterval(time.Minute), func() (river.JobArgs, *river.InsertOpts) { return MessagingHealthArgs{}, nil },
+			&river.PeriodicJobOpts{RunOnStart: true, ID: "platform.messaging_health"}),
 		river.NewPeriodicJob(daily, func() (river.JobArgs, *river.InsertOpts) { return AuditPartitionsArgs{}, nil },
 			&river.PeriodicJobOpts{RunOnStart: true, ID: "platform.audit_partitions"}),
 		river.NewPeriodicJob(daily, func() (river.JobArgs, *river.InsertOpts) { return OutboxPurgeArgs{}, nil },

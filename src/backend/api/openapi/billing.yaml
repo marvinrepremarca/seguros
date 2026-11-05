@@ -1,0 +1,362 @@
+openapi: 3.0.3
+info:
+  title: Seguros — Cartera y cobro
+  version: 1.0.0
+  description: |
+    Planes de pago, cuotas, pagos informados, cartera y gestión de cobro. El cliente siempre paga
+    directo a la aseguradora: aquí solo se registra lo informado.
+servers:
+  - url: /
+x-problems: &problems
+  "400": { $ref: "#/components/responses/Problem" }
+  "401": { $ref: "#/components/responses/Problem" }
+  "403": { $ref: "#/components/responses/Problem" }
+  "404": { $ref: "#/components/responses/Problem" }
+  "409": { $ref: "#/components/responses/Problem" }
+  "422": { $ref: "#/components/responses/Problem" }
+paths:
+  /api/v1/billing/plans/{policyId}:
+    parameters:
+      - { name: policyId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getPlan
+      x-permission: billing.plan.read
+      x-feature: module.billing
+      responses:
+        "200":
+          description: Plan de pagos de la póliza.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Plan" }
+        <<: *problems
+  /api/v1/billing/plans/{policyId}/installments:
+    parameters:
+      - { name: policyId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: adjustSchedule
+      x-permission: billing.plan.adjust
+      x-feature: module.billing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AdjustScheduleRequest" }
+      responses:
+        "200":
+          description: Plan ajustado.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Plan" }
+        <<: *problems
+  /api/v1/billing/plans/{policyId}/payments:
+    parameters:
+      - { name: policyId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listPayments
+      x-permission: billing.plan.read
+      x-feature: module.billing
+      responses:
+        "200":
+          description: Pagos del plan.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/Payment" } }
+        <<: *problems
+    post:
+      operationId: registerPayment
+      x-permission: billing.payment.register
+      x-feature: module.billing
+      parameters:
+        - { name: Idempotency-Key, in: header, required: true, schema: { type: string, minLength: 1, maxLength: 100 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterPaymentRequest" }
+      responses:
+        "201":
+          description: Pago registrado (o el ya registrado con esa llave).
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Payment" }
+        <<: *problems
+  /api/v1/billing/plans/{policyId}/payments/{paymentId}/reverse:
+    parameters:
+      - { name: policyId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: paymentId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: reversePayment
+      x-permission: billing.payment.reverse
+      x-feature: module.billing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ReversePaymentRequest" }
+      responses:
+        "204": { description: Pago reversado. }
+        <<: *problems
+  /api/v1/billing/plans/{policyId}/collection-activities:
+    parameters:
+      - { name: policyId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listCollectionActivities
+      x-permission: billing.plan.read
+      x-feature: module.billing
+      responses:
+        "200":
+          description: Gestiones de cobro.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/CollectionActivity" } }
+        <<: *problems
+    post:
+      operationId: addCollectionActivity
+      x-permission: billing.collection.manage
+      x-feature: module.billing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AddCollectionActivityRequest" }
+      responses:
+        "201":
+          description: Gestión registrada.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CollectionActivity" }
+        <<: *problems
+  /api/v1/billing/receivables:
+    get:
+      operationId: listReceivables
+      x-permission: billing.plan.read
+      x-feature: module.billing
+      parameters:
+        - { name: bucket, in: query, schema: { $ref: "#/components/schemas/AgingBucket" } }
+        - { name: cursor, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: limit, in: query, schema: { type: integer, format: int32, minimum: 1, maximum: 200, default: 200 } }
+      responses:
+        "200":
+          description: Cuotas con saldo.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ReceivablePage" }
+        <<: *problems
+  /api/v1/billing/receivables/summary:
+    get:
+      operationId: getReceivablesSummary
+      x-permission: billing.plan.read
+      x-feature: module.billing
+      responses:
+        "200":
+          description: Saldo por moneda y antigüedad.
+          content:
+            application/json:
+              schema: { type: array, items: { $ref: "#/components/schemas/ReceivableBucket" } }
+        <<: *problems
+  /api/v1/billing/settings/arrears:
+    get:
+      operationId: listArrearsSettings
+      x-permission: billing.settings.manage
+      x-feature: module.billing
+      responses:
+        "200":
+          description: Días de gracia.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ArrearsSettings" }
+        <<: *problems
+    put:
+      operationId: setArrearsSetting
+      x-permission: billing.settings.manage
+      x-feature: module.billing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ArrearsSetting" }
+      responses:
+        "204": { description: Guardado. }
+        <<: *problems
+  /api/v1/billing/settings/payments:
+    get:
+      operationId: getPaymentSettings
+      x-permission: billing.settings.manage
+      x-feature: module.billing
+      responses:
+        "200":
+          description: Parámetros de pagos.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaymentSettings" }
+        <<: *problems
+    put:
+      operationId: setPaymentSettings
+      x-permission: billing.settings.manage
+      x-feature: module.billing
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PaymentSettings" }
+      responses:
+        "204": { description: Guardado. }
+        <<: *problems
+components:
+  responses:
+    Problem:
+      description: Error.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+  schemas:
+    Problem:
+      type: object
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer, format: int32 }
+        detail: { type: string }
+        traceId: { type: string }
+    Decimal: { type: string, format: decimal, maxLength: 24 }
+    AgingBucket: { type: string, enum: [not_due, d0_30, d31_60, d61_90, d90_plus] }
+    Installment:
+      type: object
+      required: [id, number, dueDate, amount, paid, status]
+      properties:
+        id: { type: string, format: uuid }
+        number: { type: integer, format: int32 }
+        dueDate: { type: string, format: date }
+        amount: { $ref: "#/components/schemas/Decimal" }
+        paid: { $ref: "#/components/schemas/Decimal" }
+        status: { type: string, enum: [pending, paid, voided] }
+    Plan:
+      type: object
+      required: [id, policyId, policyNumber, insurerId, holderPartyId, currency, total, credit, cancelled, inArrears, installments, version]
+      properties:
+        id: { type: string, format: uuid }
+        policyId: { type: string, format: uuid }
+        policyNumber: { type: string }
+        insurerId: { type: string, format: uuid }
+        holderPartyId: { type: string, format: uuid }
+        currency: { type: string }
+        total: { $ref: "#/components/schemas/Decimal" }
+        credit: { $ref: "#/components/schemas/Decimal" }
+        cancelled: { type: boolean }
+        inArrears: { type: boolean }
+        refundDate: { type: string, format: date }
+        refundAmount: { $ref: "#/components/schemas/Decimal" }
+        installments: { type: array, items: { $ref: "#/components/schemas/Installment" } }
+        version: { type: integer, format: int32 }
+    AdjustScheduleRequest:
+      type: object
+      additionalProperties: false
+      required: [version, supportReference, installments]
+      properties:
+        version: { type: integer, format: int32 }
+        supportReference: { type: string, minLength: 1, maxLength: 200 }
+        installments:
+          type: array
+          maxItems: 120
+          items:
+            type: object
+            additionalProperties: false
+            required: [dueDate, amount]
+            properties:
+              dueDate: { type: string, format: date }
+              amount: { $ref: "#/components/schemas/Decimal" }
+    PaymentMethod: { type: string, enum: [transfer, card, cash, check, automatic_debit, financing, other] }
+    ReportedBy: { type: string, enum: [client, insurer] }
+    RegisterPaymentRequest:
+      type: object
+      additionalProperties: false
+      required: [amount, paidOn, method, reportedBy, supportReference]
+      properties:
+        amount: { $ref: "#/components/schemas/Decimal" }
+        paidOn: { type: string, format: date }
+        method: { $ref: "#/components/schemas/PaymentMethod" }
+        reportedBy: { $ref: "#/components/schemas/ReportedBy" }
+        supportReference: { type: string, minLength: 1, maxLength: 200 }
+    Payment:
+      type: object
+      required: [id, amount, surplus, currency, paidOn, method, reportedBy, supportReference, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        amount: { $ref: "#/components/schemas/Decimal" }
+        surplus: { $ref: "#/components/schemas/Decimal" }
+        currency: { type: string }
+        paidOn: { type: string, format: date }
+        method: { $ref: "#/components/schemas/PaymentMethod" }
+        reportedBy: { $ref: "#/components/schemas/ReportedBy" }
+        supportReference: { type: string }
+        createdAt: { type: string, format: date-time }
+        reversedAt: { type: string, format: date-time }
+    ReversePaymentRequest:
+      type: object
+      additionalProperties: false
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 3, maxLength: 500 }
+    CollectionChannel: { type: string, enum: [call, message, email, visit, other] }
+    AddCollectionActivityRequest:
+      type: object
+      additionalProperties: false
+      required: [channel, note]
+      properties:
+        channel: { $ref: "#/components/schemas/CollectionChannel" }
+        note: { type: string, minLength: 1, maxLength: 1000 }
+    CollectionActivity:
+      type: object
+      required: [id, channel, note, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        channel: { $ref: "#/components/schemas/CollectionChannel" }
+        note: { type: string }
+        createdAt: { type: string, format: date-time }
+    Receivable:
+      type: object
+      required: [installmentId, policyId, policyNumber, insurerId, holderPartyId, holderName, currency, dueDate, balance, daysOverdue]
+      properties:
+        installmentId: { type: string, format: uuid }
+        policyId: { type: string, format: uuid }
+        policyNumber: { type: string }
+        insurerId: { type: string, format: uuid }
+        holderPartyId: { type: string, format: uuid }
+        holderName: { type: string }
+        currency: { type: string }
+        dueDate: { type: string, format: date }
+        balance: { $ref: "#/components/schemas/Decimal" }
+        daysOverdue: { type: integer, format: int32 }
+    ReceivablePage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Receivable" } }
+        nextCursor: { type: string }
+    ReceivableBucket:
+      type: object
+      required: [currency, bucket, balance, installments]
+      properties:
+        currency: { type: string }
+        bucket: { $ref: "#/components/schemas/AgingBucket" }
+        balance: { $ref: "#/components/schemas/Decimal" }
+        installments: { type: integer, format: int32 }
+    ArrearsSetting:
+      type: object
+      additionalProperties: false
+      required: [graceDays]
+      properties:
+        insurerId: { type: string, format: uuid, description: Sin valor es el general del tenant. }
+        graceDays: { type: integer, format: int32, minimum: 0, maximum: 365 }
+    PaymentSettings:
+      type: object
+      additionalProperties: false
+      required: [leadDays]
+      properties:
+        leadDays: { type: integer, format: int32, minimum: 0, maximum: 3650 }
+    ArrearsSettings:
+      type: object
+      required: [defaultGraceDays, settings]
+      properties:
+        defaultGraceDays: { type: integer, format: int32 }
+        settings: { type: array, items: { $ref: "#/components/schemas/ArrearsSetting" } }

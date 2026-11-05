@@ -13,6 +13,7 @@ import { ErrorMessage, Field, Input, QueryState, Select, Textarea } from "@/shar
 import { availableActions } from "../actions";
 import {
   acceptPolicy,
+  reinstatePolicy,
   CancellationCause,
   cancelPolicy,
   EndorsementType,
@@ -229,6 +230,9 @@ function Actions({ policy, deps }: { policy: Policy; deps: PolicyDeps }) {
   const [open, setOpen] = useState<OpenForm>(null);
   const apply = useApply(policy);
   const accept = useMutation(apply(() => acceptPolicy(policy.id, { version: policy.version })));
+  const reinstate = useMutation(
+    apply(() => reinstatePolicy(policy.id, { version: policy.version })),
+  );
   if (actions.length === 0) return null;
   const toggle = (form: Exclude<OpenForm, null>) => () => {
     setOpen(open === form ? null : form);
@@ -238,7 +242,7 @@ function Actions({ policy, deps }: { policy: Policy; deps: PolicyDeps }) {
   };
   return (
     <div className="space-y-4">
-      <ErrorMessage message={problemMessage(accept.error)} />
+      <ErrorMessage message={problemMessage(accept.error ?? reinstate.error)} />
       <div className="flex flex-wrap gap-2">
         {actions.includes("edit") && (
           <Button asChild variant="outline">
@@ -268,6 +272,24 @@ function Actions({ policy, deps }: { policy: Policy; deps: PolicyDeps }) {
         {actions.includes("endorse") && (
           <Button variant="outline" onClick={toggle("endorse")}>
             Solicitar endoso
+          </Button>
+        )}
+        {actions.includes("reinstate") && (
+          <Button
+            variant="outline"
+            disabled={reinstate.isPending}
+            onClick={() => {
+              reinstate.mutate();
+            }}
+          >
+            La aseguradora confirmó el pago
+          </Button>
+        )}
+        {actions.includes("renew") && (
+          <Button asChild variant="outline">
+            <Link to="/polizas/$policyId/renovar" params={{ policyId: policy.id }}>
+              Registrar renovación
+            </Link>
           </Button>
         )}
         {actions.includes("reassign") && (

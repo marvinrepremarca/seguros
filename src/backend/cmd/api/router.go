@@ -9,11 +9,14 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"github.com/marvinrepremarca/seguros/internal/modules/billing"
 	"github.com/marvinrepremarca/seguros/internal/modules/catalog"
+	"github.com/marvinrepremarca/seguros/internal/modules/commissions"
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity"
 	"github.com/marvinrepremarca/seguros/internal/modules/parties"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies"
+	"github.com/marvinrepremarca/seguros/internal/modules/renewals"
 	"github.com/marvinrepremarca/seguros/internal/platform/httpx"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 )
@@ -30,6 +33,9 @@ type routerDeps struct {
 	Parties      *parties.Module
 	Catalog      *catalog.Module
 	Policies     *policies.Module
+	Billing      *billing.Module
+	Commissions  *commissions.Module
+	Renewals     *renewals.Module
 	// SPA sirve la aplicación web con su CSP; nil en desarrollo con Vite.
 	SPA http.Handler
 }
@@ -40,6 +46,13 @@ func isAgentChange(r *http.Request) bool {
 	return r.Method == http.MethodPost && (p == "/api/v1/policies/portfolio-transfers" ||
 		(strings.HasPrefix(p, "/api/v1/policies/policies/") && strings.HasSuffix(p, "/agent")) ||
 		strings.HasSuffix(p, "/responsible-agent"))
+}
+
+// isMoneyWrite indica el registro y reverso de pagos y de liquidaciones.
+func isMoneyWrite(r *http.Request) bool {
+	p := r.URL.Path
+	return r.Method == http.MethodPost && (p == "/api/v1/commissions/statements" ||
+		(strings.HasPrefix(p, "/api/v1/billing/plans/") && (strings.HasSuffix(p, "/payments") || strings.HasSuffix(p, "/reverse"))))
 }
 
 // isNameSearch indica la búsqueda de clientes por nombre.
@@ -90,7 +103,8 @@ func buildRouter(d routerDeps) (*chi.Mux, error) {
 		r.Use(httpx.RateLimitByUser(isAgentChange, 10, time.Minute))
 		r.Use(httpx.RateLimitByUser(isNameSearch, 60, time.Minute))
 		r.Use(httpx.RateLimitByUser(isAgentList, 60, time.Minute))
-		mountErr = errors.Join(d.Identity.Server.Mount(r), d.FeatureMgmt.Mount(r), d.Parties.Mount(r), d.Catalog.Mount(r), d.Policies.Mount(r))
+		r.Use(httpx.RateLimitByUser(isMoneyWrite, 120, time.Minute))
+		mountErr = errors.Join(d.Identity.Server.Mount(r), d.FeatureMgmt.Mount(r), d.Parties.Mount(r), d.Catalog.Mount(r), d.Policies.Mount(r), d.Billing.Mount(r), d.Commissions.Mount(r), d.Renewals.Mount(r))
 	})
 	if mountErr != nil {
 		return nil, mountErr

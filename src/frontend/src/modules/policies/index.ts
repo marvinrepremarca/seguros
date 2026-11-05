@@ -5,3 +5,4 @@ export { PolicyDetailPage } from "./components/PolicyDetailPage";
 export type { PolicyDeps } from "./deps";
 export { PortfolioTransferPage } from "./components/PortfolioTransferPage";
 export { agentsQuery } from "./queries";
+export { RenewalRulesForm } from "./components/RenewalRulesForm";

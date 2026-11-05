@@ -37,11 +37,11 @@ describe("visibleSections", () => {
     expect(labels).toContain("Pólizas");
     expect(labels).toContain("Catálogo");
     expect(labels).toContain("Traspaso de cartera");
-    expect(labels).toHaveLength(17); // Inicio, Clientes, Pólizas + 11 módulos + Funcionalidades, Catálogo, Traspaso
+    expect(labels).toHaveLength(18); // Inicio, Clientes, Pólizas + 11 módulos + Funcionalidades, Catálogo, Parámetros, Traspaso
   });
 
   it("cada módulo del menú tiene etiqueta", () => {
-    expect(MODULE_LABELS["billing"]).toBe("Cartera y cobro");
+    expect(MODULE_LABELS["claims"]).toBe("Siniestros");
     expect(MODULE_LABELS["integrations"]).toBe("Integraciones");
   });
 });

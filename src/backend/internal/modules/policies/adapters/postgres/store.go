@@ -153,6 +153,9 @@ func mapWriteError(err error, op string) error {
 	if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation && pgErr.ConstraintName == "policies_number_key" {
 		return domain.ErrNumberTaken
 	}
+	if errors.As(err, &pgErr) && pgErr.Code == uniqueViolation && pgErr.ConstraintName == "policies_one_renewal_key" {
+		return app.ErrRenewalExist
+	}
 	return fmt.Errorf("policies: %s: %w", op, err)
 }
 
@@ -470,4 +473,35 @@ func (r *repository) List(ctx context.Context, f app.ListFilter) ([]app.Summary,
 		})
 	}
 	return out, nil
+}
+
+func (r *repository) RenewalsOf(ctx context.Context, previous domain.PolicyID) ([]app.Renewal, error) {
+	rows, err := r.q.RenewalsOf(ctx, policiessqlc.RenewalsOfParams{TenantID: r.tenant, Previous: uuid.NullUUID{UUID: uuid.UUID(previous), Valid: true}})
+	if err != nil {
+		return nil, fmt.Errorf("policies: buscando renovaciones: %w", err)
+	}
+	out := make([]app.Renewal, len(rows))
+	for i, x := range rows {
+		out[i] = app.Renewal{ID: domain.PolicyID(x.ID), Status: domain.Status(x.Status)}
+	}
+	return out, nil
+}
+
+func (r *repository) RenewalSettings(ctx context.Context) (app.RenewalSettings, error) {
+	row, err := r.q.GetRenewalSettings(ctx, r.tenant)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return app.RenewalSettings{KeepHolder: true, KeepLine: true}, nil
+	}
+	if err != nil {
+		return app.RenewalSettings{}, fmt.Errorf("policies: leyendo reglas de renovación: %w", err)
+	}
+	return app.RenewalSettings{KeepHolder: row.KeepHolder, KeepLine: row.KeepLine}, nil
+}
+
+func (r *repository) SetRenewalSettings(ctx context.Context, v app.RenewalSettings, at time.Time) error {
+	err := r.q.SetRenewalSettings(ctx, policiessqlc.SetRenewalSettingsParams{TenantID: r.tenant, KeepHolder: v.KeepHolder, KeepLine: v.KeepLine, At: at, Actor: actor(ctx)})
+	if err != nil {
+		return fmt.Errorf("policies: guardando reglas de renovación: %w", err)
+	}
+	return nil
 }

@@ -42,6 +42,31 @@ paths:
         "401": { $ref: "#/components/responses/Problem" }
         "403": { $ref: "#/components/responses/Problem" }
         "422": { $ref: "#/components/responses/Problem" }
+  /api/v1/policies/settings/renewal:
+    get:
+      operationId: getRenewalRules
+      x-permission: policies.settings.manage
+      responses:
+        "200":
+          description: Qué conserva una renovación.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RenewalRules" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+    put:
+      operationId: setRenewalRules
+      x-permission: policies.settings.manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RenewalRules" }
+      responses:
+        "204": { description: Guardado. }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
   /api/v1/policies/agents:
     get:
       operationId: listAgents
@@ -149,6 +174,22 @@ paths:
         "403": { $ref: "#/components/responses/Problem" }
         "404": { $ref: "#/components/responses/Problem" }
         "409": { $ref: "#/components/responses/Problem" }
+  /api/v1/policies/policies/{policyId}/reinstate:
+    parameters:
+      - { name: policyId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: reinstatePolicy
+      summary: La aseguradora confirmó el pago; la póliza sale de mora (DECISIONS N24).
+      x-permission: policies.policy.manage
+      parameters:
+        - { $ref: "#/components/parameters/Version" }
+      responses:
+        "200": { $ref: "#/components/responses/Policy" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
   /api/v1/policies/policies/{policyId}/issue:
     parameters:
       - { name: policyId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -194,6 +235,26 @@ paths:
             schema: { $ref: "#/components/schemas/ReasonRequest" }
       responses:
         "200": { $ref: "#/components/responses/Policy" }
+        "400": { $ref: "#/components/responses/Problem" }
+        "401": { $ref: "#/components/responses/Problem" }
+        "403": { $ref: "#/components/responses/Problem" }
+        "404": { $ref: "#/components/responses/Problem" }
+        "409": { $ref: "#/components/responses/Problem" }
+        "422": { $ref: "#/components/responses/Problem" }
+  /api/v1/policies/policies/{policyId}/renew:
+    parameters:
+      - { name: policyId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: renewPolicy
+      summary: Registra la nueva vigencia de una póliza, también antes de que venza (DECISIONS N17).
+      x-permission: policies.policy.manage
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PolicyTerms" }
+      responses:
+        "201": { $ref: "#/components/responses/Policy" }
         "400": { $ref: "#/components/responses/Problem" }
         "401": { $ref: "#/components/responses/Problem" }
         "403": { $ref: "#/components/responses/Problem" }
@@ -309,6 +370,13 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Policy" }
   schemas:
+    RenewalRules:
+      type: object
+      additionalProperties: false
+      required: [keepHolder, keepLine]
+      properties:
+        keepHolder: { type: boolean }
+        keepLine: { type: boolean }
     Problem:
       type: object
       required: [type, title, status]

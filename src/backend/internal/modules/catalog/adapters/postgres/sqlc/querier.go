@@ -9,6 +9,8 @@ import (
 )
 
 type Querier interface {
+	// El acuerdo del producto prevalece sobre el general del ramo.
+	AgreementFor(ctx context.Context, arg AgreementForParams) (AgreementForRow, error)
 	GetAgreement(ctx context.Context, arg GetAgreementParams) (GetAgreementRow, error)
 	GetInsurer(ctx context.Context, arg GetInsurerParams) (GetInsurerRow, error)
 	GetLine(ctx context.Context, arg GetLineParams) (GetLineRow, error)

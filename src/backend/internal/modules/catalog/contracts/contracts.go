@@ -40,10 +40,19 @@ type PolicyRef struct {
 	ProductID        uuid.NullUUID
 }
 
+// Agreement es la comisión pactada aplicable a una póliza.
+type Agreement struct {
+	Basis      string
+	Percentage kernel.Percentage
+}
+
 // Directory consulta el catálogo del tenant del contexto para otros módulos.
 type Directory interface {
 	// ResolvePolicyRef verifica que las referencias existan, estén activas y sean coherentes (el
 	// producto es de esa aseguradora y ese ramo). Devuelve la clave del esquema de riesgo del ramo o
 	// ErrInvalidReference.
 	ResolvePolicyRef(ctx context.Context, ref PolicyRef) (riskSchemaKey string, err error)
+	// AgreementFor devuelve el acuerdo de comisión vigente en la fecha; el del producto prevalece sobre
+	// el general del ramo. found es false si no hay ninguno.
+	AgreementFor(ctx context.Context, ref PolicyRef, on kernel.Date) (agreement Agreement, found bool, err error)
 }

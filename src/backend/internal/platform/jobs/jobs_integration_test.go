@@ -80,7 +80,7 @@ func TestInsertTxIsTransactionalAndJobsRun(t *testing.T) {
 	worker := &pingWorker{done: make(chan uuid.UUID, 4)}
 	workers := river.NewWorkers()
 	river.AddWorker(workers, worker)
-	periodic := jobs.PlatformJobs(workers, database, kernel.SystemClock{})
+	periodic := jobs.PlatformJobs(workers, database, kernel.SystemClock{}, logger)
 	client, inserter, err := jobs.NewWorkerClient(database.Pool(), jobs.WorkerOptions{Workers: workers, Periodic: periodic, Logger: logger})
 	require.NoError(t, err)
 
@@ -125,9 +125,9 @@ func TestInsertTxIsTransactionalAndJobsRun(t *testing.T) {
 		var n int
 		err := database.WithoutTenantTx(context.Background(), func(tx pgx.Tx) error {
 			return tx.QueryRow(context.Background(),
-				`SELECT count(*) FROM river.river_job WHERE kind IN ('platform.audit_partitions', 'platform.outbox_purge') AND state = 'completed'`).Scan(&n)
+				`SELECT count(*) FROM river.river_job WHERE kind IN ('platform.audit_partitions', 'platform.outbox_purge', 'platform.inbox_purge', 'platform.messaging_health') AND state = 'completed'`).Scan(&n)
 		})
-		return err == nil && n == 2
+		return err == nil && n == 4
 	}, 15*time.Second, 100*time.Millisecond)
 }
 

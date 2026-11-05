@@ -109,3 +109,11 @@ type PoliciesPortfolioTransferRequest struct {
 	RequestedBy uuid.UUID
 	RequestedAt time.Time
 }
+
+type PoliciesRenewalSetting struct {
+	TenantID   uuid.UUID
+	KeepHolder bool
+	KeepLine   bool
+	UpdatedAt  time.Time
+	UpdatedBy  uuid.NullUUID
+}

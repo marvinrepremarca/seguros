@@ -468,6 +468,12 @@ type ReassignAgentRequest struct {
 	Reason TransferReason `json:"reason"`
 }
 
+// RenewalRules defines model for RenewalRules.
+type RenewalRules struct {
+	KeepHolder bool `json:"keepHolder"`
+	KeepLine   bool `json:"keepLine"`
+}
+
 // RequestEndorsementRequest defines model for RequestEndorsementRequest.
 type RequestEndorsementRequest struct {
 	Description   string          `json:"description"`
@@ -556,6 +562,12 @@ type IssuePolicyParams struct {
 	Version Version `form:"version" json:"version"`
 }
 
+// ReinstatePolicyParams defines parameters for ReinstatePolicy.
+type ReinstatePolicyParams struct {
+	// Version Versión de la póliza que el cliente leyó (concurrencia optimista).
+	Version Version `form:"version" json:"version"`
+}
+
 // RejectPolicyParams defines parameters for RejectPolicy.
 type RejectPolicyParams struct {
 	// Version Versión de la póliza que el cliente leyó (concurrencia optimista).
@@ -589,8 +601,14 @@ type IssuePolicyJSONRequestBody IssuePolicyJSONBody
 // RejectPolicyJSONRequestBody defines body for RejectPolicy for application/json ContentType.
 type RejectPolicyJSONRequestBody = ReasonRequest
 
+// RenewPolicyJSONRequestBody defines body for RenewPolicy for application/json ContentType.
+type RenewPolicyJSONRequestBody = PolicyTerms
+
 // TransferPortfolioJSONRequestBody defines body for TransferPortfolio for application/json ContentType.
 type TransferPortfolioJSONRequestBody = TransferPortfolioRequest
+
+// SetRenewalRulesJSONRequestBody defines body for SetRenewalRules for application/json ContentType.
+type SetRenewalRulesJSONRequestBody = RenewalRules
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
@@ -630,12 +648,24 @@ type ServerInterface interface {
 	// IssuePolicy Registra la póliza expedida por la aseguradora. Exige KYC si module.compliance está encendido.
 	// (POST /api/v1/policies/policies/{policyId}/issue)
 	IssuePolicy(w http.ResponseWriter, r *http.Request, policyId uuid.UUID, params IssuePolicyParams)
+	// ReinstatePolicy La aseguradora confirmó el pago; la póliza sale de mora (DECISIONS N24).
+	// (POST /api/v1/policies/policies/{policyId}/reinstate)
+	ReinstatePolicy(w http.ResponseWriter, r *http.Request, policyId uuid.UUID, params ReinstatePolicyParams)
 	// RejectPolicy La aseguradora rechazó la solicitud.
 	// (POST /api/v1/policies/policies/{policyId}/reject)
 	RejectPolicy(w http.ResponseWriter, r *http.Request, policyId uuid.UUID, params RejectPolicyParams)
+	// RenewPolicy Registra la nueva vigencia de una póliza, también antes de que venza (DECISIONS N17).
+	// (POST /api/v1/policies/policies/{policyId}/renew)
+	RenewPolicy(w http.ResponseWriter, r *http.Request, policyId uuid.UUID)
 	// TransferPortfolio Pide pasar toda la cartera de un asesor a otro. Se procesa en segundo plano.
 	// (POST /api/v1/policies/portfolio-transfers)
 	TransferPortfolio(w http.ResponseWriter, r *http.Request)
+
+	// (GET /api/v1/policies/settings/renewal)
+	GetRenewalRules(w http.ResponseWriter, r *http.Request)
+
+	// (PUT /api/v1/policies/settings/renewal)
+	SetRenewalRules(w http.ResponseWriter, r *http.Request)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
@@ -711,15 +741,37 @@ func (_ Unimplemented) IssuePolicy(w http.ResponseWriter, r *http.Request, polic
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// ReinstatePolicy La aseguradora confirmó el pago; la póliza sale de mora (DECISIONS N24).
+// (POST /api/v1/policies/policies/{policyId}/reinstate)
+func (_ Unimplemented) ReinstatePolicy(w http.ResponseWriter, r *http.Request, policyId uuid.UUID, params ReinstatePolicyParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // RejectPolicy La aseguradora rechazó la solicitud.
 // (POST /api/v1/policies/policies/{policyId}/reject)
 func (_ Unimplemented) RejectPolicy(w http.ResponseWriter, r *http.Request, policyId uuid.UUID, params RejectPolicyParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
+// RenewPolicy Registra la nueva vigencia de una póliza, también antes de que venza (DECISIONS N17).
+// (POST /api/v1/policies/policies/{policyId}/renew)
+func (_ Unimplemented) RenewPolicy(w http.ResponseWriter, r *http.Request, policyId uuid.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
 // TransferPortfolio Pide pasar toda la cartera de un asesor a otro. Se procesa en segundo plano.
 // (POST /api/v1/policies/portfolio-transfers)
 func (_ Unimplemented) TransferPortfolio(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (GET /api/v1/policies/settings/renewal)
+func (_ Unimplemented) GetRenewalRules(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// (PUT /api/v1/policies/settings/renewal)
+func (_ Unimplemented) SetRenewalRules(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1199,6 +1251,48 @@ func (siw *ServerInterfaceWrapper) IssuePolicy(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r)
 }
 
+// ReinstatePolicy operation middleware
+func (siw *ServerInterfaceWrapper) ReinstatePolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "policyId" -------------
+	var policyId uuid.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "policyId", chi.URLParam(r, "policyId"), &policyId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "policyId", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ReinstatePolicyParams
+
+	// ------------- Required query parameter "version" -------------
+
+	err = runtime.BindQueryParameterWithOptions("form", true, true, "version", r.URL.Query(), &params.Version, runtime.BindQueryParameterOptions{Type: "integer", Format: "int32"})
+	if err != nil {
+		var requiredError *runtime.RequiredParameterError
+		if errors.As(err, &requiredError) {
+			siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "version"})
+		} else {
+			siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "version", Err: err})
+		}
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ReinstatePolicy(w, r, policyId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // RejectPolicy operation middleware
 func (siw *ServerInterfaceWrapper) RejectPolicy(w http.ResponseWriter, r *http.Request) {
 
@@ -1241,11 +1335,65 @@ func (siw *ServerInterfaceWrapper) RejectPolicy(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// RenewPolicy operation middleware
+func (siw *ServerInterfaceWrapper) RenewPolicy(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+	_ = err
+
+	// ------------- Path parameter "policyId" -------------
+	var policyId uuid.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "policyId", chi.URLParam(r, "policyId"), &policyId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true, Type: "string", Format: "uuid", ValueIsUnescaped: r.URL.RawPath == ""})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "policyId", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RenewPolicy(w, r, policyId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // TransferPortfolio operation middleware
 func (siw *ServerInterfaceWrapper) TransferPortfolio(w http.ResponseWriter, r *http.Request) {
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.TransferPortfolio(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// GetRenewalRules operation middleware
+func (siw *ServerInterfaceWrapper) GetRenewalRules(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetRenewalRules(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// SetRenewalRules operation middleware
+func (siw *ServerInterfaceWrapper) SetRenewalRules(w http.ResponseWriter, r *http.Request) {
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.SetRenewalRules(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1375,6 +1523,12 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/policies/policies", wrapper.CreatePolicy)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/policies/settings/renewal", wrapper.GetRenewalRules)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/policies/settings/renewal", wrapper.SetRenewalRules)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/policies/agents", wrapper.ListAgents)
 	})
 	r.Group(func(r chi.Router) {
@@ -1393,10 +1547,16 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/api/v1/policies/policies/{policyId}/accept", wrapper.AcceptPolicy)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/policies/policies/{policyId}/reinstate", wrapper.ReinstatePolicy)
+	})
+	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/policies/policies/{policyId}/issue", wrapper.IssuePolicy)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/policies/policies/{policyId}/reject", wrapper.RejectPolicy)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/policies/policies/{policyId}/renew", wrapper.RenewPolicy)
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/api/v1/policies/policies/{policyId}/cancel", wrapper.CancelPolicy)
@@ -2606,6 +2766,101 @@ func (response IssuePolicy503ApplicationProblemPlusJSONResponse) VisitIssuePolic
 	return err
 }
 
+type ReinstatePolicyRequestObject struct {
+	PolicyId uuid.UUID `json:"policyId"`
+	Params   ReinstatePolicyParams
+}
+
+type ReinstatePolicyResponseObject interface {
+	VisitReinstatePolicyResponse(w http.ResponseWriter) error
+}
+
+type ReinstatePolicy200JSONResponse struct{ PolicyJSONResponse }
+
+func (response ReinstatePolicy200JSONResponse) VisitReinstatePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReinstatePolicy400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response ReinstatePolicy400ApplicationProblemPlusJSONResponse) VisitReinstatePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReinstatePolicy401ApplicationProblemPlusJSONResponse Problem
+
+func (response ReinstatePolicy401ApplicationProblemPlusJSONResponse) VisitReinstatePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReinstatePolicy403ApplicationProblemPlusJSONResponse Problem
+
+func (response ReinstatePolicy403ApplicationProblemPlusJSONResponse) VisitReinstatePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReinstatePolicy404ApplicationProblemPlusJSONResponse Problem
+
+func (response ReinstatePolicy404ApplicationProblemPlusJSONResponse) VisitReinstatePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type ReinstatePolicy409ApplicationProblemPlusJSONResponse Problem
+
+func (response ReinstatePolicy409ApplicationProblemPlusJSONResponse) VisitReinstatePolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type RejectPolicyRequestObject struct {
 	PolicyId uuid.UUID `json:"policyId"`
 	Params   RejectPolicyParams
@@ -2716,6 +2971,115 @@ func (response RejectPolicy422ApplicationProblemPlusJSONResponse) VisitRejectPol
 	return err
 }
 
+type RenewPolicyRequestObject struct {
+	PolicyId uuid.UUID `json:"policyId"`
+	Body     *RenewPolicyJSONRequestBody
+}
+
+type RenewPolicyResponseObject interface {
+	VisitRenewPolicyResponse(w http.ResponseWriter) error
+}
+
+type RenewPolicy201JSONResponse struct{ PolicyJSONResponse }
+
+func (response RenewPolicy201JSONResponse) VisitRenewPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenewPolicy400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response RenewPolicy400ApplicationProblemPlusJSONResponse) VisitRenewPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenewPolicy401ApplicationProblemPlusJSONResponse Problem
+
+func (response RenewPolicy401ApplicationProblemPlusJSONResponse) VisitRenewPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenewPolicy403ApplicationProblemPlusJSONResponse Problem
+
+func (response RenewPolicy403ApplicationProblemPlusJSONResponse) VisitRenewPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenewPolicy404ApplicationProblemPlusJSONResponse Problem
+
+func (response RenewPolicy404ApplicationProblemPlusJSONResponse) VisitRenewPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(404)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenewPolicy409ApplicationProblemPlusJSONResponse Problem
+
+func (response RenewPolicy409ApplicationProblemPlusJSONResponse) VisitRenewPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(409)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type RenewPolicy422ApplicationProblemPlusJSONResponse Problem
+
+func (response RenewPolicy422ApplicationProblemPlusJSONResponse) VisitRenewPolicyResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(422)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 type TransferPortfolioRequestObject struct {
 	Body *TransferPortfolioJSONRequestBody
 }
@@ -2804,6 +3168,117 @@ func (response TransferPortfolio503ApplicationProblemPlusJSONResponse) VisitTran
 	return err
 }
 
+type GetRenewalRulesRequestObject struct {
+}
+
+type GetRenewalRulesResponseObject interface {
+	VisitGetRenewalRulesResponse(w http.ResponseWriter) error
+}
+
+type GetRenewalRules200JSONResponse RenewalRules
+
+func (response GetRenewalRules200JSONResponse) VisitGetRenewalRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRenewalRules401ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response GetRenewalRules401ApplicationProblemPlusJSONResponse) VisitGetRenewalRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type GetRenewalRules403ApplicationProblemPlusJSONResponse Problem
+
+func (response GetRenewalRules403ApplicationProblemPlusJSONResponse) VisitGetRenewalRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetRenewalRulesRequestObject struct {
+	Body *SetRenewalRulesJSONRequestBody
+}
+
+type SetRenewalRulesResponseObject interface {
+	VisitSetRenewalRulesResponse(w http.ResponseWriter) error
+}
+
+type SetRenewalRules204Response struct {
+}
+
+func (response SetRenewalRules204Response) VisitSetRenewalRulesResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type SetRenewalRules400ApplicationProblemPlusJSONResponse struct {
+	ProblemApplicationProblemPlusJSONResponse
+}
+
+func (response SetRenewalRules400ApplicationProblemPlusJSONResponse) VisitSetRenewalRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(400)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetRenewalRules401ApplicationProblemPlusJSONResponse Problem
+
+func (response SetRenewalRules401ApplicationProblemPlusJSONResponse) VisitSetRenewalRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(401)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
+type SetRenewalRules403ApplicationProblemPlusJSONResponse Problem
+
+func (response SetRenewalRules403ApplicationProblemPlusJSONResponse) VisitSetRenewalRulesResponse(w http.ResponseWriter) error {
+
+	var buf bytes.Buffer
+	if err := json.NewEncoder(&buf).Encode(response); err != nil {
+		return err
+	}
+	w.Header().Set("Content-Type", "application/problem+json")
+	w.WriteHeader(403)
+	_, err := buf.WriteTo(w)
+	return err
+}
+
 // StrictServerInterface represents all server handlers.
 type StrictServerInterface interface {
 	// ListAgents Usuarios de la agencia. Solo a los activos se les asigna cartera; requiere manage o assign.
@@ -2842,12 +3317,24 @@ type StrictServerInterface interface {
 	// IssuePolicy Registra la póliza expedida por la aseguradora. Exige KYC si module.compliance está encendido.
 	// (POST /api/v1/policies/policies/{policyId}/issue)
 	IssuePolicy(ctx context.Context, request IssuePolicyRequestObject) (IssuePolicyResponseObject, error)
+	// ReinstatePolicy La aseguradora confirmó el pago; la póliza sale de mora (DECISIONS N24).
+	// (POST /api/v1/policies/policies/{policyId}/reinstate)
+	ReinstatePolicy(ctx context.Context, request ReinstatePolicyRequestObject) (ReinstatePolicyResponseObject, error)
 	// RejectPolicy La aseguradora rechazó la solicitud.
 	// (POST /api/v1/policies/policies/{policyId}/reject)
 	RejectPolicy(ctx context.Context, request RejectPolicyRequestObject) (RejectPolicyResponseObject, error)
+	// RenewPolicy Registra la nueva vigencia de una póliza, también antes de que venza (DECISIONS N17).
+	// (POST /api/v1/policies/policies/{policyId}/renew)
+	RenewPolicy(ctx context.Context, request RenewPolicyRequestObject) (RenewPolicyResponseObject, error)
 	// TransferPortfolio Pide pasar toda la cartera de un asesor a otro. Se procesa en segundo plano.
 	// (POST /api/v1/policies/portfolio-transfers)
 	TransferPortfolio(ctx context.Context, request TransferPortfolioRequestObject) (TransferPortfolioResponseObject, error)
+
+	// (GET /api/v1/policies/settings/renewal)
+	GetRenewalRules(ctx context.Context, request GetRenewalRulesRequestObject) (GetRenewalRulesResponseObject, error)
+
+	// (PUT /api/v1/policies/settings/renewal)
+	SetRenewalRules(ctx context.Context, request SetRenewalRulesRequestObject) (SetRenewalRulesResponseObject, error)
 }
 
 type StrictHandlerFunc func(ctx context.Context, w http.ResponseWriter, r *http.Request, request any) (any, error)
@@ -3263,6 +3750,33 @@ func (sh *strictHandler) IssuePolicy(w http.ResponseWriter, r *http.Request, pol
 	}
 }
 
+// ReinstatePolicy operation middleware
+func (sh *strictHandler) ReinstatePolicy(w http.ResponseWriter, r *http.Request, policyId uuid.UUID, params ReinstatePolicyParams) {
+	var request ReinstatePolicyRequestObject
+
+	request.PolicyId = policyId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ReinstatePolicy(ctx, request.(ReinstatePolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ReinstatePolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ReinstatePolicyResponseObject); ok {
+		if err := validResponse.VisitReinstatePolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // RejectPolicy operation middleware
 func (sh *strictHandler) RejectPolicy(w http.ResponseWriter, r *http.Request, policyId uuid.UUID, params RejectPolicyParams) {
 	var request RejectPolicyRequestObject
@@ -3290,6 +3804,39 @@ func (sh *strictHandler) RejectPolicy(w http.ResponseWriter, r *http.Request, po
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(RejectPolicyResponseObject); ok {
 		if err := validResponse.VisitRejectPolicyResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RenewPolicy operation middleware
+func (sh *strictHandler) RenewPolicy(w http.ResponseWriter, r *http.Request, policyId uuid.UUID) {
+	var request RenewPolicyRequestObject
+
+	request.PolicyId = policyId
+
+	var body RenewPolicyJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RenewPolicy(ctx, request.(RenewPolicyRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RenewPolicy")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RenewPolicyResponseObject); ok {
+		if err := validResponse.VisitRenewPolicyResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {
@@ -3328,66 +3875,124 @@ func (sh *strictHandler) TransferPortfolio(w http.ResponseWriter, r *http.Reques
 	}
 }
 
+// GetRenewalRules operation middleware
+func (sh *strictHandler) GetRenewalRules(w http.ResponseWriter, r *http.Request) {
+	var request GetRenewalRulesRequestObject
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.GetRenewalRules(ctx, request.(GetRenewalRulesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "GetRenewalRules")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(GetRenewalRulesResponseObject); ok {
+		if err := validResponse.VisitGetRenewalRulesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// SetRenewalRules operation middleware
+func (sh *strictHandler) SetRenewalRules(w http.ResponseWriter, r *http.Request) {
+	var request SetRenewalRulesRequestObject
+
+	var body SetRenewalRulesJSONRequestBody
+	if err := runtime.BindJSONBody(r, &body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.SetRenewalRules(ctx, request.(SetRenewalRulesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "SetRenewalRules")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(SetRenewalRulesResponseObject); ok {
+		if err := validResponse.VisitSetRenewalRulesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
 // Base64 encoded, compressed with deflate, json marshaled OpenAPI spec.
 // Stored as a slice of fixed-width chunks rather than one concatenated
 // const string: with thousands of chunks the chained `+` fold is several
 // times slower for the Go compiler than parsing a slice literal.
 var swaggerSpec = []string{
-	"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",
-	"obP3s/8FAAD//w==",
+	"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",
 }
 
 // decodeSpec returns the embedded OpenAPI spec as raw JSON bytes,

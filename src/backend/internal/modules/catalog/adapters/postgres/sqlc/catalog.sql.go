@@ -15,6 +15,41 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 )
 
+const agreementFor = `-- name: AgreementFor :one
+SELECT basis, percentage FROM catalog.commission_agreements
+WHERE tenant_id = $1 AND insurer_id = $2 AND line_of_business_id = $3
+  AND (product_id = $4::uuid OR product_id IS NULL)
+  AND valid_from <= $5::date AND valid_to >= $5::date
+ORDER BY product_id NULLS LAST LIMIT 1
+`
+
+type AgreementForParams struct {
+	TenantID         uuid.UUID
+	InsurerID        uuid.UUID
+	LineOfBusinessID uuid.UUID
+	ProductID        uuid.NullUUID
+	OnDate           kernel.Date
+}
+
+type AgreementForRow struct {
+	Basis      string
+	Percentage decimal.Decimal
+}
+
+// El acuerdo del producto prevalece sobre el general del ramo.
+func (q *Queries) AgreementFor(ctx context.Context, arg AgreementForParams) (AgreementForRow, error) {
+	row := q.db.QueryRow(ctx, agreementFor,
+		arg.TenantID,
+		arg.InsurerID,
+		arg.LineOfBusinessID,
+		arg.ProductID,
+		arg.OnDate,
+	)
+	var i AgreementForRow
+	err := row.Scan(&i.Basis, &i.Percentage)
+	return i, err
+}
+
 const getAgreement = `-- name: GetAgreement :one
 SELECT id, insurer_id, line_of_business_id, product_id, basis, percentage, valid_from, valid_to, version
 FROM catalog.commission_agreements WHERE tenant_id = $1 AND id = $2

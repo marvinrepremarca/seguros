@@ -21,13 +21,16 @@ import (
 	"github.com/open-feature/go-sdk/openfeature"
 	"golang.org/x/sync/errgroup"
 
+	"github.com/marvinrepremarca/seguros/internal/modules/billing"
 	"github.com/marvinrepremarca/seguros/internal/modules/catalog"
+	"github.com/marvinrepremarca/seguros/internal/modules/commissions"
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/keycloak"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/oidc"
 	"github.com/marvinrepremarca/seguros/internal/modules/parties"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies"
+	"github.com/marvinrepremarca/seguros/internal/modules/renewals"
 	"github.com/marvinrepremarca/seguros/internal/modules/tenancy"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/authz"
@@ -188,6 +191,9 @@ func run() error {
 		Parties:     partiesMod,
 		Catalog:     catalogMod,
 		Policies:    policiesMod,
+		Commissions: commissions.New(commissions.Deps{DB: database, Audit: recorder, Checker: flags.NewOpenFeatureChecker(openfeature.NewClient(flags.ProviderName)), Policy: policy, Clock: clock, Logger: logger}),
+		Renewals:    renewals.New(renewals.Deps{DB: database, Audit: recorder, Outbox: outbox.NewWriter(clock), Parties: partiesMod.Directory, Checker: flags.NewOpenFeatureChecker(openfeature.NewClient(flags.ProviderName)), Policy: policy, Clock: clock, Logger: logger}),
+		Billing:     billing.New(billing.Deps{DB: database, Audit: recorder, Outbox: outbox.NewWriter(clock), Parties: partiesMod.Directory, Checker: flags.NewOpenFeatureChecker(openfeature.NewClient(flags.ProviderName)), Policy: policy, Clock: clock, Logger: logger}),
 		SPA:         spa,
 	})
 	if err != nil {

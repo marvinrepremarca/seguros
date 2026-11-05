@@ -113,7 +113,7 @@ func handler(store *fakeStore, mfa bool) *app.CompleteLoginHandler {
 func cmd(mut ...func(*app.CompleteLoginCommand)) app.CompleteLoginCommand {
 	c := app.CompleteLoginCommand{
 		Subject: "kc-1", Profile: domain.Profile{Email: "ana@example.test", DisplayName: "Ana"},
-		Roles: []string{"Collections", "Desconocido"}, Organizations: []string{"agencia-x"}, AuthMethods: []string{"pwd"},
+		Roles: []string{"ClaimsAnalyst", "Desconocido"}, Organizations: []string{"agencia-x"}, AuthMethods: []string{"pwd"},
 	}
 	for _, m := range mut {
 		m(&c)
@@ -129,7 +129,7 @@ func TestCompleteLoginProvisionsUserAndAudits(t *testing.T) {
 
 	assert.Equal(t, activeTenant.ID, res.TenantID)
 	assert.Equal(t, "profesional", res.Plan)
-	assert.Equal(t, []authz.Role{authz.RoleCollections}, res.Roles, "roles desconocidos descartados")
+	assert.Equal(t, []authz.Role{authz.RoleClaimsAnalyst}, res.Roles, "roles desconocidos descartados")
 	assert.Equal(t, "Ana", res.DisplayName)
 	require.Contains(t, store.users, "kc-1")
 	assert.Equal(t, res.UserID, store.users["kc-1"].ID())

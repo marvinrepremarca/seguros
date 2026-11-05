@@ -151,6 +151,20 @@ export const CreatePolicyResponse = zod.object({
 })
 
 
+export const GetRenewalRulesResponse = zod.object({
+  "keepHolder": zod.boolean(),
+  "keepLine": zod.boolean()
+})
+
+
+export const SetRenewalRulesBody = zod.object({
+  "keepHolder": zod.boolean(),
+  "keepLine": zod.boolean()
+})
+
+export const SetRenewalRulesResponse = zod.void()
+
+
 /**
  * @summary Usuarios de la agencia. Solo a los activos se les asigna cartera; requiere manage o assign.
  */
@@ -527,6 +541,81 @@ export const AcceptPolicyResponse = zod.object({
 
 
 /**
+ * @summary La aseguradora confirmó el pago; la póliza sale de mora (DECISIONS N24).
+ */
+export const ReinstatePolicyParams = zod.object({
+  "policyId": zod.uuid()
+})
+
+
+
+
+export const ReinstatePolicyQueryParams = zod.object({
+  "version": zod.int().min(1).describe('Versión de la póliza que el cliente leyó (concurrencia optimista).')
+})
+
+export const ReinstatePolicyResponse = zod.object({
+  "id": zod.uuid(),
+  "status": zod.enum(['in_quotation', 'in_process', 'active', 'in_arrears', 'cancelled', 'expired', 'renewed', 'not_renewed', 'rejected']),
+  "policyNumber": zod.string().optional(),
+  "insurerId": zod.uuid(),
+  "lineOfBusinessId": zod.uuid(),
+  "productId": zod.uuid().optional(),
+  "agentId": zod.uuid().optional(),
+  "currency": zod.enum(['COP', 'USD', 'EUR']),
+  "netPremium": zod.string(),
+  "taxes": zod.string(),
+  "totalPremium": zod.string(),
+  "effectiveFrom": zod.iso.date(),
+  "effectiveTo": zod.iso.date(),
+  "paymentForm": zod.enum(['single_payment', 'monthly_installments', 'quarterly_installments', 'automatic_debit', 'premium_financing']),
+  "renewedFromPolicyId": zod.uuid().optional(),
+  "issuedAt": zod.iso.datetime({"offset":true}).optional(),
+  "rejectionReason": zod.string().optional(),
+  "cancellation": zod.object({
+  "cause": zod.enum(['client_request', 'item_sold', 'arrears', 'insurer_revocation', 'other']),
+  "effectiveDate": zod.iso.date(),
+  "unearnedPremium": zod.string(),
+  "insurerReference": zod.string().optional()
+}).optional(),
+  "parties": zod.array(zod.object({
+  "partyId": zod.uuid(),
+  "role": zod.enum(['holder', 'insured', 'beneficiary']),
+  "name": zod.string()
+})),
+  "coverages": zod.array(zod.object({
+  "id": zod.uuid(),
+  "name": zod.string(),
+  "sumInsured": zod.string(),
+  "deductible": zod.string().optional()
+})),
+  "items": zod.array(zod.object({
+  "id": zod.uuid(),
+  "description": zod.string(),
+  "riskSchemaKey": zod.string(),
+  "riskSchemaVersion": zod.int(),
+  "riskData": zod.record(zod.string(), zod.unknown())
+})),
+  "endorsements": zod.array(zod.object({
+  "id": zod.uuid(),
+  "type": zod.enum(['data_change', 'item_change', 'party_inclusion', 'party_exclusion', 'sum_insured_increase', 'sum_insured_decrease', 'other']),
+  "status": zod.enum(['requested', 'issued', 'rejected']),
+  "description": zod.string(),
+  "effectiveDate": zod.iso.date(),
+  "requestedAt": zod.iso.datetime({"offset":true}),
+  "resolvedAt": zod.iso.datetime({"offset":true}).optional(),
+  "number": zod.string().optional(),
+  "netPremiumDelta": zod.string().optional(),
+  "taxesDelta": zod.string().optional(),
+  "rejectionReason": zod.string().optional()
+})),
+  "version": zod.int(),
+  "createdAt": zod.iso.datetime({"offset":true}),
+  "updatedAt": zod.iso.datetime({"offset":true})
+})
+
+
+/**
  * Responde 503 `policies.issue.compliance_unavailable` si el flag no se puede evaluar (ADR 0012).
  * @summary Registra la póliza expedida por la aseguradora. Exige KYC si module.compliance está encendido.
  */
@@ -634,6 +723,120 @@ export const RejectPolicyBody = zod.object({
 })
 
 export const RejectPolicyResponse = zod.object({
+  "id": zod.uuid(),
+  "status": zod.enum(['in_quotation', 'in_process', 'active', 'in_arrears', 'cancelled', 'expired', 'renewed', 'not_renewed', 'rejected']),
+  "policyNumber": zod.string().optional(),
+  "insurerId": zod.uuid(),
+  "lineOfBusinessId": zod.uuid(),
+  "productId": zod.uuid().optional(),
+  "agentId": zod.uuid().optional(),
+  "currency": zod.enum(['COP', 'USD', 'EUR']),
+  "netPremium": zod.string(),
+  "taxes": zod.string(),
+  "totalPremium": zod.string(),
+  "effectiveFrom": zod.iso.date(),
+  "effectiveTo": zod.iso.date(),
+  "paymentForm": zod.enum(['single_payment', 'monthly_installments', 'quarterly_installments', 'automatic_debit', 'premium_financing']),
+  "renewedFromPolicyId": zod.uuid().optional(),
+  "issuedAt": zod.iso.datetime({"offset":true}).optional(),
+  "rejectionReason": zod.string().optional(),
+  "cancellation": zod.object({
+  "cause": zod.enum(['client_request', 'item_sold', 'arrears', 'insurer_revocation', 'other']),
+  "effectiveDate": zod.iso.date(),
+  "unearnedPremium": zod.string(),
+  "insurerReference": zod.string().optional()
+}).optional(),
+  "parties": zod.array(zod.object({
+  "partyId": zod.uuid(),
+  "role": zod.enum(['holder', 'insured', 'beneficiary']),
+  "name": zod.string()
+})),
+  "coverages": zod.array(zod.object({
+  "id": zod.uuid(),
+  "name": zod.string(),
+  "sumInsured": zod.string(),
+  "deductible": zod.string().optional()
+})),
+  "items": zod.array(zod.object({
+  "id": zod.uuid(),
+  "description": zod.string(),
+  "riskSchemaKey": zod.string(),
+  "riskSchemaVersion": zod.int(),
+  "riskData": zod.record(zod.string(), zod.unknown())
+})),
+  "endorsements": zod.array(zod.object({
+  "id": zod.uuid(),
+  "type": zod.enum(['data_change', 'item_change', 'party_inclusion', 'party_exclusion', 'sum_insured_increase', 'sum_insured_decrease', 'other']),
+  "status": zod.enum(['requested', 'issued', 'rejected']),
+  "description": zod.string(),
+  "effectiveDate": zod.iso.date(),
+  "requestedAt": zod.iso.datetime({"offset":true}),
+  "resolvedAt": zod.iso.datetime({"offset":true}).optional(),
+  "number": zod.string().optional(),
+  "netPremiumDelta": zod.string().optional(),
+  "taxesDelta": zod.string().optional(),
+  "rejectionReason": zod.string().optional()
+})),
+  "version": zod.int(),
+  "createdAt": zod.iso.datetime({"offset":true}),
+  "updatedAt": zod.iso.datetime({"offset":true})
+})
+
+
+/**
+ * @summary Registra la nueva vigencia de una póliza, también antes de que venza (DECISIONS N17).
+ */
+export const RenewPolicyParams = zod.object({
+  "policyId": zod.uuid()
+})
+
+export const renewPolicyBodyNetPremiumRegExp = new RegExp('^\\d{1,15}(\\.\\d{1,4})?$');
+export const renewPolicyBodyTaxesRegExp = new RegExp('^\\d{1,15}(\\.\\d{1,4})?$');
+export const renewPolicyBodyPartiesMin = 2;
+export const renewPolicyBodyPartiesMax = 100;
+
+export const renewPolicyBodyCoveragesItemNameMin = 2;
+export const renewPolicyBodyCoveragesItemNameMax = 200;
+
+export const renewPolicyBodyCoveragesItemSumInsuredRegExp = new RegExp('^\\d{1,15}(\\.\\d{1,4})?$');
+export const renewPolicyBodyCoveragesItemDeductibleMax = 200;
+
+export const renewPolicyBodyCoveragesMax = 100;
+
+export const renewPolicyBodyItemsItemDescriptionMin = 2;
+export const renewPolicyBodyItemsItemDescriptionMax = 200;
+
+export const renewPolicyBodyItemsMax = 100;
+
+
+
+export const RenewPolicyBody = zod.object({
+  "insurerId": zod.uuid(),
+  "lineOfBusinessId": zod.uuid(),
+  "productId": zod.uuid().optional(),
+  "agentId": zod.uuid().optional(),
+  "currency": zod.enum(['COP', 'USD', 'EUR']),
+  "netPremium": zod.stringFormat('decimal', renewPolicyBodyNetPremiumRegExp),
+  "taxes": zod.stringFormat('decimal', renewPolicyBodyTaxesRegExp),
+  "effectiveFrom": zod.iso.date(),
+  "effectiveTo": zod.iso.date(),
+  "paymentForm": zod.enum(['single_payment', 'monthly_installments', 'quarterly_installments', 'automatic_debit', 'premium_financing']),
+  "parties": zod.array(zod.object({
+  "partyId": zod.uuid(),
+  "role": zod.enum(['holder', 'insured', 'beneficiary'])
+})).min(renewPolicyBodyPartiesMin).max(renewPolicyBodyPartiesMax),
+  "coverages": zod.array(zod.object({
+  "name": zod.string().min(renewPolicyBodyCoveragesItemNameMin).max(renewPolicyBodyCoveragesItemNameMax),
+  "sumInsured": zod.stringFormat('decimal', renewPolicyBodyCoveragesItemSumInsuredRegExp),
+  "deductible": zod.string().max(renewPolicyBodyCoveragesItemDeductibleMax).optional()
+})).max(renewPolicyBodyCoveragesMax),
+  "items": zod.array(zod.object({
+  "description": zod.string().min(renewPolicyBodyItemsItemDescriptionMin).max(renewPolicyBodyItemsItemDescriptionMax),
+  "riskData": zod.record(zod.string(), zod.unknown())
+})).max(renewPolicyBodyItemsMax)
+})
+
+export const RenewPolicyResponse = zod.object({
   "id": zod.uuid(),
   "status": zod.enum(['in_quotation', 'in_process', 'active', 'in_arrears', 'cancelled', 'expired', 'renewed', 'not_renewed', 'rejected']),
   "policyNumber": zod.string().optional(),

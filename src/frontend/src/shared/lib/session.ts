@@ -32,6 +32,19 @@ export const permissions = {
   policyCancel: "policies.policy.cancel",
   policyAssign: "policies.policy.assign",
   endorsementManage: "policies.endorsement.manage",
+  billingPlanRead: "billing.plan.read",
+  billingPlanAdjust: "billing.plan.adjust",
+  billingPaymentRegister: "billing.payment.register",
+  billingPaymentReverse: "billing.payment.reverse",
+  billingCollectionManage: "billing.collection.manage",
+  commissionRead: "commissions.accrual.read",
+  commissionStatementManage: "commissions.statement.manage",
+  renewalRead: "renewals.case.read",
+  renewalManage: "renewals.case.manage",
+  renewalSettingsManage: "renewals.settings.manage",
+  billingSettingsManage: "billing.settings.manage",
+  commissionRateManage: "commissions.rate.manage",
+  policySettingsManage: "policies.settings.manage",
 } as const;
 
 export const SessionContext = createContext<SessionData | null>(null);

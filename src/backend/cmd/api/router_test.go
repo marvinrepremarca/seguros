@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"regexp"
 	"slices"
 	"testing"
@@ -18,8 +19,10 @@ import (
 	"github.com/getkin/kin-openapi/openapi3"
 	"github.com/google/uuid"
 
+	"github.com/marvinrepremarca/seguros/internal/modules/billing"
 	"github.com/marvinrepremarca/seguros/internal/modules/catalog"
 	cataloghttp "github.com/marvinrepremarca/seguros/internal/modules/catalog/adapters/http"
+	"github.com/marvinrepremarca/seguros/internal/modules/commissions"
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
 	featuremgmthttp "github.com/marvinrepremarca/seguros/internal/modules/featuremgmt/adapters/http"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity"
@@ -30,6 +33,7 @@ import (
 	partieshttp "github.com/marvinrepremarca/seguros/internal/modules/parties/adapters/http"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies"
 	policieshttp "github.com/marvinrepremarca/seguros/internal/modules/policies/adapters/http"
+	"github.com/marvinrepremarca/seguros/internal/modules/renewals"
 	tenancy "github.com/marvinrepremarca/seguros/internal/modules/tenancy/contracts"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/authz"
@@ -81,8 +85,11 @@ func testRouter(t *testing.T) *chi.Mux {
 	require.NoError(t, err)
 	r, err := buildRouter(routerDeps{
 		Logger: logger, Clock: clock, MaxBodyBytes: 1 << 20, Identity: idm, FeatureMgmt: fm, Catalog: cat,
-		Parties:  parties.New(parties.Deps{Policy: policy, Clock: clock, Logger: logger}),
-		Policies: policies.New(policies.Deps{Policy: policy, Clock: clock, Logger: logger}),
+		Parties:     parties.New(parties.Deps{Policy: policy, Clock: clock, Logger: logger}),
+		Policies:    policies.New(policies.Deps{Policy: policy, Clock: clock, Logger: logger}),
+		Billing:     billing.New(billing.Deps{Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger}),
+		Commissions: commissions.New(commissions.Deps{Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger}),
+		Renewals:    renewals.New(renewals.Deps{Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger}),
 	})
 	require.NoError(t, err)
 	return r
@@ -197,5 +204,15 @@ func TestIsDocumentLookup(t *testing.T) {
 	for _, c := range cases {
 		req := httptest.NewRequestWithContext(t.Context(), c.method, c.path, nil)
 		assert.Equal(t, c.want, isDocumentLookup(req), "%s %s", c.method, c.path)
+	}
+}
+
+// main.go debe pasar todos los módulos que monta el router: un módulo sin cablear tumba el arranque.
+func TestMainWiresEveryRouterModule(t *testing.T) {
+	t.Parallel()
+	src, err := os.ReadFile("main.go")
+	require.NoError(t, err)
+	for _, field := range []string{"Identity:", "FeatureMgmt:", "Parties:", "Catalog:", "Policies:", "Billing:", "Commissions:", "Renewals:"} {
+		assert.Contains(t, string(src), field)
 	}
 }

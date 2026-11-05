@@ -20,6 +20,8 @@ func withoutTenantAllowed() []string {
 		"tenancy/adapters/postgres",
 		"featuremgmt/adapters/postgres",
 		"policies/adapters/postgres", // solo policies.due_for_expiration: IDs para el job de vencimiento
+		"billing/adapters/postgres",  // solo billing.tenants_with_due_installments: IDs para el barrido de mora
+		"renewals/adapters/postgres", // solo renewals.tenants_with_open_cases: IDs para el barrido de alertas
 	}
 }
 

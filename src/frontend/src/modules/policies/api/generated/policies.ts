@@ -28,6 +28,11 @@ import type {
 } from '@tanstack/react-query';
 
 import { apiClient } from '../../../../shared/lib/api-client.ts';
+export interface RenewalRules {
+  keepHolder: boolean;
+  keepLine: boolean;
+}
+
 export interface Problem {
   type: string;
   title: string;
@@ -422,6 +427,14 @@ export type AcceptPolicyParams = {
 version: VersionParameter;
 };
 
+export type ReinstatePolicyParams = {
+/**
+ * Versión de la póliza que el cliente leyó (concurrencia optimista).
+ * @minimum 1
+ */
+version: VersionParameter;
+};
+
 export type IssuePolicyParams = {
 /**
  * Versión de la póliza que el cliente leyó (concurrencia optimista).
@@ -753,6 +766,236 @@ export const useCreatePolicy = <TError = ProblemResponse,
         TContext
       > => {
       return useMutation(getCreatePolicyMutationOptions(options), queryClient);
+    }
+
+export type getRenewalRulesResponse200 = {
+  data: RenewalRules
+  status: 200
+}
+
+export type getRenewalRulesResponse401 = {
+  data: ProblemResponse
+  status: 401
+}
+
+export type getRenewalRulesResponse403 = {
+  data: ProblemResponse
+  status: 403
+}
+
+export type getRenewalRulesResponseSuccess = (getRenewalRulesResponse200) & {
+  headers: Headers;
+};
+export type getRenewalRulesResponseError = (getRenewalRulesResponse401 | getRenewalRulesResponse403) & {
+  headers: Headers;
+};
+
+export type getRenewalRulesResponse = (getRenewalRulesResponseSuccess | getRenewalRulesResponseError)
+
+export const getGetRenewalRulesUrl = () => {
+
+
+
+
+  return `/api/v1/policies/settings/renewal`
+}
+
+export const getRenewalRules = async ( options?: Parameters<typeof apiClient>[1]): Promise<getRenewalRulesResponse> => {
+
+  return apiClient<getRenewalRulesResponse>(getGetRenewalRulesUrl(),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetRenewalRulesQueryKey = () => {
+    return [
+    `/api/v1/policies/settings/renewal`
+    ] as const;
+    }
+
+
+export const getGetRenewalRulesQueryOptions = <TData = Awaited<ReturnType<typeof getRenewalRules>>, TError = ProblemResponse>( options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRenewalRules>>, TError, TData>>, request?: SecondParameter<typeof apiClient>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetRenewalRulesQueryKey();
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getRenewalRules>>> = ({ signal }) => getRenewalRules({ signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getRenewalRules>>, TError, TData> & { queryKey: DataTag<QueryKey, TData, TError> }
+}
+
+export type GetRenewalRulesQueryResult = NonNullable<Awaited<ReturnType<typeof getRenewalRules>>>
+export type GetRenewalRulesQueryError = ProblemResponse
+
+
+export function useGetRenewalRules<TData = Awaited<ReturnType<typeof getRenewalRules>>, TError = ProblemResponse>(
+  options: { query:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRenewalRules>>, TError, TData>> & Pick<
+        DefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getRenewalRules>>,
+          TError,
+          Awaited<ReturnType<typeof getRenewalRules>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiClient>}
+ , queryClient?: QueryClient
+  ):  DefinedUseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetRenewalRules<TData = Awaited<ReturnType<typeof getRenewalRules>>, TError = ProblemResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRenewalRules>>, TError, TData>> & Pick<
+        UndefinedInitialDataOptions<
+          Awaited<ReturnType<typeof getRenewalRules>>,
+          TError,
+          Awaited<ReturnType<typeof getRenewalRules>>
+        > , 'initialData'
+      >, request?: SecondParameter<typeof apiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+export function useGetRenewalRules<TData = Awaited<ReturnType<typeof getRenewalRules>>, TError = ProblemResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRenewalRules>>, TError, TData>>, request?: SecondParameter<typeof apiClient>}
+ , queryClient?: QueryClient
+  ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> }
+
+export function useGetRenewalRules<TData = Awaited<ReturnType<typeof getRenewalRules>>, TError = ProblemResponse>(
+  options?: { query?:Partial<UseQueryOptions<Awaited<ReturnType<typeof getRenewalRules>>, TError, TData>>, request?: SecondParameter<typeof apiClient>}
+ , queryClient?: QueryClient
+ ):  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> } {
+
+  const queryOptions = getGetRenewalRulesQueryOptions(options)
+
+  const query = useQuery(queryOptions, queryClient) as  UseQueryResult<TData, TError> & { queryKey: DataTag<QueryKey, TData, TError> };
+
+  return withQueryKey(query, queryOptions.queryKey);
+}
+
+
+
+
+
+
+
+export type setRenewalRulesResponse204 = {
+  data: void
+  status: 204
+}
+
+export type setRenewalRulesResponse400 = {
+  data: ProblemResponse
+  status: 400
+}
+
+export type setRenewalRulesResponse401 = {
+  data: ProblemResponse
+  status: 401
+}
+
+export type setRenewalRulesResponse403 = {
+  data: ProblemResponse
+  status: 403
+}
+
+export type setRenewalRulesResponseSuccess = (setRenewalRulesResponse204) & {
+  headers: Headers;
+};
+export type setRenewalRulesResponseError = (setRenewalRulesResponse400 | setRenewalRulesResponse401 | setRenewalRulesResponse403) & {
+  headers: Headers;
+};
+
+export type setRenewalRulesResponse = (setRenewalRulesResponseSuccess | setRenewalRulesResponseError)
+
+export const getSetRenewalRulesUrl = () => {
+
+
+
+
+  return `/api/v1/policies/settings/renewal`
+}
+
+export const setRenewalRules = async (renewalRules: RenewalRules, options?: Parameters<typeof apiClient>[1]): Promise<setRenewalRulesResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiClient<setRenewalRulesResponse>(getSetRenewalRulesUrl(),
+  {
+    ...options,
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(renewalRules)
+  }
+);}
+
+
+
+
+
+export const getSetRenewalRulesMutationKey = () => ['setRenewalRules'] as const;
+
+export const getSetRenewalRulesMutationOptions = <TError = ProblemResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setRenewalRules>>, TError,SetRenewalRulesMutationVariables, TContext>, request?: SecondParameter<typeof apiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof setRenewalRules>>, TError,SetRenewalRulesMutationVariables, TContext> => {
+
+const mutationKey = getSetRenewalRulesMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setRenewalRules>>, SetRenewalRulesMutationVariables> = (props) => {
+          const {data} = props ?? {};
+
+          return  setRenewalRules(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetRenewalRulesMutationResult = NonNullable<Awaited<ReturnType<typeof setRenewalRules>>>
+    export type SetRenewalRulesMutationBody = RenewalRules
+    export type SetRenewalRulesMutationError = ProblemResponse
+    export type SetRenewalRulesMutationVariables = {data: RenewalRules}
+
+    export const useSetRenewalRules = <TError = ProblemResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setRenewalRules>>, TError,SetRenewalRulesMutationVariables, TContext>, request?: SecondParameter<typeof apiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof setRenewalRules>>,
+        TError,
+        SetRenewalRulesMutationVariables,
+        TContext
+      > => {
+      return useMutation(getSetRenewalRulesMutationOptions(options), queryClient);
     }
 
 export type listAgentsResponse200 = {
@@ -1547,6 +1790,128 @@ export const useAcceptPolicy = <TError = ProblemResponse,
       return useMutation(getAcceptPolicyMutationOptions(options), queryClient);
     }
 
+export type reinstatePolicyResponse200 = {
+  data: PolicyResponse
+  status: 200
+}
+
+export type reinstatePolicyResponse400 = {
+  data: ProblemResponse
+  status: 400
+}
+
+export type reinstatePolicyResponse401 = {
+  data: ProblemResponse
+  status: 401
+}
+
+export type reinstatePolicyResponse403 = {
+  data: ProblemResponse
+  status: 403
+}
+
+export type reinstatePolicyResponse404 = {
+  data: ProblemResponse
+  status: 404
+}
+
+export type reinstatePolicyResponse409 = {
+  data: ProblemResponse
+  status: 409
+}
+
+export type reinstatePolicyResponseSuccess = (reinstatePolicyResponse200) & {
+  headers: Headers;
+};
+export type reinstatePolicyResponseError = (reinstatePolicyResponse400 | reinstatePolicyResponse401 | reinstatePolicyResponse403 | reinstatePolicyResponse404 | reinstatePolicyResponse409) & {
+  headers: Headers;
+};
+
+export type reinstatePolicyResponse = (reinstatePolicyResponseSuccess | reinstatePolicyResponseError)
+
+export const getReinstatePolicyUrl = (policyId: string,
+    params: ReinstatePolicyParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : String(value))
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/v1/policies/policies/${policyId}/reinstate?${stringifiedParams}` : `/api/v1/policies/policies/${policyId}/reinstate`
+}
+
+/**
+ * @summary La aseguradora confirmó el pago; la póliza sale de mora (DECISIONS N24).
+ */
+export const reinstatePolicy = async (policyId: string,
+    params: ReinstatePolicyParams, options?: Parameters<typeof apiClient>[1]): Promise<reinstatePolicyResponse> => {
+
+  return apiClient<reinstatePolicyResponse>(getReinstatePolicyUrl(policyId,params),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+
+export const getReinstatePolicyMutationKey = () => ['reinstatePolicy'] as const;
+
+export const getReinstatePolicyMutationOptions = <TError = ProblemResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reinstatePolicy>>, TError,ReinstatePolicyMutationVariables, TContext>, request?: SecondParameter<typeof apiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof reinstatePolicy>>, TError,ReinstatePolicyMutationVariables, TContext> => {
+
+const mutationKey = getReinstatePolicyMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof reinstatePolicy>>, ReinstatePolicyMutationVariables> = (props) => {
+          const {policyId,params} = props ?? {};
+
+          return  reinstatePolicy(policyId,params,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type ReinstatePolicyMutationResult = NonNullable<Awaited<ReturnType<typeof reinstatePolicy>>>
+
+    export type ReinstatePolicyMutationError = ProblemResponse
+    export type ReinstatePolicyMutationVariables = {policyId: string;params: ReinstatePolicyParams}
+
+    /**
+ * @summary La aseguradora confirmó el pago; la póliza sale de mora (DECISIONS N24).
+ */
+export const useReinstatePolicy = <TError = ProblemResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof reinstatePolicy>>, TError,ReinstatePolicyMutationVariables, TContext>, request?: SecondParameter<typeof apiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof reinstatePolicy>>,
+        TError,
+        ReinstatePolicyMutationVariables,
+        TContext
+      > => {
+      return useMutation(getReinstatePolicyMutationOptions(options), queryClient);
+    }
+
 export type issuePolicyResponse200 = {
   data: PolicyResponse
   status: 200
@@ -1835,6 +2200,139 @@ export const useRejectPolicy = <TError = ProblemResponse,
         TContext
       > => {
       return useMutation(getRejectPolicyMutationOptions(options), queryClient);
+    }
+
+export type renewPolicyResponse201 = {
+  data: PolicyResponse
+  status: 201
+}
+
+export type renewPolicyResponse400 = {
+  data: ProblemResponse
+  status: 400
+}
+
+export type renewPolicyResponse401 = {
+  data: ProblemResponse
+  status: 401
+}
+
+export type renewPolicyResponse403 = {
+  data: ProblemResponse
+  status: 403
+}
+
+export type renewPolicyResponse404 = {
+  data: ProblemResponse
+  status: 404
+}
+
+export type renewPolicyResponse409 = {
+  data: ProblemResponse
+  status: 409
+}
+
+export type renewPolicyResponse422 = {
+  data: ProblemResponse
+  status: 422
+}
+
+export type renewPolicyResponseSuccess = (renewPolicyResponse201) & {
+  headers: Headers;
+};
+export type renewPolicyResponseError = (renewPolicyResponse400 | renewPolicyResponse401 | renewPolicyResponse403 | renewPolicyResponse404 | renewPolicyResponse409 | renewPolicyResponse422) & {
+  headers: Headers;
+};
+
+export type renewPolicyResponse = (renewPolicyResponseSuccess | renewPolicyResponseError)
+
+export const getRenewPolicyUrl = (policyId: string,) => {
+
+
+
+
+  return `/api/v1/policies/policies/${policyId}/renew`
+}
+
+/**
+ * @summary Registra la nueva vigencia de una póliza, también antes de que venza (DECISIONS N17).
+ */
+export const renewPolicy = async (policyId: string,
+    policyTerms: PolicyTerms, options?: Parameters<typeof apiClient>[1]): Promise<renewPolicyResponse> => {
+
+    const getHeaders = (h?: NonNullable<RequestInit['headers']>): Record<string, string | readonly string[]> => {
+    if (!h) return {};
+    if (h instanceof Headers) return Object.fromEntries(h.entries());
+    if (Symbol.iterator in h) {
+      return Object.fromEntries(
+        Array.from(h as Iterable<Iterable<string>>, (entry) => Array.from(entry) as [string, string]),
+      );
+    }
+    const headers: Record<string, string | readonly string[]> = {};
+    for (const [name, value] of Object.entries<string | readonly string[] | undefined>(h)) {
+      if (value !== undefined) headers[name] = value;
+    }
+    return headers;
+  };
+return apiClient<renewPolicyResponse>(getRenewPolicyUrl(policyId),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...getHeaders(options?.headers) },
+    body: JSON.stringify(policyTerms)
+  }
+);}
+
+
+
+
+
+export const getRenewPolicyMutationKey = () => ['renewPolicy'] as const;
+
+export const getRenewPolicyMutationOptions = <TError = ProblemResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof renewPolicy>>, TError,RenewPolicyMutationVariables, TContext>, request?: SecondParameter<typeof apiClient>}
+): UseMutationOptions<Awaited<ReturnType<typeof renewPolicy>>, TError,RenewPolicyMutationVariables, TContext> => {
+
+const mutationKey = getRenewPolicyMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof renewPolicy>>, RenewPolicyMutationVariables> = (props) => {
+          const {policyId,data} = props ?? {};
+
+          return  renewPolicy(policyId,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RenewPolicyMutationResult = NonNullable<Awaited<ReturnType<typeof renewPolicy>>>
+    export type RenewPolicyMutationBody = PolicyTerms
+    export type RenewPolicyMutationError = ProblemResponse
+    export type RenewPolicyMutationVariables = {policyId: string;data: PolicyTerms}
+
+    /**
+ * @summary Registra la nueva vigencia de una póliza, también antes de que venza (DECISIONS N17).
+ */
+export const useRenewPolicy = <TError = ProblemResponse,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof renewPolicy>>, TError,RenewPolicyMutationVariables, TContext>, request?: SecondParameter<typeof apiClient>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof renewPolicy>>,
+        TError,
+        RenewPolicyMutationVariables,
+        TContext
+      > => {
+      return useMutation(getRenewPolicyMutationOptions(options), queryClient);
     }
 
 export type cancelPolicyResponse200 = {

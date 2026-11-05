@@ -30,6 +30,9 @@ import (
 const (
 	MetaTenantID   = "tenant_id"
 	MetaOccurredAt = "occurred_at"
+	// MetaTargetConsumers limita la entrega a estos consumidores, separados por coma (reproceso).
+	// Vacío: todos los del tópico.
+	MetaTargetConsumers = "target_consumers"
 )
 
 // maxPayload coincide con el CHECK de messaging.outbox.

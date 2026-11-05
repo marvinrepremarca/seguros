@@ -63,6 +63,16 @@ func (e *Expirer) expire(ctx context.Context, d DuePolicy, today kernel.Date) er
 		if err := p.Expire(today, e.Clock.Now()); err != nil {
 			return err
 		}
+		// Con la nueva vigencia ya expedida, pasa de una vez a Renovada (DECISIONS N17).
+		successor, err := issuedRenewal(ctx, uow, d.ID)
+		if err != nil {
+			return err
+		}
+		if successor != nil {
+			if err := p.MarkRenewed(*successor, e.Clock.Now()); err != nil {
+				return err
+			}
+		}
 		if err := uow.Policies().Save(ctx, p); err != nil {
 			return err
 		}

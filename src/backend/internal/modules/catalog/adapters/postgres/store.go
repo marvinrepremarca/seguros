@@ -13,6 +13,7 @@ import (
 
 	catalogsqlc "github.com/marvinrepremarca/seguros/internal/modules/catalog/adapters/postgres/sqlc"
 	"github.com/marvinrepremarca/seguros/internal/modules/catalog/app"
+	"github.com/marvinrepremarca/seguros/internal/modules/catalog/contracts"
 	"github.com/marvinrepremarca/seguros/internal/modules/catalog/domain"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/db"
@@ -274,4 +275,21 @@ func (r *repository) UpdateAgreement(ctx context.Context, a domain.CommissionAgr
 		Now: r.now, Actor: actor(ctx), TenantID: r.tenant, ID: s.ID, Version: s.Version,
 	})
 	return updated(n, err, "actualizando acuerdo")
+}
+
+func (r *repository) AgreementFor(ctx context.Context, ref contracts.PolicyRef, on kernel.Date) (contracts.Agreement, bool, error) {
+	row, err := r.q.AgreementFor(ctx, catalogsqlc.AgreementForParams{
+		TenantID: r.tenant, InsurerID: ref.InsurerID, LineOfBusinessID: ref.LineOfBusinessID, ProductID: ref.ProductID, OnDate: on,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return contracts.Agreement{}, false, nil
+	}
+	if err != nil {
+		return contracts.Agreement{}, false, fmt.Errorf("catalog: buscando acuerdo: %w", err)
+	}
+	pct, err := kernel.NewPercentage(row.Percentage)
+	if err != nil {
+		return contracts.Agreement{}, false, fmt.Errorf("catalog: porcentaje guardado inválido: %w", err)
+	}
+	return contracts.Agreement{Basis: row.Basis, Percentage: pct}, true, nil
 }
