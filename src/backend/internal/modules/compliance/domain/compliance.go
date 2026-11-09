@@ -132,6 +132,27 @@ func (c *Complaint) Resolve(resolution string) error {
 	return nil
 }
 
+// SuppressionStatus es el estado de una solicitud de supresión.
+type SuppressionStatus string
+
+// Estados de una solicitud de supresión: se decide una sola vez.
+const (
+	SuppressionRequested SuppressionStatus = "requested"
+	SuppressionAccepted  SuppressionStatus = "accepted"
+	SuppressionDenied    SuppressionStatus = "denied"
+)
+
+// ResolveSuppression decide una solicitud pendiente.
+func ResolveSuppression(current SuppressionStatus, accepted bool) (SuppressionStatus, error) {
+	if current != SuppressionRequested {
+		return "", ErrAlreadyResolved
+	}
+	if accepted {
+		return SuppressionAccepted, nil
+	}
+	return SuppressionDenied, nil
+}
+
 // ValidateResolution valida la respuesta a una solicitud de supresión.
 func ValidateResolution(text string) error {
 	if !runes(text, 3, 2000) {

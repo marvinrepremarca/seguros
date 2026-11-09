@@ -170,19 +170,27 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	storage, err := documents.NewStorage(documents.S3Config{Endpoint: docsCfg.S3Endpoint, PublicEndpoint: docsCfg.S3PublicEndpoint, AccessKey: docsCfg.S3AccessKey.Reveal(), SecretKey: docsCfg.S3SecretKey.Reveal(), Bucket: docsCfg.S3Bucket, TLS: docsCfg.S3TLS})
-	if err != nil {
-		return err
+	if docsCfg.Enabled {
+		storage, err := documents.NewStorage(documents.S3Config{Endpoint: docsCfg.S3Endpoint, PublicEndpoint: docsCfg.S3PublicEndpoint, AccessKey: docsCfg.S3AccessKey.Reveal(), SecretKey: docsCfg.S3SecretKey.Reveal(), Bucket: docsCfg.S3Bucket, TLS: docsCfg.S3TLS})
+		if err != nil {
+			return err
+		}
+		periodic = append(periodic, documents.RegisterJobs(workers, documents.Deps{DB: database, Audit: audit.NewRecorder(clock), Storage: storage, Scanner: documents.NewScanner(docsCfg.ClamdAddr), Cipher: docCipher, Clock: clock, Logger: logger, MaxBytes: docsCfg.MaxBytes, RetentionDays: docsCfg.RetentionDays, DownloadTTL: docsCfg.DownloadTTL}, evaluator, tenantPlans{dir: tenants.Directory})...)
+	} else {
+		logger.WarnContext(ctx, "documentos sin almacenamiento configurado: no se revisan archivos")
 	}
-	periodic = append(periodic, documents.RegisterJobs(workers, documents.Deps{DB: database, Audit: audit.NewRecorder(clock), Storage: storage, Scanner: documents.NewScanner(docsCfg.ClamdAddr), Cipher: docCipher, Clock: clock, Logger: logger, MaxBytes: docsCfg.MaxBytes, RetentionDays: docsCfg.RetentionDays, DownloadTTL: docsCfg.DownloadTTL}, evaluator, tenantPlans{dir: tenants.Directory})...)
 	smtpCfg, err := config.LoadSMTP(os.LookupEnv, cfg.Env)
 	if err != nil {
 		return err
 	}
-	partiesDir := parties.New(parties.Deps{DB: database, Audit: audit.NewRecorder(clock), Clock: clock, Logger: logger})
-	policiesDir := policies.New(policies.Deps{DB: database, Audit: audit.NewRecorder(clock), Outbox: outbox.NewWriter(clock), Clock: clock, Logger: logger})
-	sender := notifications.NewSMTPSender(notifications.SMTPConfig{Addr: smtpCfg.Addr, From: smtpCfg.From, User: smtpCfg.User, Password: smtpCfg.Password.Reveal(), RequireTLS: smtpCfg.RequireTLS})
-	periodic = append(periodic, notifications.RegisterJobs(workers, notifications.Deps{DB: database, Audit: audit.NewRecorder(clock), Sender: sender, Policies: policiesDir.Directory, Parties: partiesDir.Contacts, Clock: clock, Logger: logger}, evaluator, tenantPlans{dir: tenants.Directory})...)
+	if smtpCfg.Enabled {
+		partiesDir := parties.New(parties.Deps{DB: database, Audit: audit.NewRecorder(clock), Clock: clock, Logger: logger})
+		policiesDir := policies.New(policies.Deps{DB: database, Audit: audit.NewRecorder(clock), Outbox: outbox.NewWriter(clock), Clock: clock, Logger: logger})
+		sender := notifications.NewSMTPSender(notifications.SMTPConfig{Addr: smtpCfg.Addr, From: smtpCfg.From, User: smtpCfg.User, Password: smtpCfg.Password.Reveal(), RequireTLS: smtpCfg.RequireTLS})
+		periodic = append(periodic, notifications.RegisterJobs(workers, notifications.Deps{DB: database, Audit: audit.NewRecorder(clock), Sender: sender, Policies: policiesDir.Directory, Parties: partiesDir.Contacts, Clock: clock, Logger: logger}, evaluator, tenantPlans{dir: tenants.Directory})...)
+	} else {
+		logger.WarnContext(ctx, "correo sin configurar: los avisos quedan pendientes")
+	}
 	riverClient, _, err := jobs.NewWorkerClient(database.Pool(), jobs.WorkerOptions{Workers: workers, Periodic: periodic, Logger: logger})
 	if err != nil {
 		return err

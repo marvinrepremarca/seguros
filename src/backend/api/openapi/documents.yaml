@@ -33,6 +33,7 @@ paths:
         <<: *problems
     post:
       operationId: uploadDocument
+      x-stream-body: true
       x-permission: documents.document.upload
       x-feature: module.documents
       parameters:
@@ -83,6 +84,7 @@ paths:
       - { name: documentId, in: path, required: true, schema: { type: string, format: uuid } }
     post:
       operationId: addDocumentVersion
+      x-stream-body: true
       x-permission: documents.document.upload
       x-feature: module.documents
       requestBody:

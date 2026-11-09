@@ -160,8 +160,12 @@ func (r *repository) ListByOwner(ctx context.Context, t domain.OwnerType, owner 
 	return toDocuments(rows), wrap(err, "listando documentos")
 }
 
-func (r *repository) ListRetentionDue(ctx context.Context, until kernel.Date, sensitive bool, before uuid.NullUUID, limit int32) ([]domain.Document, error) {
-	rows, err := r.q.ListRetentionDue(ctx, documentssqlc.ListRetentionDueParams{TenantID: r.tenant, CreatedUntil: until, IncludeSensitive: sensitive, Before: before, RowLimit: limit})
+func (r *repository) ListRetentionDue(ctx context.Context, until kernel.Date, sensitive bool, owners []domain.OwnerType, before uuid.NullUUID, limit int32) ([]domain.Document, error) {
+	types := make([]string, 0, len(owners))
+	for _, o := range owners {
+		types = append(types, string(o))
+	}
+	rows, err := r.q.ListRetentionDue(ctx, documentssqlc.ListRetentionDueParams{TenantID: r.tenant, CreatedUntil: until, OwnerTypes: types, IncludeSensitive: sensitive, Before: before, RowLimit: limit})
 	return toDocuments(rows), wrap(err, "listando retención")
 }
 

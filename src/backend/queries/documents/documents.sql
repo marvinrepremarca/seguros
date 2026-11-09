@@ -25,7 +25,7 @@ ORDER BY id DESC LIMIT @row_limit;
 
 -- name: ListRetentionDue :many
 SELECT * FROM documents.documents
-WHERE tenant_id = @tenant_id AND created_on <= @created_until
+WHERE tenant_id = @tenant_id AND created_on <= @created_until AND owner_type = ANY (@owner_types::text[])
   AND (@include_sensitive::boolean OR NOT sensitive)
   AND (sqlc.narg('before')::uuid IS NULL OR id < sqlc.narg('before')::uuid)
 ORDER BY id DESC LIMIT @row_limit;

@@ -70,6 +70,27 @@ func (q *Queries) GetKycDetails(ctx context.Context, arg GetKycDetailsParams) ([
 	return details_ciphertext, err
 }
 
+const getSuppression = `-- name: GetSuppression :one
+SELECT status, version FROM compliance.suppression_requests WHERE tenant_id = $1 AND id = $2
+`
+
+type GetSuppressionParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+type GetSuppressionRow struct {
+	Status  string
+	Version int32
+}
+
+func (q *Queries) GetSuppression(ctx context.Context, arg GetSuppressionParams) (GetSuppressionRow, error) {
+	row := q.db.QueryRow(ctx, getSuppression, arg.TenantID, arg.ID)
+	var i GetSuppressionRow
+	err := row.Scan(&i.Status, &i.Version)
+	return i, err
+}
+
 const insertComplaint = `-- name: InsertComplaint :exec
 INSERT INTO compliance.complaints (id, tenant_id, party_id, channel, subject, description, status, received_on, created_at, created_by, updated_at, updated_by, version)
 VALUES ($1, $2, $3, $4, $5, $6, 'received', $7, $8, $9, $8, $9, 1)
@@ -103,7 +124,7 @@ func (q *Queries) InsertComplaint(ctx context.Context, arg InsertComplaintParams
 }
 
 const insertKycCheck = `-- name: InsertKycCheck :exec
-INSERT INTO compliance.kyc_checks (id, tenant_id, party_id, document_bidx, result, source, checked_on, details_ciphertext, created_at, created_by)
+INSERT INTO compliance.kyc_checks (id, tenant_id, party_id, document_bidx, result_ciphertext, source_ciphertext, checked_on, details_ciphertext, created_at, created_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
 `
 
@@ -112,8 +133,8 @@ type InsertKycCheckParams struct {
 	TenantID          uuid.UUID
 	PartyID           uuid.UUID
 	DocumentBidx      []byte
-	Result            string
-	Source            string
+	ResultCiphertext  []byte
+	SourceCiphertext  []byte
 	CheckedOn         kernel.Date
 	DetailsCiphertext []byte
 	At                time.Time
@@ -126,8 +147,8 @@ func (q *Queries) InsertKycCheck(ctx context.Context, arg InsertKycCheckParams) 
 		arg.TenantID,
 		arg.PartyID,
 		arg.DocumentBidx,
-		arg.Result,
-		arg.Source,
+		arg.ResultCiphertext,
+		arg.SourceCiphertext,
 		arg.CheckedOn,
 		arg.DetailsCiphertext,
 		arg.At,
@@ -161,7 +182,7 @@ func (q *Queries) InsertSuppression(ctx context.Context, arg InsertSuppressionPa
 }
 
 const latestKycCheck = `-- name: LatestKycCheck :one
-SELECT id, party_id, document_bidx, result, source, checked_on, (details_ciphertext IS NOT NULL)::boolean AS has_details, created_at
+SELECT id, party_id, document_bidx, result, source, result_ciphertext, source_ciphertext, checked_on, (details_ciphertext IS NOT NULL)::boolean AS has_details, created_at
 FROM compliance.kyc_checks WHERE tenant_id = $1 AND party_id = $2 ORDER BY id DESC LIMIT 1
 `
 
@@ -171,14 +192,16 @@ type LatestKycCheckParams struct {
 }
 
 type LatestKycCheckRow struct {
-	ID           uuid.UUID
-	PartyID      uuid.UUID
-	DocumentBidx []byte
-	Result       string
-	Source       string
-	CheckedOn    kernel.Date
-	HasDetails   bool
-	CreatedAt    time.Time
+	ID               uuid.UUID
+	PartyID          uuid.UUID
+	DocumentBidx     []byte
+	Result           pgtype.Text
+	Source           pgtype.Text
+	ResultCiphertext []byte
+	SourceCiphertext []byte
+	CheckedOn        kernel.Date
+	HasDetails       bool
+	CreatedAt        time.Time
 }
 
 func (q *Queries) LatestKycCheck(ctx context.Context, arg LatestKycCheckParams) (LatestKycCheckRow, error) {
@@ -190,6 +213,8 @@ func (q *Queries) LatestKycCheck(ctx context.Context, arg LatestKycCheckParams) 
 		&i.DocumentBidx,
 		&i.Result,
 		&i.Source,
+		&i.ResultCiphertext,
+		&i.SourceCiphertext,
 		&i.CheckedOn,
 		&i.HasDetails,
 		&i.CreatedAt,
@@ -251,7 +276,7 @@ func (q *Queries) ListComplaints(ctx context.Context, arg ListComplaintsParams) 
 }
 
 const listKycChecks = `-- name: ListKycChecks :many
-SELECT id, party_id, document_bidx, result, source, checked_on, (details_ciphertext IS NOT NULL)::boolean AS has_details, created_at
+SELECT id, party_id, document_bidx, result, source, result_ciphertext, source_ciphertext, checked_on, (details_ciphertext IS NOT NULL)::boolean AS has_details, created_at
 FROM compliance.kyc_checks WHERE tenant_id = $1 AND party_id = $2 ORDER BY id DESC LIMIT 200
 `
 
@@ -261,14 +286,16 @@ type ListKycChecksParams struct {
 }
 
 type ListKycChecksRow struct {
-	ID           uuid.UUID
-	PartyID      uuid.UUID
-	DocumentBidx []byte
-	Result       string
-	Source       string
-	CheckedOn    kernel.Date
-	HasDetails   bool
-	CreatedAt    time.Time
+	ID               uuid.UUID
+	PartyID          uuid.UUID
+	DocumentBidx     []byte
+	Result           pgtype.Text
+	Source           pgtype.Text
+	ResultCiphertext []byte
+	SourceCiphertext []byte
+	CheckedOn        kernel.Date
+	HasDetails       bool
+	CreatedAt        time.Time
 }
 
 func (q *Queries) ListKycChecks(ctx context.Context, arg ListKycChecksParams) ([]ListKycChecksRow, error) {
@@ -286,6 +313,8 @@ func (q *Queries) ListKycChecks(ctx context.Context, arg ListKycChecksParams) ([
 			&i.DocumentBidx,
 			&i.Result,
 			&i.Source,
+			&i.ResultCiphertext,
+			&i.SourceCiphertext,
 			&i.CheckedOn,
 			&i.HasDetails,
 			&i.CreatedAt,
@@ -347,7 +376,7 @@ func (q *Queries) ListSuppressions(ctx context.Context, arg ListSuppressionsPara
 
 const resolveSuppression = `-- name: ResolveSuppression :execrows
 UPDATE compliance.suppression_requests SET status = $1, resolution = $2, updated_at = $3, updated_by = $4, version = version + 1
-WHERE tenant_id = $5 AND id = $6 AND status = 'requested'
+WHERE tenant_id = $5 AND id = $6 AND version = $7
 `
 
 type ResolveSuppressionParams struct {
@@ -357,6 +386,7 @@ type ResolveSuppressionParams struct {
 	Actor      uuid.NullUUID
 	TenantID   uuid.UUID
 	ID         uuid.UUID
+	Version    int32
 }
 
 func (q *Queries) ResolveSuppression(ctx context.Context, arg ResolveSuppressionParams) (int64, error) {
@@ -367,6 +397,7 @@ func (q *Queries) ResolveSuppression(ctx context.Context, arg ResolveSuppression
 		arg.Actor,
 		arg.TenantID,
 		arg.ID,
+		arg.Version,
 	)
 	if err != nil {
 		return 0, err

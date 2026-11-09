@@ -74,30 +74,52 @@ func (s *Server) Mount(r chi.Router) error {
 // envelopeBytes es lo que pueden ocupar los campos de texto del formulario.
 const envelopeBytes = 4 << 10
 
+// formFields son las partes que admite el formulario; cualquier otra se rechaza. El validador del
+// contrato no revisa este cuerpo (x-stream-body), así que lo hace esta función.
+var formFields = map[string]bool{"file": true, "ownerType": true, "ownerId": true, "title": true, "sensitive": true} //nolint:gochecknoglobals // tabla inmutable
+
+const maxParts = 8
+
 func readForm(r *multipart.Reader, maxBytes int64) (fields map[string]string, file []byte, err error) {
 	fields = map[string]string{}
-	for {
+	for parts := 0; ; parts++ {
 		part, err := r.NextPart()
 		if errors.Is(err, io.EOF) {
+			if file == nil {
+				return nil, nil, domain.ErrInvalid
+			}
 			return fields, file, nil
 		}
 		if err != nil {
-			return nil, nil, fmt.Errorf("documents: leyendo formulario: %w", err)
+			return nil, nil, formError(err)
+		}
+		name := part.FormName()
+		if parts >= maxParts || !formFields[name] {
+			return nil, nil, domain.ErrInvalid
 		}
 		limit := int64(envelopeBytes)
-		if part.FormName() == "file" {
+		if name == "file" {
 			limit = maxBytes + 1 // un byte más para que el dominio detecte el exceso
 		}
 		content, err := io.ReadAll(io.LimitReader(part, limit))
 		if err != nil {
-			return nil, nil, fmt.Errorf("documents: leyendo formulario: %w", err)
+			return nil, nil, formError(err)
 		}
-		if part.FormName() == "file" {
+		if name == "file" {
 			file = content
 		} else {
-			fields[part.FormName()] = string(content)
+			fields[name] = string(content)
 		}
 	}
+}
+
+// formError conserva el exceso de tamaño (413) y trata lo demás como formulario inválido.
+func formError(err error) error {
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		return err
+	}
+	return domain.ErrInvalid
 }
 
 func (s *Server) toDocument(d domain.Document) Document {

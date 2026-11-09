@@ -170,18 +170,15 @@ func (s *Service) deliver(ctx context.Context, m Message) error {
 // attempt cuenta un intento fallido; al agotarlos el aviso queda fallido y visible en la bandeja.
 // El error de envío no se registra: puede incluir la dirección del cliente.
 func (s *Service) attempt(ctx context.Context, m Message, attempts int32) error {
-	status := "pending"
-	if attempts >= domain.MaxAttempts {
-		status = "failed"
-	}
+	status, wait := domain.AfterFailure(attempts)
 	var next *time.Time
-	if status == "pending" {
-		at := s.Clock.Now().Add(domain.Backoff(attempts))
+	if status == domain.StatusPending {
+		at := s.Clock.Now().Add(wait)
 		next = &at
 	}
 	s.Logger.WarnContext(ctx, "aviso sin entregar", "message_id", m.ID, "attempts", attempts)
 	return s.Store.WithinTenant(ctx, func(ctx context.Context, uow UnitOfWork) error {
-		return uow.Records().MarkAttempt(ctx, m.ID, status, attempts, next, s.Clock.Now())
+		return uow.Records().MarkAttempt(ctx, m.ID, string(status), attempts, next, s.Clock.Now())
 	})
 }
 

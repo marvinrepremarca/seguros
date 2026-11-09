@@ -208,13 +208,24 @@ type Documents struct {
 	RetentionDays    int32
 	MaxBytes         int64
 	DownloadTTL      time.Duration
+	// Enabled es falso si no se configuró almacenamiento: el módulo es apagable y la API y el worker
+	// arrancan sin él (ARCHITECTURE §1.2); sus operaciones responden 503.
+	Enabled bool
 }
 
 // LoadDocuments lee la configuración de documentos. Retención por defecto: 1 año (decisión del
-// dueño del producto, DECISIONS N34).
+// dueño del producto, DECISIONS N34). Sin SEGUROS_S3_ENDPOINT el módulo queda sin configurar.
 func LoadDocuments(lookup LookupFunc, env Env) (Documents, error) {
 	r := reader{lookup: lookup}
+	if r.str("SEGUROS_S3_ENDPOINT", "") == "" {
+		// En staging y producción, apagarlo debe ser explícito: un olvido no puede pasar en silencio.
+		if env.IsProductionLike() && !r.bool("SEGUROS_DOCUMENTS_DISABLED", false) {
+			r.fail("SEGUROS_S3_ENDPOINT", "obligatoria en staging/producción (o SEGUROS_DOCUMENTS_DISABLED=true)")
+		}
+		return Documents{}, r.err()
+	}
 	c := Documents{
+		Enabled:       true,
 		S3Endpoint:    r.required("SEGUROS_S3_ENDPOINT"),
 		S3AccessKey:   NewSecret(r.required("SEGUROS_S3_ACCESS_KEY")),
 		S3SecretKey:   NewSecret(r.required("SEGUROS_S3_SECRET_KEY")),
@@ -246,13 +257,22 @@ type SMTP struct {
 	Addr, From, User string
 	Password         Secret
 	RequireTLS       bool
+	// Enabled es falso sin SEGUROS_SMTP_ADDR: el worker no envía avisos y quedan pendientes.
+	Enabled bool
 }
 
 // LoadSMTP lee la configuración del servidor de correo.
 func LoadSMTP(lookup LookupFunc, env Env) (SMTP, error) {
 	r := reader{lookup: lookup}
+	if r.str("SEGUROS_SMTP_ADDR", "") == "" {
+		if env.IsProductionLike() && !r.bool("SEGUROS_NOTIFICATIONS_DISABLED", false) {
+			r.fail("SEGUROS_SMTP_ADDR", "obligatoria en staging/producción (o SEGUROS_NOTIFICATIONS_DISABLED=true)")
+		}
+		return SMTP{}, r.err()
+	}
 	c := SMTP{
-		Addr: r.required("SEGUROS_SMTP_ADDR"), From: r.required("SEGUROS_SMTP_FROM"),
+		Enabled: true,
+		Addr:    r.required("SEGUROS_SMTP_ADDR"), From: r.required("SEGUROS_SMTP_FROM"),
 		User: r.str("SEGUROS_SMTP_USER", ""), Password: NewSecret(r.str("SEGUROS_SMTP_PASSWORD", "")),
 		RequireTLS: r.bool("SEGUROS_SMTP_REQUIRE_TLS", env.IsProductionLike()),
 	}

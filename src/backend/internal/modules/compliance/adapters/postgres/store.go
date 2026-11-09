@@ -16,6 +16,7 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/modules/compliance/domain"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/db"
+	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 	"github.com/marvinrepremarca/seguros/internal/platform/outbox"
 	"github.com/marvinrepremarca/seguros/internal/platform/reqctx"
 )
@@ -79,31 +80,38 @@ func wrap(err error, op string) error {
 	return nil
 }
 
-func (r *repository) InsertCheck(ctx context.Context, c domain.KycCheck, details []byte, at time.Time) error {
+func (r *repository) InsertCheck(ctx context.Context, c domain.KycCheck, sealed app.SealedCheck, at time.Time) error {
 	return wrap(r.q.InsertKycCheck(ctx, compliancesqlc.InsertKycCheckParams{
-		ID: c.ID, TenantID: r.tenant, PartyID: c.PartyID, DocumentBidx: c.Fingerprint, Result: string(c.Result), Source: c.Source, CheckedOn: c.CheckedOn, DetailsCiphertext: details, At: at, Actor: actor(ctx),
+		ID: c.ID, TenantID: r.tenant, PartyID: c.PartyID, DocumentBidx: c.Fingerprint, ResultCiphertext: sealed.Result, SourceCiphertext: sealed.Source, CheckedOn: c.CheckedOn, DetailsCiphertext: sealed.Details, At: at, Actor: actor(ctx),
 	}), "registrando verificación")
 }
 
-func (r *repository) LatestCheck(ctx context.Context, party uuid.UUID) (domain.KycCheck, bool, error) {
-	x, err := r.q.LatestKycCheck(ctx, compliancesqlc.LatestKycCheckParams{TenantID: r.tenant, PartyID: party})
-	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.KycCheck{}, false, nil
+func stored(id, party uuid.UUID, bidx []byte, result, source pgtype.Text, resultCT, sourceCT []byte, on kernel.Date, details bool) app.StoredCheck {
+	return app.StoredCheck{
+		Check:        domain.KycCheck{ID: id, PartyID: party, Fingerprint: bidx, Result: domain.Result(result.String), Source: source.String, CheckedOn: on, HasDetails: details},
+		ResultSealed: resultCT, SourceSealed: sourceCT,
 	}
-	if err != nil {
-		return domain.KycCheck{}, false, wrap(err, "leyendo verificación")
-	}
-	return domain.KycCheck{ID: x.ID, PartyID: x.PartyID, Fingerprint: x.DocumentBidx, Result: domain.Result(x.Result), Source: x.Source, CheckedOn: x.CheckedOn, HasDetails: x.HasDetails}, true, nil
 }
 
-func (r *repository) Checks(ctx context.Context, party uuid.UUID) ([]domain.KycCheck, error) {
+func (r *repository) LatestCheck(ctx context.Context, party uuid.UUID) (app.StoredCheck, bool, error) {
+	x, err := r.q.LatestKycCheck(ctx, compliancesqlc.LatestKycCheckParams{TenantID: r.tenant, PartyID: party})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return app.StoredCheck{}, false, nil
+	}
+	if err != nil {
+		return app.StoredCheck{}, false, wrap(err, "leyendo verificación")
+	}
+	return stored(x.ID, x.PartyID, x.DocumentBidx, x.Result, x.Source, x.ResultCiphertext, x.SourceCiphertext, x.CheckedOn, x.HasDetails), true, nil
+}
+
+func (r *repository) Checks(ctx context.Context, party uuid.UUID) ([]app.StoredCheck, error) {
 	rows, err := r.q.ListKycChecks(ctx, compliancesqlc.ListKycChecksParams{TenantID: r.tenant, PartyID: party})
 	if err != nil {
 		return nil, wrap(err, "listando verificaciones")
 	}
-	out := make([]domain.KycCheck, 0, len(rows))
+	out := make([]app.StoredCheck, 0, len(rows))
 	for _, x := range rows {
-		out = append(out, domain.KycCheck{ID: x.ID, PartyID: x.PartyID, Fingerprint: x.DocumentBidx, Result: domain.Result(x.Result), Source: x.Source, CheckedOn: x.CheckedOn, HasDetails: x.HasDetails})
+		out = append(out, stored(x.ID, x.PartyID, x.DocumentBidx, x.Result, x.Source, x.ResultCiphertext, x.SourceCiphertext, x.CheckedOn, x.HasDetails))
 	}
 	return out, nil
 }
@@ -163,17 +171,24 @@ func (r *repository) InsertSuppression(ctx context.Context, id, party uuid.UUID,
 	return wrap(r.q.InsertSuppression(ctx, compliancesqlc.InsertSuppressionParams{ID: id, TenantID: r.tenant, PartyID: party, At: at, Actor: actor(ctx)}), "registrando solicitud")
 }
 
-func (r *repository) ResolveSuppression(ctx context.Context, id uuid.UUID, accepted bool, resolution string, at time.Time) error {
-	status := "denied"
-	if accepted {
-		status = "accepted"
+func (r *repository) GetSuppression(ctx context.Context, id uuid.UUID) (domain.SuppressionStatus, int32, error) {
+	x, err := r.q.GetSuppression(ctx, compliancesqlc.GetSuppressionParams{TenantID: r.tenant, ID: id})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", 0, domain.ErrNotFound
 	}
-	n, err := r.q.ResolveSuppression(ctx, compliancesqlc.ResolveSuppressionParams{TenantID: r.tenant, ID: id, Status: status, Resolution: pgtype.Text{String: resolution, Valid: true}, At: at, Actor: actor(ctx)})
+	if err != nil {
+		return "", 0, wrap(err, "leyendo solicitud")
+	}
+	return domain.SuppressionStatus(x.Status), x.Version, nil
+}
+
+func (r *repository) SaveSuppression(ctx context.Context, id uuid.UUID, status domain.SuppressionStatus, resolution string, version int32, at time.Time) error {
+	n, err := r.q.ResolveSuppression(ctx, compliancesqlc.ResolveSuppressionParams{TenantID: r.tenant, ID: id, Status: string(status), Resolution: pgtype.Text{String: resolution, Valid: true}, At: at, Actor: actor(ctx), Version: version})
 	if err != nil {
 		return wrap(err, "resolviendo solicitud")
 	}
 	if n == 0 {
-		return domain.ErrAlreadyResolved
+		return domain.ErrConcurrentUpdate
 	}
 	return nil
 }

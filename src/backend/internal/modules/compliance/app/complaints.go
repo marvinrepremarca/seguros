@@ -21,6 +21,13 @@ func (s *Service) CreateComplaint(ctx context.Context, d domain.ComplaintData) (
 		return domain.ComplaintData{}, fmt.Errorf("compliance: %w", err)
 	}
 	d.ID = id
+	if d.PartyID.Valid {
+		if _, found, err := s.Parties.DocumentFingerprint(ctx, d.PartyID.UUID); err != nil {
+			return domain.ComplaintData{}, fmt.Errorf("compliance: consultando tercero: %w", err)
+		} else if !found {
+			return domain.ComplaintData{}, domain.ErrPartyNotFound
+		}
+	}
 	c, err := domain.NewComplaint(d, kernel.Today(s.Clock))
 	if err != nil {
 		return domain.ComplaintData{}, err

@@ -30,6 +30,9 @@ func Contract(spec *openapi3.T, authorize AuthorizeFunc, logger *slog.Logger) (f
 		return nil, fmt.Errorf("httpx: router del contrato: %w", err)
 	}
 	opts := &openapi3filter.Options{AuthenticationFunc: openapi3filter.NoopAuthenticationFunc}
+	// x-stream-body: el handler lee el cuerpo por partes y valida sus campos; el validador no lo carga
+	// entero en memoria (cargas de archivos).
+	streamOpts := &openapi3filter.Options{AuthenticationFunc: openapi3filter.NoopAuthenticationFunc, ExcludeRequestBody: true}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			route, params, err := router.FindRoute(r)
@@ -45,6 +48,9 @@ func Contract(spec *openapi3.T, authorize AuthorizeFunc, logger *slog.Logger) (f
 				return
 			}
 			in := &openapi3filter.RequestValidationInput{Request: r, PathParams: params, Route: route, Options: opts}
+			if stream, ok := route.Operation.Extensions["x-stream-body"].(bool); ok && stream {
+				in.Options = streamOpts
+			}
 			if err := openapi3filter.ValidateRequest(r.Context(), in); err != nil {
 				var maxBytes *http.MaxBytesError
 				if errors.As(err, &maxBytes) {

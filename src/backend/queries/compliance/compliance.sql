@@ -1,13 +1,13 @@
 -- name: InsertKycCheck :exec
-INSERT INTO compliance.kyc_checks (id, tenant_id, party_id, document_bidx, result, source, checked_on, details_ciphertext, created_at, created_by)
-VALUES (@id, @tenant_id, @party_id, @document_bidx, @result, @source, @checked_on, @details_ciphertext, @at, @actor);
+INSERT INTO compliance.kyc_checks (id, tenant_id, party_id, document_bidx, result_ciphertext, source_ciphertext, checked_on, details_ciphertext, created_at, created_by)
+VALUES (@id, @tenant_id, @party_id, @document_bidx, @result_ciphertext, @source_ciphertext, @checked_on, @details_ciphertext, @at, @actor);
 
 -- name: LatestKycCheck :one
-SELECT id, party_id, document_bidx, result, source, checked_on, (details_ciphertext IS NOT NULL)::boolean AS has_details, created_at
+SELECT id, party_id, document_bidx, result, source, result_ciphertext, source_ciphertext, checked_on, (details_ciphertext IS NOT NULL)::boolean AS has_details, created_at
 FROM compliance.kyc_checks WHERE tenant_id = @tenant_id AND party_id = @party_id ORDER BY id DESC LIMIT 1;
 
 -- name: ListKycChecks :many
-SELECT id, party_id, document_bidx, result, source, checked_on, (details_ciphertext IS NOT NULL)::boolean AS has_details, created_at
+SELECT id, party_id, document_bidx, result, source, result_ciphertext, source_ciphertext, checked_on, (details_ciphertext IS NOT NULL)::boolean AS has_details, created_at
 FROM compliance.kyc_checks WHERE tenant_id = @tenant_id AND party_id = @party_id ORDER BY id DESC LIMIT 200;
 
 -- name: GetKycDetails :one
@@ -34,7 +34,10 @@ VALUES (@id, @tenant_id, @party_id, 'requested', @at, @actor, @at, @actor, 1);
 
 -- name: ResolveSuppression :execrows
 UPDATE compliance.suppression_requests SET status = @status, resolution = @resolution, updated_at = @at, updated_by = @actor, version = version + 1
-WHERE tenant_id = @tenant_id AND id = @id AND status = 'requested';
+WHERE tenant_id = @tenant_id AND id = @id AND version = @version;
+
+-- name: GetSuppression :one
+SELECT status, version FROM compliance.suppression_requests WHERE tenant_id = @tenant_id AND id = @id;
 
 -- name: ListSuppressions :many
 SELECT id, party_id, status, resolution, created_at FROM compliance.suppression_requests

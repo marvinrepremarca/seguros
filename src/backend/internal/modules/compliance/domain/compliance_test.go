@@ -69,3 +69,17 @@ func TestComplaint(t *testing.T) {
 	require.ErrorIs(t, err, domain.ErrInvalidComplaint)
 	require.ErrorIs(t, domain.ValidateResolution(" "), domain.ErrResolutionNeeded)
 }
+
+func TestResolveSuppression(t *testing.T) {
+	t.Parallel()
+	s, err := domain.ResolveSuppression(domain.SuppressionRequested, true)
+	require.NoError(t, err)
+	assert.Equal(t, domain.SuppressionAccepted, s)
+	s, err = domain.ResolveSuppression(domain.SuppressionRequested, false)
+	require.NoError(t, err)
+	assert.Equal(t, domain.SuppressionDenied, s)
+	for _, done := range []domain.SuppressionStatus{domain.SuppressionAccepted, domain.SuppressionDenied} {
+		_, err := domain.ResolveSuppression(done, true)
+		require.ErrorIs(t, err, domain.ErrAlreadyResolved)
+	}
+}

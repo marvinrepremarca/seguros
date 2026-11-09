@@ -12,7 +12,11 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 )
 
-const kycField = "compliance.kyc.details"
+const (
+	kycField    = "compliance.kyc.details"
+	resultField = "compliance.kyc.result"
+	sourceField = "compliance.kyc.source"
+)
 
 // RecordInput son los datos de la consulta hecha por el oficial.
 type RecordInput struct {
@@ -47,9 +51,15 @@ func (s *Service) Record(ctx context.Context, in RecordInput) (domain.KycCheck, 
 	if err != nil {
 		return domain.KycCheck{}, err
 	}
-	var sealed []byte
+	var sealed SealedCheck
+	if sealed.Result, err = s.Cipher.EncryptFor(ctx, resultField, id.String(), []byte(check.Result)); err != nil {
+		return domain.KycCheck{}, fmt.Errorf("compliance: cifrando: %w", err)
+	}
+	if sealed.Source, err = s.Cipher.EncryptFor(ctx, sourceField, id.String(), []byte(check.Source)); err != nil {
+		return domain.KycCheck{}, fmt.Errorf("compliance: cifrando: %w", err)
+	}
 	if in.Details != "" {
-		if sealed, err = s.Cipher.EncryptFor(ctx, kycField, id.String(), []byte(in.Details)); err != nil {
+		if sealed.Details, err = s.Cipher.EncryptFor(ctx, kycField, id.String(), []byte(in.Details)); err != nil {
 			return domain.KycCheck{}, fmt.Errorf("compliance: cifrando: %w", err)
 		}
 		check.HasDetails = true
@@ -94,9 +104,18 @@ func (s *Service) History(ctx context.Context, party uuid.UUID) (Status, error) 
 		if err := uow.Audit(ctx, e); err != nil {
 			return err
 		}
-		var err error
-		out.Checks, err = uow.Records().Checks(ctx, party)
-		return err
+		stored, err := uow.Records().Checks(ctx, party)
+		if err != nil {
+			return err
+		}
+		for _, c := range stored {
+			open, err := s.open(ctx, c)
+			if err != nil {
+				return err
+			}
+			out.Checks = append(out.Checks, open)
+		}
+		return nil
 	})
 	if err != nil {
 		return Status{}, err
@@ -145,9 +164,31 @@ func (st Statuses) IsApproved(ctx context.Context, party uuid.UUID) (bool, error
 	}
 	var approved bool
 	err = st.Service.Store.WithinTenant(ctx, func(ctx context.Context, uow UnitOfWork) error {
-		c, ok, err := uow.Records().LatestCheck(ctx, party)
-		approved = ok && err == nil && c.Approves(current)
+		stored, ok, err := uow.Records().LatestCheck(ctx, party)
+		if err != nil || !ok {
+			return err
+		}
+		c, err := st.Service.open(ctx, stored)
+		approved = err == nil && c.Approves(current)
 		return err
 	})
 	return approved, err
+}
+
+// open descifra resultado y fuente; las filas previas al cifrado ya traen el texto plano.
+func (s *Service) open(ctx context.Context, c StoredCheck) (domain.KycCheck, error) {
+	out := c.Check
+	if c.ResultSealed == nil {
+		return out, nil
+	}
+	result, err := s.Cipher.DecryptFor(ctx, resultField, out.ID.String(), c.ResultSealed)
+	if err != nil {
+		return domain.KycCheck{}, fmt.Errorf("compliance: descifrando resultado: %w", err)
+	}
+	source, err := s.Cipher.DecryptFor(ctx, sourceField, out.ID.String(), c.SourceSealed)
+	if err != nil {
+		return domain.KycCheck{}, fmt.Errorf("compliance: descifrando fuente: %w", err)
+	}
+	out.Result, out.Source = domain.Result(result), string(source)
+	return out, nil
 }

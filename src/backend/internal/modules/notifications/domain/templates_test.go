@@ -39,3 +39,12 @@ func TestBackoff(t *testing.T) {
 	assert.Equal(t, 5*time.Minute, Backoff(1))
 	assert.Equal(t, 40*time.Minute, Backoff(4))
 }
+
+func TestAfterFailure(t *testing.T) {
+	t.Parallel()
+	s, wait := AfterFailure(1)
+	assert.Equal(t, StatusPending, s)
+	assert.Equal(t, 5*time.Minute, wait)
+	s, _ = AfterFailure(MaxAttempts)
+	assert.Equal(t, StatusFailed, s)
+}

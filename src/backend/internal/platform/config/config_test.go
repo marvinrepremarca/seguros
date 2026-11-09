@@ -247,3 +247,33 @@ func TestLoadWorker(t *testing.T) {
 	_, err = config.LoadWorker(env(map[string]string{"SEGUROS_DB_URL": dsn("")}))
 	require.ErrorContains(t, err, "SEGUROS_VALKEY_URL")
 }
+
+func TestDocumentsAndSMTPAreOptional(t *testing.T) {
+	t.Parallel()
+	docs, err := config.LoadDocuments(env(map[string]string{}), config.EnvDevelopment)
+	require.NoError(t, err)
+	assert.False(t, docs.Enabled, "sin almacenamiento el módulo queda sin configurar y la API arranca")
+	_, err = config.LoadDocuments(env(map[string]string{}), config.EnvProduction)
+	require.Error(t, err, "en producción apagarlo debe ser explícito")
+	docs, err = config.LoadDocuments(env(map[string]string{"SEGUROS_DOCUMENTS_DISABLED": "true"}), config.EnvProduction)
+	require.NoError(t, err)
+	assert.False(t, docs.Enabled)
+	_, err = config.LoadSMTP(env(map[string]string{}), config.EnvProduction)
+	require.Error(t, err)
+	mail, err := config.LoadSMTP(env(map[string]string{"SEGUROS_NOTIFICATIONS_DISABLED": "true"}), config.EnvProduction)
+	require.NoError(t, err)
+	assert.False(t, mail.Enabled)
+
+	_, err = config.LoadDocuments(env(map[string]string{"SEGUROS_S3_ENDPOINT": "s3:443"}), config.EnvProduction)
+	require.Error(t, err, "configurado a medias falla al arrancar")
+	docs, err = config.LoadDocuments(env(map[string]string{
+		"SEGUROS_S3_ENDPOINT": "s3:443", "SEGUROS_S3_ACCESS_KEY": "a", "SEGUROS_S3_SECRET_KEY": "b", "SEGUROS_CLAMD_ADDR": "clamd:3310",
+		"SEGUROS_DOCUMENTS_RETENTION_DAYS": "730",
+	}), config.EnvProduction)
+	require.NoError(t, err)
+	assert.True(t, docs.Enabled)
+	assert.True(t, docs.S3TLS)
+	assert.Equal(t, int32(730), docs.RetentionDays)
+	_, err = config.LoadSMTP(env(map[string]string{"SEGUROS_SMTP_ADDR": "mail:587", "SEGUROS_SMTP_FROM": "a@b.co", "SEGUROS_SMTP_REQUIRE_TLS": "false"}), config.EnvProduction)
+	require.Error(t, err, "producción exige TLS")
+}

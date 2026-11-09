@@ -30,7 +30,7 @@ type Repository interface {
 	Get(ctx context.Context, id uuid.UUID) (domain.Document, error)
 	GetByKey(ctx context.Context, key string) (domain.Document, bool, error)
 	ListByOwner(ctx context.Context, t domain.OwnerType, owner uuid.UUID, sensitive bool, before uuid.NullUUID, limit int32) ([]domain.Document, error)
-	ListRetentionDue(ctx context.Context, until kernel.Date, sensitive bool, before uuid.NullUUID, limit int32) ([]domain.Document, error)
+	ListRetentionDue(ctx context.Context, until kernel.Date, sensitive bool, owners []domain.OwnerType, before uuid.NullUUID, limit int32) ([]domain.Document, error)
 	Versions(ctx context.Context, id uuid.UUID) ([]domain.Version, error)
 	PendingScans(ctx context.Context, limit int32) ([]domain.Version, error)
 	SetScan(ctx context.Context, id uuid.UUID, s domain.ScanStatus, at time.Time) error
@@ -68,12 +68,35 @@ type Cipher interface {
 
 const fileField = "documents.file"
 
+// Owners confirma que el registro dueño exista en el tenant.
+type Owners interface {
+	Exists(ctx context.Context, t domain.OwnerType, id uuid.UUID) (bool, error)
+}
+
+// canSeeOwner exige el permiso de lectura del registro dueño.
+func canSeeOwner(ctx context.Context, t domain.OwnerType) bool {
+	p := domain.OwnerPermission(t)
+	return p != "" && authz.Require(ctx, authz.Permission(p)) == nil
+}
+
+// visibleOwners son los tipos de registro que el usuario puede leer.
+func visibleOwners(ctx context.Context) []domain.OwnerType {
+	var out []domain.OwnerType
+	for _, t := range []domain.OwnerType{domain.OwnerParty, domain.OwnerPolicy, domain.OwnerClaim} {
+		if canSeeOwner(ctx, t) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
 // Service agrupa los casos de uso.
 type Service struct {
 	Store         Store
 	Storage       Storage
 	Scanner       Scanner
 	Cipher        Cipher
+	Owners        Owners
 	Clock         kernel.Clock
 	Logger        *slog.Logger
 	MaxBytes      int64
@@ -129,6 +152,10 @@ func (s *Service) newVersion(ctx context.Context, doc uuid.UUID, number int32, c
 		}
 	}
 	if err := s.Storage.Put(ctx, key, stored, mime); err != nil {
+		var known *kernel.Error
+		if errors.As(err, &known) {
+			return domain.Version{}, err
+		}
 		return domain.Version{}, fmt.Errorf("documents: guardando archivo: %w", err)
 	}
 	sum := sha256.Sum256(content)
@@ -146,6 +173,10 @@ func (s *Service) discard(ctx context.Context, key string) {
 func (s *Service) Upload(ctx context.Context, in UploadInput) (domain.Document, error) {
 	if err := authz.Require(ctx, authz.DocumentUpload); err != nil {
 		return domain.Document{}, err
+	}
+	// Cargar en un registro exige poder verlo: así no se confirma que exista ni se cuelgan archivos ajenos.
+	if !canSeeOwner(ctx, in.OwnerType) {
+		return domain.Document{}, domain.ErrNotFound
 	}
 	in.Sensitive = domain.IsSensitive(in.OwnerType, in.Sensitive)
 	if in.Sensitive {
@@ -179,6 +210,13 @@ func (s *Service) Upload(ctx context.Context, in UploadInput) (domain.Document, 
 	if err := d.Validate(); err != nil {
 		return domain.Document{}, err
 	}
+	exists, err := s.Owners.Exists(ctx, d.OwnerType, d.OwnerID)
+	if err != nil {
+		return domain.Document{}, fmt.Errorf("documents: consultando dueño: %w", err)
+	}
+	if !exists {
+		return domain.Document{}, domain.ErrOwnerNotFound
+	}
 	v, err := s.newVersion(ctx, id, 1, in.Content, in.Sensitive)
 	if err != nil {
 		return domain.Document{}, err
@@ -205,8 +243,8 @@ func (s *Service) visible(ctx context.Context, r Repository, id uuid.UUID) (doma
 	if err != nil {
 		return domain.Document{}, err
 	}
-	// Quien no puede ver documentos sensibles tampoco sabe que existen.
-	if d.Sensitive && !canSeeSensitive(ctx) {
+	// Quien no puede ver documentos sensibles, o el registro al que pertenecen, no sabe que existen.
+	if (d.Sensitive && !canSeeSensitive(ctx)) || !canSeeOwner(ctx, d.OwnerType) {
 		return domain.Document{}, domain.ErrNotFound
 	}
 	return d, nil
@@ -288,6 +326,9 @@ func (s *Service) List(ctx context.Context, t domain.OwnerType, owner uuid.UUID,
 	if err := authz.Require(ctx, authz.DocumentRead); err != nil {
 		return Page{}, err
 	}
+	if !canSeeOwner(ctx, t) {
+		return Page{}, nil
+	}
 	limit = pageSize(limit)
 	var rows []domain.Document
 	err := s.Store.WithinTenant(ctx, func(ctx context.Context, uow UnitOfWork) (err error) {
@@ -306,7 +347,7 @@ func (s *Service) RetentionDue(ctx context.Context, before uuid.NullUUID, limit 
 	until := kernel.Today(s.Clock).AddDays(-int(s.RetentionDays))
 	var rows []domain.Document
 	err := s.Store.WithinTenant(ctx, func(ctx context.Context, uow UnitOfWork) (err error) {
-		rows, err = uow.Records().ListRetentionDue(ctx, until, canSeeSensitive(ctx), before, limit+1)
+		rows, err = uow.Records().ListRetentionDue(ctx, until, canSeeSensitive(ctx), visibleOwners(ctx), before, limit+1)
 		return err
 	})
 	return paginate(rows, limit), err
@@ -440,9 +481,13 @@ func (s *Service) scanOne(ctx context.Context, v domain.Version) error {
 	if err != nil {
 		return fmt.Errorf("documents: antivirus: %w", err)
 	}
-	status, action := domain.ScanClean, "documents.scan.clean"
-	if infected {
-		status, action = domain.ScanInfected, "documents.scan.infected"
+	status, err := v.ScanResult(infected)
+	if err != nil {
+		return err
+	}
+	action := "documents.scan.clean"
+	if status == domain.ScanInfected {
+		action = "documents.scan.infected"
 	}
 	return s.Store.WithinTenant(ctx, func(ctx context.Context, uow UnitOfWork) error {
 		if err := uow.Records().SetScan(ctx, v.ID, status, s.Clock.Now()); err != nil {

@@ -35,12 +35,14 @@ type ComplianceKycCheck struct {
 	TenantID          uuid.UUID
 	PartyID           uuid.UUID
 	DocumentBidx      []byte
-	Result            string
-	Source            string
+	Result            pgtype.Text
+	Source            pgtype.Text
 	CheckedOn         kernel.Date
 	DetailsCiphertext []byte
 	CreatedAt         time.Time
 	CreatedBy         uuid.NullUUID
+	ResultCiphertext  []byte
+	SourceCiphertext  []byte
 }
 
 type ComplianceSuppressionRequest struct {
