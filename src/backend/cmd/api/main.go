@@ -28,6 +28,7 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/modules/compliance"
 	"github.com/marvinrepremarca/seguros/internal/modules/crm"
 	"github.com/marvinrepremarca/seguros/internal/modules/documents"
+	documentsapp "github.com/marvinrepremarca/seguros/internal/modules/documents/app"
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/keycloak"
@@ -185,15 +186,22 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	storage, err := documents.NewStorage(documents.S3Config{Endpoint: docsCfg.S3Endpoint, PublicEndpoint: docsCfg.S3PublicEndpoint, AccessKey: docsCfg.S3AccessKey.Reveal(), SecretKey: docsCfg.S3SecretKey.Reveal(), Bucket: docsCfg.S3Bucket, TLS: docsCfg.S3TLS})
-	if err != nil {
-		return err
+	var storage documentsapp.Storage = documents.Unconfigured()
+	var scanner documentsapp.Scanner = documents.Unconfigured()
+	if docsCfg.Enabled {
+		s3, err := documents.NewStorage(documents.S3Config{Endpoint: docsCfg.S3Endpoint, PublicEndpoint: docsCfg.S3PublicEndpoint, AccessKey: docsCfg.S3AccessKey.Reveal(), SecretKey: docsCfg.S3SecretKey.Reveal(), Bucket: docsCfg.S3Bucket, TLS: docsCfg.S3TLS})
+		if err != nil {
+			return err
+		}
+		// Sin almacenamiento la carga falla, pero el resto de la API sigue atendiendo.
+		if err := s3.EnsureBucket(ctx); err != nil {
+			logger.WarnContext(ctx, "almacenamiento de documentos no disponible", "error", err)
+		}
+		storage, scanner = s3, documents.NewScanner(docsCfg.ClamdAddr)
+	} else {
+		logger.WarnContext(ctx, "documentos sin almacenamiento configurado: sus operaciones responden 503")
 	}
-	// Sin almacenamiento la carga falla, pero el resto de la API sigue atendiendo.
-	if err := storage.EnsureBucket(ctx); err != nil {
-		logger.WarnContext(ctx, "almacenamiento de documentos no disponible", "error", err)
-	}
-	documentsMod := documents.New(documents.Deps{DB: database, Audit: recorder, Storage: storage, Scanner: documents.NewScanner(docsCfg.ClamdAddr), Cipher: cipher, Checker: flags.NewOpenFeatureChecker(openfeature.NewClient(flags.ProviderName)), Policy: policy, Clock: clock, Logger: logger, MaxBytes: docsCfg.MaxBytes, RetentionDays: docsCfg.RetentionDays, DownloadTTL: docsCfg.DownloadTTL})
+	documentsMod := documents.New(documents.Deps{DB: database, Audit: recorder, Storage: storage, Scanner: scanner, Cipher: cipher, Owners: documents.Owners{Parties: partiesMod.Directory, Policies: policiesMod.Directory}, Checker: flags.NewOpenFeatureChecker(openfeature.NewClient(flags.ProviderName)), Policy: policy, Clock: clock, Logger: logger, MaxBytes: docsCfg.MaxBytes, RetentionDays: docsCfg.RetentionDays, DownloadTTL: docsCfg.DownloadTTL})
 	if cfg.HTTP.SPADir != "" {
 		spa, err = httpx.NewSPAHandler(os.DirFS(cfg.HTTP.SPADir), logger)
 		if err != nil {
@@ -226,7 +234,7 @@ func run() error {
 		Notifications:    notifications.New(notifications.Deps{DB: database, Audit: recorder, Checker: flags.NewOpenFeatureChecker(openfeature.NewClient(flags.ProviderName)), Policy: policy, Clock: clock, Logger: logger}),
 		Reporting:        reporting.New(reporting.Deps{DB: database, Checker: flags.NewOpenFeatureChecker(openfeature.NewClient(flags.ProviderName)), Policy: policy, Clock: clock, Logger: logger}),
 		Integrations:     integrations.New(integrations.Deps{DB: database, Connectors: integrationConnectors(cfg.Env), Checker: flags.NewOpenFeatureChecker(openfeature.NewClient(flags.ProviderName)), Policy: policy, Clock: clock, Logger: logger}),
-		DocumentMaxBytes: docsCfg.MaxBytes,
+		DocumentMaxBytes: docsCfg.MaxBytes, // 0 sin almacenamiento: sin límite ampliado
 		SPA:              spa,
 	})
 	if err != nil {

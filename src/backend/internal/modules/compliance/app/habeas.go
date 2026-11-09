@@ -65,7 +65,15 @@ func (s *Service) ResolveSuppression(ctx context.Context, id uuid.UUID, accepted
 		return err
 	}
 	return s.Store.WithinTenant(ctx, func(ctx context.Context, uow UnitOfWork) error {
-		if err := uow.Records().ResolveSuppression(ctx, id, accepted, resolution, s.Clock.Now().UTC()); err != nil {
+		current, version, err := uow.Records().GetSuppression(ctx, id)
+		if err != nil {
+			return err
+		}
+		next, err := domain.ResolveSuppression(current, accepted)
+		if err != nil {
+			return err
+		}
+		if err := uow.Records().SaveSuppression(ctx, id, next, resolution, version, s.Clock.Now().UTC()); err != nil {
 			return err
 		}
 		return uow.Audit(ctx, entry("compliance.suppression.resolved", "compliance.suppression", id))

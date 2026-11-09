@@ -15,6 +15,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"slices"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -26,6 +27,7 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/marvinrepremarca/seguros/internal/modules/documents"
+	"github.com/marvinrepremarca/seguros/internal/modules/documents/domain"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/authz"
 	"github.com/marvinrepremarca/seguros/internal/platform/db"
@@ -130,14 +132,22 @@ func (fakeCipher) DecryptFor(_ context.Context, _, _ string, c []byte) ([]byte, 
 	return reversed(c), nil
 }
 
+// owners da por existente todo dueño salvo los marcados como faltantes.
+type owners struct{ missing map[uuid.UUID]bool }
+
+func (o owners) Exists(_ context.Context, _ domain.OwnerType, id uuid.UUID) (bool, error) {
+	return !o.missing[id], nil
+}
+
 type env struct {
-	router *chi.Mux
-	policy *authz.Policy
-	off    map[kernel.TenantID]bool
-	store  *storage
-	scan   *scanner
-	mod    *documents.Module
-	clock  *kernel.FakeClock
+	missing map[uuid.UUID]bool
+	router  *chi.Mux
+	policy  *authz.Policy
+	off     map[kernel.TenantID]bool
+	store   *storage
+	scan    *scanner
+	mod     *documents.Module
+	clock   *kernel.FakeClock
 }
 
 func newEnv(t *testing.T) *env {
@@ -146,8 +156,8 @@ func newEnv(t *testing.T) *env {
 	clock := kernel.NewFakeClock(time.Now().UTC()) //nolint:forbidigo // partición de auditoría del mes actual
 	policy, err := authz.DefaultPolicy()
 	require.NoError(t, err)
-	e := &env{policy: policy, off: map[kernel.TenantID]bool{}, store: &storage{objects: map[string][]byte{}}, scan: &scanner{}, clock: clock}
-	e.mod = documents.New(documents.Deps{DB: database, Audit: audit.NewRecorder(clock), Storage: e.store, Scanner: e.scan, Cipher: fakeCipher{}, Checker: checker{off: e.off}, Policy: policy, Clock: clock, Logger: logger, MaxBytes: 1 << 20, RetentionDays: 365, DownloadTTL: time.Minute})
+	e := &env{missing: map[uuid.UUID]bool{}, policy: policy, off: map[kernel.TenantID]bool{}, store: &storage{objects: map[string][]byte{}}, scan: &scanner{}, clock: clock}
+	e.mod = documents.New(documents.Deps{DB: database, Audit: audit.NewRecorder(clock), Storage: e.store, Scanner: e.scan, Cipher: fakeCipher{}, Owners: owners{missing: e.missing}, Checker: checker{off: e.off}, Policy: policy, Clock: clock, Logger: logger, MaxBytes: 1 << 20, RetentionDays: 365, DownloadTTL: time.Minute})
 	root := httpx.NewRouter(httpx.RouterOptions{Logger: logger, Clock: clock, MaxBodyBytes: 4 << 20})
 	var mountErr error
 	root.Group(func(r chi.Router) {
@@ -406,6 +416,54 @@ func TestClaimSupportsAreAlwaysSensitive(t *testing.T) {
 	var d struct {
 		Sensitive bool `json:"sensitive"`
 	}
-	require.Equal(t, http.StatusCreated, e.serve(t, e.as(tenant, authz.RoleOperations), req, &d))
+	require.Equal(t, http.StatusCreated, e.serve(t, e.as(tenant, authz.RoleClaimsAnalyst), req, &d))
 	assert.True(t, d.Sensitive)
+}
+
+func TestOwnerMustExistAndBeReadable(t *testing.T) {
+	e := newEnv(t)
+	tenant := newTenant()
+	ops := e.as(tenant, authz.RoleOperations)
+	missing := uuid.Must(uuid.NewV7())
+	e.missing[missing] = true
+	assert.Equal(t, http.StatusUnprocessableEntity, e.upload(t, ops, missing, "false", pdf, nil))
+
+	// El oficial de cumplimiento ve sensibles, pero no siniestros: tampoco sus soportes.
+	claim := uuid.Must(uuid.NewV7())
+	body, ct := form(t, map[string]string{"ownerType": "claim", "ownerId": claim.String(), "title": "Factura"}, pdf)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/documents/documents", body)
+	req.Header.Set("Content-Type", ct)
+	var d document
+	require.Equal(t, http.StatusCreated, e.serve(t, e.as(tenant, authz.RoleClaimsAnalyst), req, &d))
+	officer := e.as(tenant, authz.RoleComplianceOfficer)
+	assert.Equal(t, http.StatusNotFound, e.do(t, officer, http.MethodGet, "/api/v1/documents/documents/"+d.ID, nil))
+	var page struct {
+		Items []document `json:"items"`
+	}
+	require.Equal(t, http.StatusOK, e.do(t, officer, http.MethodGet, "/api/v1/documents/documents?ownerType=claim&ownerId="+claim.String(), &page))
+	assert.Empty(t, page.Items)
+	assert.Equal(t, http.StatusOK, e.do(t, e.as(tenant, authz.RoleClaimsAnalyst), http.MethodGet, "/api/v1/documents/documents/"+d.ID, nil))
+}
+
+func TestRejectsUnexpectedFormParts(t *testing.T) {
+	e := newEnv(t)
+	ops := e.as(newTenant(), authz.RoleOperations)
+	body, ct := form(t, map[string]string{"ownerType": "party", "ownerId": uuid.NewString(), "title": "Cédula", "tenantId": uuid.NewString()}, pdf)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/documents/documents", body)
+	req.Header.Set("Content-Type", ct)
+	assert.Equal(t, http.StatusUnprocessableEntity, e.serve(t, ops, req, nil))
+	req = httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/documents/documents", strings.NewReader("no es multipart"))
+	req.Header.Set("Content-Type", "multipart/form-data; boundary=x")
+	assert.Contains(t, []int{http.StatusBadRequest, http.StatusUnprocessableEntity}, e.serve(t, ops, req, nil))
+	assert.Empty(t, e.store.objects)
+}
+
+func TestUploadRequiresReadingTheOwner(t *testing.T) {
+	e := newEnv(t)
+	officer := e.as(newTenant(), authz.RoleComplianceOfficer)
+	body, ct := form(t, map[string]string{"ownerType": "claim", "ownerId": uuid.NewString(), "title": "Factura"}, pdf)
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodPost, "/api/v1/documents/documents", body)
+	req.Header.Set("Content-Type", ct)
+	assert.Equal(t, http.StatusNotFound, e.serve(t, officer, req, nil), "sin permiso sobre siniestros no carga en uno")
+	assert.Empty(t, e.store.objects)
 }

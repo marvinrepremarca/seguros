@@ -73,17 +73,30 @@ func (c checker) IsEnabled(ctx context.Context, _ flags.Key) bool {
 	return ok && !c.off[t]
 }
 
-// view simula a parties: la huella cambia al rectificar el documento.
-type view struct{ prints map[uuid.UUID][]byte }
-
-func (v *view) DocumentFingerprint(_ context.Context, p uuid.UUID) ([]byte, bool, error) {
-	f, ok := v.prints[p]
-	return f, ok, nil
+// view simula a parties: la huella cambia al rectificar el documento. Un tercero con dueño solo
+// existe para su tenant, como bajo RLS.
+type view struct {
+	prints map[uuid.UUID][]byte
+	owner  map[uuid.UUID]kernel.TenantID
 }
 
-func (v *view) HabeasExport(_ context.Context, p uuid.UUID) (parties.HabeasRecord, bool, error) {
+func (v *view) visible(ctx context.Context, p uuid.UUID) bool {
+	t, ok := v.owner[p]
+	if !ok {
+		return true
+	}
+	current, _ := reqctx.TenantID(ctx)
+	return current == t
+}
+
+func (v *view) DocumentFingerprint(ctx context.Context, p uuid.UUID) ([]byte, bool, error) {
+	f, ok := v.prints[p]
+	return f, ok && v.visible(ctx, p), nil
+}
+
+func (v *view) HabeasExport(ctx context.Context, p uuid.UUID) (parties.HabeasRecord, bool, error) {
 	_, ok := v.prints[p]
-	return parties.HabeasRecord{Kind: "person", Name: "Ana", DocumentType: "CC", DocumentLast4: "1234"}, ok, nil
+	return parties.HabeasRecord{Kind: "person", Name: "Ana", DocumentType: "CC", DocumentLast4: "1234"}, ok && v.visible(ctx, p), nil
 }
 
 type cipher struct{}
@@ -116,7 +129,7 @@ func newEnv(t *testing.T) *env {
 	clock := kernel.NewFakeClock(time.Now().UTC()) //nolint:forbidigo // partición de auditoría del mes actual
 	policy, err := authz.DefaultPolicy()
 	require.NoError(t, err)
-	e := &env{policy: policy, off: map[kernel.TenantID]bool{}, v: &view{prints: map[uuid.UUID][]byte{}}}
+	e := &env{policy: policy, off: map[kernel.TenantID]bool{}, v: &view{prints: map[uuid.UUID][]byte{}, owner: map[uuid.UUID]kernel.TenantID{}}}
 	e.mod = compliance.New(compliance.Deps{DB: database, Audit: audit.NewRecorder(clock), Outbox: outbox.NewWriter(clock), Parties: e.v, Cipher: cipher{}, Checker: checker{off: e.off}, Policy: policy, Clock: clock, Logger: logger})
 	root := httpx.NewRouter(httpx.RouterOptions{Logger: logger, Clock: clock, MaxBodyBytes: 1 << 20})
 	var mountErr error
@@ -282,4 +295,65 @@ func TestHabeas(t *testing.T) {
 	resolve := "/api/v1/compliance/suppression-requests/" + created.ID + "/resolve"
 	require.Equal(t, http.StatusNoContent, e.do(t, officer, http.MethodPost, resolve, map[string]any{"accepted": false, "resolution": "Retención legal"}, nil))
 	assert.Equal(t, http.StatusConflict, e.do(t, officer, http.MethodPost, resolve, map[string]any{"accepted": true, "resolution": "Otra"}, nil))
+}
+
+// El resultado y la fuente se guardan cifrados (auditoría de la Fase 5).
+func TestKycResultIsStoredSealed(t *testing.T) {
+	e := newEnv(t)
+	tenant := newTenant()
+	party := uuid.Must(uuid.NewV7())
+	e.v.prints[party] = []byte{1}
+	today := time.Now().UTC().Format("2006-01-02") //nolint:forbidigo // el reloj falso parte de ahora
+	var check struct {
+		ID string `json:"id"`
+	}
+	require.Equal(t, http.StatusCreated, e.do(t, e.as(tenant, authz.RoleComplianceOfficer), http.MethodPost, "/api/v1/compliance/parties/"+party.String()+"/kyc", map[string]any{"approved": true, "source": "Lista ONU", "checkedOn": today}, &check))
+	var plain int
+	require.NoError(t, super.QueryRow(context.Background(), `SELECT count(*) FROM compliance.kyc_checks WHERE id = $1 AND result IS NULL AND source IS NULL AND position('ONU' in convert_from(source_ciphertext, 'LATIN1')) = 0`, check.ID).Scan(&plain))
+	assert.Equal(t, 1, plain)
+	var st struct {
+		Approved bool `json:"approved"`
+		Checks   []struct {
+			Source string `json:"source"`
+		} `json:"checks"`
+	}
+	require.Equal(t, http.StatusOK, e.do(t, e.as(tenant, authz.RoleOperations), http.MethodGet, "/api/v1/compliance/parties/"+party.String()+"/kyc", nil, &st))
+	assert.True(t, st.Approved)
+	require.Len(t, st.Checks, 1)
+	assert.Equal(t, "Lista ONU", st.Checks[0].Source)
+	assert.Equal(t, 1, count(t, `SELECT count(*) FROM audit.events WHERE tenant_id = $1 AND action = 'compliance.kyc.history_read'`, uuid.UUID(tenant)))
+}
+
+// Cada operación sobre datos de otro tenant responde 404 (rules/testing.md).
+func TestOtherTenantGetsNotFound(t *testing.T) {
+	e := newEnv(t)
+	tenant, other := newTenant(), newTenant()
+	officer, stranger := e.as(tenant, authz.RoleComplianceOfficer), e.as(other, authz.RoleComplianceOfficer)
+	party := uuid.Must(uuid.NewV7())
+	e.v.prints[party] = []byte{1}
+	e.v.owner[party] = tenant
+	today := time.Now().UTC().Format("2006-01-02") //nolint:forbidigo // el reloj falso parte de ahora
+	base := "/api/v1/compliance/parties/" + party.String()
+	var check, supp, complaint struct {
+		ID string `json:"id"`
+	}
+	require.Equal(t, http.StatusCreated, e.do(t, officer, http.MethodPost, base+"/kyc", map[string]any{"approved": false, "source": "OFAC", "checkedOn": today, "details": "Coincidencia"}, &check))
+	require.Equal(t, http.StatusCreated, e.do(t, officer, http.MethodPost, base+"/suppression-requests", nil, &supp))
+	require.Equal(t, http.StatusCreated, e.do(t, officer, http.MethodPost, "/api/v1/compliance/complaints", map[string]any{"partyId": party.String(), "channel": "Correo", "subject": "Demora", "description": "Sin respuesta", "receivedOn": today}, &complaint))
+
+	assert.Equal(t, http.StatusNotFound, e.do(t, stranger, http.MethodGet, base+"/kyc", nil, nil))
+	assert.Equal(t, http.StatusNotFound, e.do(t, stranger, http.MethodPost, base+"/kyc", map[string]any{"approved": true, "source": "ONU", "checkedOn": today}, nil))
+	assert.Equal(t, http.StatusNotFound, e.do(t, stranger, http.MethodPost, base+"/kyc/"+check.ID+"/details", nil, nil))
+	assert.Equal(t, http.StatusNotFound, e.do(t, stranger, http.MethodPost, base+"/habeas-export", nil, nil))
+	assert.Equal(t, http.StatusNotFound, e.do(t, stranger, http.MethodPost, base+"/suppression-requests", nil, nil))
+	assert.Equal(t, http.StatusNotFound, e.do(t, stranger, http.MethodPost, "/api/v1/compliance/suppression-requests/"+supp.ID+"/resolve", map[string]any{"accepted": true, "resolution": "Aceptada"}, nil))
+	assert.Equal(t, http.StatusNotFound, e.do(t, stranger, http.MethodPost, "/api/v1/compliance/complaints/"+complaint.ID+"/resolve", map[string]any{"resolution": "Atendida"}, nil))
+	assert.Equal(t, http.StatusNotFound, e.do(t, stranger, http.MethodPost, "/api/v1/compliance/complaints", map[string]any{"partyId": party.String(), "channel": "Correo", "subject": "Ajena", "description": "Otro tenant", "receivedOn": today}, nil))
+	var page struct {
+		Items []any `json:"items"`
+	}
+	require.Equal(t, http.StatusOK, e.do(t, stranger, http.MethodGet, "/api/v1/compliance/suppression-requests", nil, &page))
+	assert.Empty(t, page.Items)
+	require.Equal(t, http.StatusOK, e.do(t, stranger, http.MethodGet, "/api/v1/compliance/complaints", nil, &page))
+	assert.Empty(t, page.Items)
 }

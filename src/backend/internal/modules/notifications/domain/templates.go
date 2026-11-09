@@ -18,6 +18,26 @@ var (
 // MaxAttempts es el número de envíos antes de marcar un aviso como fallido.
 const MaxAttempts = 5
 
+// Status es el estado de un aviso: pending → sent | skipped | failed; failed → pending por reintento.
+type Status string
+
+// Estados de un aviso.
+const (
+	StatusPending Status = "pending"
+	StatusSent    Status = "sent"
+	StatusFailed  Status = "failed"
+	StatusSkipped Status = "skipped"
+)
+
+// AfterFailure decide el estado tras el intento fallido número attempts: sigue pendiente con espera,
+// o queda fallido al agotar MaxAttempts.
+func AfterFailure(attempts int32) (Status, time.Duration) {
+	if attempts >= MaxAttempts {
+		return StatusFailed, 0
+	}
+	return StatusPending, Backoff(attempts)
+}
+
 // Backoff es la espera tras el intento n: 5, 10, 20 y 40 minutos, para sobrevivir a una caída del correo.
 func Backoff(attempts int32) time.Duration { return 5 * time.Minute << max(attempts-1, 0) }
 

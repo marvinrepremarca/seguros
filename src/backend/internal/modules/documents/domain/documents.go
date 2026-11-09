@@ -20,6 +20,8 @@ var (
 	ErrFileSize         = kernel.NewError(kernel.KindValidation, "documents.file.size_not_allowed", "el archivo está vacío o excede el tamaño permitido")
 	ErrNotScanned       = kernel.NewError(kernel.KindConflict, "documents.version.not_scanned", "el archivo sigue en revisión antivirus")
 	ErrInfected         = kernel.NewError(kernel.KindConflict, "documents.version.infected", "el antivirus bloqueó este archivo")
+	ErrAlreadyScanned   = kernel.NewError(kernel.KindConflict, "documents.version.already_scanned", "la versión ya tiene resultado del antivirus")
+	ErrOwnerNotFound    = kernel.NewError(kernel.KindValidation, "documents.owner.not_found", "el registro al que pertenece el documento no existe")
 	ErrConcurrentUpdate = kernel.NewError(kernel.KindConflict, "documents.concurrent_update", "el documento cambió; vuelva a cargarlo")
 )
 
@@ -101,6 +103,32 @@ func (v Version) Downloadable() error {
 		return ErrNotScanned
 	default:
 		return ErrNotScanned
+	}
+}
+
+// ScanResult es la transición del antivirus: solo una versión pendiente recibe resultado.
+func (v Version) ScanResult(infected bool) (ScanStatus, error) {
+	if v.Scan != ScanPending {
+		return "", ErrAlreadyScanned
+	}
+	if infected {
+		return ScanInfected, nil
+	}
+	return ScanClean, nil
+}
+
+// OwnerPermission es el permiso de lectura del módulo dueño del registro: ver un documento exige
+// poder ver aquello a lo que pertenece.
+func OwnerPermission(t OwnerType) string {
+	switch t {
+	case OwnerParty:
+		return "parties.party.read"
+	case OwnerPolicy:
+		return "policies.policy.read"
+	case OwnerClaim:
+		return "claims.claim.read"
+	default:
+		return ""
 	}
 }
 

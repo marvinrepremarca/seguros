@@ -39,6 +39,10 @@ CREATE POLICY tenant_isolation ON <schema>.<tabla>
 - Toda migración reversible o documentar por qué no.
 - La app nunca migra al arrancar en producción.
 
+## Vistas de reporting (ADR 0013)
+- `reporting` lee los demás esquemas solo por sus vistas `security_invoker` y migra de último; sus queries solo leen `reporting.*` (lo verifica `test/arch`).
+- Cambiar o borrar una columna que use una vista exige, en el mismo despliegue, una migración de `reporting` que suelte la vista antes y la recree después (expand/contract).
+
 ## Queries
 - Solo SQL en archivos `.sql` de sqlc (parametrizado). Prohibido construir SQL con `fmt.Sprintf`/concatenación. Filtros dinámicos: `sqlc.narg` o `COALESCE`.
 - Transacción = un agregado + outbox. Varios agregados → eventos.

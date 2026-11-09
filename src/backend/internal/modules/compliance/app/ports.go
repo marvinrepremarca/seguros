@@ -21,18 +21,30 @@ type Suppression struct {
 	CreatedAt   time.Time
 }
 
+// SealedCheck son los campos Restringidos de una verificación, cifrados con la llave del tenant.
+type SealedCheck struct{ Result, Source, Details []byte }
+
+// StoredCheck es una verificación leída: Result y Source vienen cifrados, o en claro en filas previas
+// al cifrado (migración 00002).
+type StoredCheck struct {
+	Check        domain.KycCheck
+	ResultSealed []byte
+	SourceSealed []byte
+}
+
 // Repository persiste cumplimiento en el tenant del contexto.
 type Repository interface {
-	InsertCheck(ctx context.Context, c domain.KycCheck, details []byte, at time.Time) error
-	LatestCheck(ctx context.Context, party uuid.UUID) (domain.KycCheck, bool, error)
-	Checks(ctx context.Context, party uuid.UUID) ([]domain.KycCheck, error)
+	InsertCheck(ctx context.Context, c domain.KycCheck, sealed SealedCheck, at time.Time) error
+	LatestCheck(ctx context.Context, party uuid.UUID) (StoredCheck, bool, error)
+	Checks(ctx context.Context, party uuid.UUID) ([]StoredCheck, error)
 	CheckDetails(ctx context.Context, party, check uuid.UUID) ([]byte, error)
 	InsertComplaint(ctx context.Context, s domain.ComplaintData, at time.Time) error
 	GetComplaint(ctx context.Context, id uuid.UUID) (*domain.Complaint, error)
 	SaveComplaint(ctx context.Context, c *domain.Complaint, at time.Time) error
 	Complaints(ctx context.Context, before uuid.NullUUID, limit int32) ([]domain.ComplaintData, error)
 	InsertSuppression(ctx context.Context, id, party uuid.UUID, at time.Time) error
-	ResolveSuppression(ctx context.Context, id uuid.UUID, accepted bool, resolution string, at time.Time) error
+	GetSuppression(ctx context.Context, id uuid.UUID) (domain.SuppressionStatus, int32, error)
+	SaveSuppression(ctx context.Context, id uuid.UUID, status domain.SuppressionStatus, resolution string, version int32, at time.Time) error
 	Suppressions(ctx context.Context, before uuid.NullUUID, limit int32) ([]Suppression, error)
 }
 

@@ -280,15 +280,16 @@ func (q *Queries) ListPendingScans(ctx context.Context, arg ListPendingScansPara
 
 const listRetentionDue = `-- name: ListRetentionDue :many
 SELECT id, tenant_id, owner_type, owner_id, title, sensitive, idempotency_key, current_number, created_on, created_at, created_by, updated_at, updated_by, version FROM documents.documents
-WHERE tenant_id = $1 AND created_on <= $2
-  AND ($3::boolean OR NOT sensitive)
-  AND ($4::uuid IS NULL OR id < $4::uuid)
-ORDER BY id DESC LIMIT $5
+WHERE tenant_id = $1 AND created_on <= $2 AND owner_type = ANY ($3::text[])
+  AND ($4::boolean OR NOT sensitive)
+  AND ($5::uuid IS NULL OR id < $5::uuid)
+ORDER BY id DESC LIMIT $6
 `
 
 type ListRetentionDueParams struct {
 	TenantID         uuid.UUID
 	CreatedUntil     kernel.Date
+	OwnerTypes       []string
 	IncludeSensitive bool
 	Before           uuid.NullUUID
 	RowLimit         int32
@@ -298,6 +299,7 @@ func (q *Queries) ListRetentionDue(ctx context.Context, arg ListRetentionDuePara
 	rows, err := q.db.Query(ctx, listRetentionDue,
 		arg.TenantID,
 		arg.CreatedUntil,
+		arg.OwnerTypes,
 		arg.IncludeSensitive,
 		arg.Before,
 		arg.RowLimit,

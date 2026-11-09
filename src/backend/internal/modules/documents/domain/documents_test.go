@@ -78,3 +78,21 @@ func TestIsSensitive(t *testing.T) {
 	assert.True(t, IsSensitive(OwnerParty, true))
 	assert.False(t, IsSensitive(OwnerPolicy, false))
 }
+
+func TestScanResultOnlyFromPending(t *testing.T) {
+	t.Parallel()
+	s, err := Version{Scan: ScanPending}.ScanResult(true)
+	require.NoError(t, err)
+	assert.Equal(t, ScanInfected, s)
+	s, err = Version{Scan: ScanPending}.ScanResult(false)
+	require.NoError(t, err)
+	assert.Equal(t, ScanClean, s)
+	_, err = Version{Scan: ScanClean}.ScanResult(true)
+	require.ErrorIs(t, err, ErrAlreadyScanned)
+}
+
+func TestOwnerPermission(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "claims.claim.read", OwnerPermission(OwnerClaim))
+	assert.Empty(t, OwnerPermission("lead"))
+}

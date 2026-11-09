@@ -11,6 +11,7 @@ import (
 type Querier interface {
 	GetComplaint(ctx context.Context, arg GetComplaintParams) (GetComplaintRow, error)
 	GetKycDetails(ctx context.Context, arg GetKycDetailsParams) ([]byte, error)
+	GetSuppression(ctx context.Context, arg GetSuppressionParams) (GetSuppressionRow, error)
 	InsertComplaint(ctx context.Context, arg InsertComplaintParams) error
 	InsertKycCheck(ctx context.Context, arg InsertKycCheckParams) error
 	InsertSuppression(ctx context.Context, arg InsertSuppressionParams) error
