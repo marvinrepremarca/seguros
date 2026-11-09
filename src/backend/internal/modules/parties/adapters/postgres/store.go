@@ -144,6 +144,17 @@ func (r *repository) GetDocument(ctx context.Context, id domain.PartyID) (domain
 	return domain.DocumentType(row.DocumentType), row.DocumentCiphertext, nil
 }
 
+func (r *repository) DocumentIndex(ctx context.Context, id domain.PartyID) ([]byte, error) {
+	out, err := r.q.GetPartyDocumentIndex(ctx, partiessqlc.GetPartyDocumentIndexParams{TenantID: r.tenant, ID: uuid.UUID(id)})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, domain.ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("parties: leyendo huella: %w", err)
+	}
+	return out, nil
+}
+
 func (r *repository) IsVisibleTo(ctx context.Context, id domain.PartyID, agent uuid.UUID) (bool, error) {
 	visible, err := r.q.IsPartyVisibleTo(ctx, partiessqlc.IsPartyVisibleToParams{TenantID: r.tenant, ID: uuid.UUID(id), Agent: agent})
 	if err != nil {

@@ -53,6 +53,8 @@ type PartyRepository interface {
 	GetDocument(ctx context.Context, id domain.PartyID) (domain.DocumentType, []byte, error)
 	// IsVisibleTo indica si el tercero es cliente del asesor: es su responsable o es parte de una póliza suya no terminada.
 	IsVisibleTo(ctx context.Context, id domain.PartyID, agent uuid.UUID) (bool, error)
+	// DocumentIndex devuelve el blind index del documento vigente.
+	DocumentIndex(ctx context.Context, id domain.PartyID) ([]byte, error)
 	List(ctx context.Context, f ListFilter) ([]*domain.Party, error)
 	// Update aplica concurrencia optimista; doc nil conserva el documento guardado.
 	Update(ctx context.Context, p *domain.Party, doc *SealedDocument) error

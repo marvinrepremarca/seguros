@@ -26,4 +26,6 @@ const (
 	RenewalsModule Key = "module.renewals"
 	// ReportingModule: Reportes — indicadores de la agencia (KPIs)
 	ReportingModule Key = "module.reporting"
+	// OpsIntegrationsSimulator: Kill switch de la aseguradora simulada (solo existe fuera de staging y producción)
+	OpsIntegrationsSimulator Key = "ops.integrations.simulator"
 )

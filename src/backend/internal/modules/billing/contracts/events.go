@@ -6,6 +6,7 @@ import "github.com/google/uuid"
 // Tópicos de billing.
 const (
 	TopicInstallmentOverdue = "billing.installment_overdue"
+	TopicInstallmentDue     = "billing.installment_due"
 	TopicPaymentApplied     = "billing.payment_applied"
 	TopicPaymentReversed    = "billing.payment_reversed"
 	TopicArrearsCleared     = "billing.arrears_cleared"
@@ -41,4 +42,12 @@ type PaymentReversed struct {
 // ArrearsCleared se publica cuando un ajuste o un endoso deja la póliza sin cuotas fuera de gracia (N23).
 type ArrearsCleared struct {
 	PolicyID uuid.UUID `json:"policyId"`
+}
+
+// InstallmentDue recuerda una cuota pendiente que vence pronto (DECISIONS T1).
+type InstallmentDue struct {
+	PolicyID      uuid.UUID `json:"policyId"`
+	InstallmentID uuid.UUID `json:"installmentId"`
+	DueDate       string    `json:"dueDate"` // YYYY-MM-DD
+	DaysLeft      int32     `json:"daysLeft"`
 }

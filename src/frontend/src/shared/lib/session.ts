@@ -61,6 +61,22 @@ export const permissions = {
   claimOverridePayment: "claims.claim.override-payment",
   claimHealthRead: "claims.health.read",
   claimHealthWrite: "claims.health.write",
+  documentRead: "documents.document.read",
+  documentUpload: "documents.document.upload",
+  documentSensitive: "documents.document.sensitive",
+  documentUploadSensitive: "documents.document.upload-sensitive",
+  documentRetention: "documents.retention.read",
+  notificationRead: "notifications.message.read",
+  notificationManage: "notifications.message.manage",
+  reportingRead: "reporting.kpi.read",
+  integrationRead: "integrations.connector.read",
+  integrationQuote: "integrations.quote.request",
+  kycRead: "compliance.kyc.read",
+  kycRecord: "compliance.kyc.record",
+  kycReadDetails: "compliance.kyc.read-details",
+  complaintManage: "compliance.complaint.manage",
+  habeasExport: "compliance.habeas.export",
+  habeasSuppress: "compliance.habeas.suppress",
 } as const;
 
 export const SessionContext = createContext<SessionData | null>(null);

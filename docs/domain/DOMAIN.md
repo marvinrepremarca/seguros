@@ -106,6 +106,12 @@ Cualquier otra transición devuelve el error de dominio `ErrInvalidPolicyTransit
 - `QuoteOffer` tiene `ValidUntil`; una oferta vencida no puede aceptarse.
 - Aceptar oferta → evento `QuoteAccepted` → Policies crea `Policy` en `EnTramite` (DECISIONS N28). La oferta vale hasta `ValidUntil` inclusive.
 
+### Documents, Notifications, Reporting, Integrations
+- `Document` pertenece a un cliente, póliza o siniestro; sus versiones son inmutables. Una versión solo se descarga si el antivirus la dejó limpia; pendiente o infectada, nunca. Un documento sensible es invisible sin `documents.document.sensitive`. Nada se borra automáticamente (DECISIONS N34).
+- `Message` es un aviso al tomador: `pending → sent | skipped | failed`; `failed → pending` por reintento manual. Una clave de negocio repetida no genera otro aviso (DECISIONS N35).
+- Reporting solo lee vistas `security_invoker`; cada sección existe si el módulo que la alimenta está encendido (DECISIONS N36).
+- Integrations habla con cada aseguradora por el puerto `Gateway`, tras su kill switch y un circuit breaker (DECISIONS N37).
+
 ## 3. Mapa de eventos entre módulos
 
 | Evento (Contracts) | Publica | Consumen |
@@ -122,6 +128,7 @@ Cualquier otra transición devuelve el error de dominio `ErrInvalidPolicyTransit
 | `PolicyFellIntoArrears` / `PolicyReinstated` | Policies | Notifications, Reporting |
 | `PolicyExpiring(daysLeft)` | Renewals (job) | Notifications, Crm |
 | `InstallmentOverdue` | Billing | Policies, Notifications |
+| `InstallmentDue(daysLeft)` | Billing (job, T1) | Notifications |
 | `PaymentApplied` / `PaymentReversed` | Billing | Commissions, Policies (reinstate, solo `PaymentApplied`) |
 | `RenewalLost` | Renewals | Policies (`Vencida → NoRenovada`) |
 | `ClaimReported` / `ClaimStatusChanged` | Claims | Notifications, Reporting |

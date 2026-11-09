@@ -2,3 +2,4 @@
 export { ClaimsPage } from "./components/ClaimsPage";
 export { ClaimDetailPage } from "./components/ClaimDetailPage";
 export type { ClaimsDeps } from "./deps";
+export { claimOptionsQuery } from "./queries";

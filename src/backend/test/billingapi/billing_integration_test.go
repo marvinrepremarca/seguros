@@ -41,7 +41,10 @@ import (
 )
 
 //nolint:gochecknoglobals // compartido por la suite (TestMain)
-var database *db.DB
+var (
+	database *db.DB
+	superURL string
+)
 
 func TestMain(m *testing.M) { os.Exit(runMain(m)) }
 
@@ -57,6 +60,7 @@ func runMain(m *testing.M) int {
 		slog.Error("migrando", "error", err)
 		return 1
 	}
+	superURL = env.SuperuserURL
 	if database, err = env.OpenApp(ctx); err != nil {
 		return 1
 	}
@@ -329,6 +333,25 @@ func TestEndorsementAndCancellationEvents(t *testing.T) {
 	require.NoError(t, e.deliver(t, tenant, policies.TopicPolicyCancelled, policies.PolicyCancelled{
 		PolicyID: uuid.Must(uuid.NewV7()), EffectiveDate: "2026-02-01", Currency: "COP", UnearnedPremium: "0",
 	}))
+}
+
+// Recuerda 5 días antes y el día del vencimiento, solo cuotas pendientes (DECISIONS T1).
+func TestInstallmentReminders(t *testing.T) {
+	e := newEnv(t)
+	tenant := newTenant()
+	today := kernel.Today(e.clock)
+	e.issue(t, tenant, "single_payment", "100", today.String(), today.AddDays(300).String())
+	e.issue(t, tenant, "single_payment", "100", today.AddDays(5).String(), today.AddDays(305).String())
+	e.issue(t, tenant, "single_payment", "100", today.AddDays(6).String(), today.AddDays(306).String())
+	require.NoError(t, app.SendInstallmentReminders(tenantCtx(tenant), e.store, e.clock))
+	conn, err := pgx.Connect(context.Background(), superURL)
+	require.NoError(t, err)
+	defer conn.Close(context.Background()) //nolint:errcheck // fin de la prueba
+	rows, err := conn.Query(context.Background(), `SELECT payload->>'daysLeft' FROM messaging.outbox WHERE tenant_id = $1 AND topic = 'billing.installment_due' ORDER BY 1`, uuid.UUID(tenant))
+	require.NoError(t, err)
+	days, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	require.NoError(t, err)
+	assert.Equal(t, []string{"0", "5"}, days)
 }
 
 func TestOverdueUsesGraceDaysAndNoticesOnce(t *testing.T) {

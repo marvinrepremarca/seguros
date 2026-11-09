@@ -204,6 +204,77 @@ sql:
         emit_empty_slices: true
         emit_result_struct_pointers: false
         emit_enum_valid_method: true
+  - name: compliance
+    engine: postgresql
+    schema: migrations/compliance
+    queries: queries/compliance
+    strict_function_checks: true
+    gen:
+      go:
+        package: compliancesqlc
+        out: internal/modules/compliance/adapters/postgres/sqlc
+        sql_package: pgx/v5
+        emit_interface: true
+        emit_empty_slices: true
+        emit_result_struct_pointers: false
+        emit_enum_valid_method: true
+  - name: documents
+    engine: postgresql
+    schema: migrations/documents
+    queries: queries/documents
+    strict_function_checks: true
+    gen:
+      go:
+        package: documentssqlc
+        out: internal/modules/documents/adapters/postgres/sqlc
+        sql_package: pgx/v5
+        emit_interface: true
+        emit_empty_slices: true
+        emit_result_struct_pointers: false
+        emit_enum_valid_method: true
+  - name: notifications
+    engine: postgresql
+    schema: migrations/notifications
+    queries: queries/notifications
+    strict_function_checks: true
+    gen:
+      go:
+        package: notificationssqlc
+        out: internal/modules/notifications/adapters/postgres/sqlc
+        sql_package: pgx/v5
+        emit_interface: true
+        emit_empty_slices: true
+        emit_result_struct_pointers: false
+        emit_enum_valid_method: true
+  - name: reporting
+    engine: postgresql
+    schema: [migrations/policies, migrations/billing, migrations/quoting, migrations/renewals, migrations/claims, migrations/commissions, migrations/reporting]
+    queries: queries/reporting
+    strict_function_checks: true
+    gen:
+      go:
+        package: reportingsqlc
+        out: internal/modules/reporting/adapters/postgres/sqlc
+        omit_unused_structs: true
+        sql_package: pgx/v5
+        emit_interface: true
+        emit_empty_slices: true
+        emit_result_struct_pointers: false
+        emit_enum_valid_method: true
+  - name: integrations
+    engine: postgresql
+    schema: migrations/integrations
+    queries: queries/integrations
+    strict_function_checks: true
+    gen:
+      go:
+        package: integrationssqlc
+        out: internal/modules/integrations/adapters/postgres/sqlc
+        sql_package: pgx/v5
+        emit_interface: true
+        emit_empty_slices: true
+        emit_result_struct_pointers: false
+        emit_enum_valid_method: true
 # Plantilla por módulo:
 #  - name: policies
 #    engine: postgresql

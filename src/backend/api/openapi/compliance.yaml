@@ -1,0 +1,313 @@
+openapi: 3.0.3
+info:
+  title: Seguros — Cumplimiento
+  version: 1.0.0
+  description: KYC con consulta manual, PQR y habeas data.
+servers:
+  - url: /
+x-problems: &problems
+  "400": { $ref: "#/components/responses/Problem" }
+  "401": { $ref: "#/components/responses/Problem" }
+  "403": { $ref: "#/components/responses/Problem" }
+  "404": { $ref: "#/components/responses/Problem" }
+  "409": { $ref: "#/components/responses/Problem" }
+  "422": { $ref: "#/components/responses/Problem" }
+paths:
+  /api/v1/compliance/parties/{partyId}/kyc:
+    parameters:
+      - { name: partyId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getKyc
+      x-permission: compliance.kyc.read
+      x-feature: module.compliance
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KycStatus" }
+        <<: *problems
+    post:
+      operationId: recordKyc
+      x-permission: compliance.kyc.record
+      x-feature: module.compliance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecordKyc" }
+      responses:
+        "201":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KycCheck" }
+        <<: *problems
+  /api/v1/compliance/parties/{partyId}/kyc/{checkId}/details:
+    parameters:
+      - { name: partyId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: checkId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: readKycDetails
+      x-permission: compliance.kyc.read-details
+      x-feature: module.compliance
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/KycDetails" }
+        <<: *problems
+  /api/v1/compliance/parties/{partyId}/habeas-export:
+    parameters:
+      - { name: partyId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: exportHabeas
+      x-permission: compliance.habeas.export
+      x-feature: module.compliance
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HabeasRecord" }
+        <<: *problems
+  /api/v1/compliance/parties/{partyId}/suppression-requests:
+    parameters:
+      - { name: partyId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: requestSuppression
+      x-permission: compliance.habeas.suppress
+      x-feature: module.compliance
+      responses:
+        "201":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuppressionCreated" }
+        <<: *problems
+  /api/v1/compliance/suppression-requests:
+    get:
+      operationId: listSuppressions
+      x-permission: compliance.habeas.suppress
+      x-feature: module.compliance
+      parameters:
+        - { name: cursor, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: limit, in: query, schema: { type: integer, format: int32, minimum: 1, maximum: 200 } }
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SuppressionPage" }
+        <<: *problems
+  /api/v1/compliance/suppression-requests/{requestId}/resolve:
+    parameters:
+      - { name: requestId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: resolveSuppression
+      x-permission: compliance.habeas.suppress
+      x-feature: module.compliance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResolveSuppression" }
+      responses:
+        "204": { description: Hecho. }
+        <<: *problems
+  /api/v1/compliance/complaints:
+    get:
+      operationId: listComplaints
+      x-permission: compliance.complaint.manage
+      x-feature: module.compliance
+      parameters:
+        - { name: cursor, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: limit, in: query, schema: { type: integer, format: int32, minimum: 1, maximum: 200 } }
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ComplaintPage" }
+        <<: *problems
+    post:
+      operationId: createComplaint
+      x-permission: compliance.complaint.manage
+      x-feature: module.compliance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/CreateComplaint" }
+      responses:
+        "201":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Complaint" }
+        <<: *problems
+  /api/v1/compliance/complaints/{complaintId}/start:
+    parameters:
+      - { name: complaintId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: startComplaint
+      x-permission: compliance.complaint.manage
+      x-feature: module.compliance
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Complaint" }
+        <<: *problems
+  /api/v1/compliance/complaints/{complaintId}/resolve:
+    parameters:
+      - { name: complaintId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: resolveComplaint
+      x-permission: compliance.complaint.manage
+      x-feature: module.compliance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResolveComplaint" }
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Complaint" }
+        <<: *problems
+components:
+  responses:
+    Problem:
+      description: Error.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+  schemas:
+    Problem:
+      type: object
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer, format: int32 }
+        detail: { type: string }
+        traceId: { type: string }
+    KycCheck:
+      type: object
+      required: [id, partyId, approved, source, checkedOn, hasDetails]
+      properties:
+        id: { type: string, format: uuid }
+        partyId: { type: string, format: uuid }
+        approved: { type: boolean }
+        source: { type: string }
+        checkedOn: { type: string, format: date }
+        hasDetails: { type: boolean }
+    KycStatus:
+      type: object
+      required: [approved, stale, checks]
+      properties:
+        approved: { type: boolean }
+        stale: { type: boolean, description: La última verificación corresponde a otro documento. }
+        checks: { type: array, items: { $ref: "#/components/schemas/KycCheck" } }
+    RecordKyc:
+      type: object
+      additionalProperties: false
+      required: [approved, source, checkedOn]
+      properties:
+        approved: { type: boolean }
+        source: { type: string, minLength: 2, maxLength: 200 }
+        checkedOn: { type: string, format: date }
+        details: { type: string, maxLength: 4000 }
+    KycDetails:
+      type: object
+      required: [details]
+      properties:
+        details: { type: string }
+    HabeasConsent:
+      type: object
+      required: [status, purpose, textVersion, consentDate]
+      properties:
+        status: { type: string }
+        purpose: { type: string }
+        textVersion: { type: string }
+        consentDate: { type: string }
+    HabeasRecord:
+      type: object
+      required: [kind, name, documentType, documentLast4, consents]
+      properties:
+        kind: { type: string }
+        name: { type: string }
+        documentType: { type: string }
+        documentLast4: { type: string }
+        email: { type: string }
+        phone: { type: string }
+        address: { type: string }
+        city: { type: string }
+        consents: { type: array, items: { $ref: "#/components/schemas/HabeasConsent" } }
+    SuppressionCreated:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string, format: uuid }
+    Suppression:
+      type: object
+      required: [id, partyId, status, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        partyId: { type: string, format: uuid }
+        status: { type: string, enum: [requested, accepted, denied] }
+        resolution: { type: string }
+        createdAt: { type: string, format: date-time }
+    SuppressionPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Suppression" } }
+        nextCursor: { type: string }
+    ResolveSuppression:
+      type: object
+      additionalProperties: false
+      required: [accepted, resolution]
+      properties:
+        accepted: { type: boolean }
+        resolution: { type: string, minLength: 3, maxLength: 2000 }
+    ComplaintStatus: { type: string, enum: [received, in_progress, resolved] }
+    Complaint:
+      type: object
+      required: [id, channel, subject, description, status, receivedOn, version]
+      properties:
+        id: { type: string, format: uuid }
+        partyId: { type: string, format: uuid }
+        channel: { type: string }
+        subject: { type: string }
+        description: { type: string }
+        status: { $ref: "#/components/schemas/ComplaintStatus" }
+        resolution: { type: string }
+        receivedOn: { type: string, format: date }
+        version: { type: integer, format: int32 }
+    ComplaintPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Complaint" } }
+        nextCursor: { type: string }
+    CreateComplaint:
+      type: object
+      additionalProperties: false
+      required: [channel, subject, description, receivedOn]
+      properties:
+        partyId: { type: string, format: uuid }
+        channel: { type: string, minLength: 2, maxLength: 60 }
+        subject: { type: string, minLength: 3, maxLength: 200 }
+        description: { type: string, minLength: 3, maxLength: 4000 }
+        receivedOn: { type: string, format: date }
+    ResolveComplaint:
+      type: object
+      additionalProperties: false
+      required: [resolution]
+      properties:
+        resolution: { type: string, minLength: 3, maxLength: 4000 }

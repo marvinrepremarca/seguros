@@ -25,15 +25,21 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/modules/catalog"
 	"github.com/marvinrepremarca/seguros/internal/modules/claims"
 	"github.com/marvinrepremarca/seguros/internal/modules/commissions"
+	"github.com/marvinrepremarca/seguros/internal/modules/compliance"
 	"github.com/marvinrepremarca/seguros/internal/modules/crm"
+	"github.com/marvinrepremarca/seguros/internal/modules/documents"
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/keycloak"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/oidc"
+	"github.com/marvinrepremarca/seguros/internal/modules/integrations"
+	integrationsapp "github.com/marvinrepremarca/seguros/internal/modules/integrations/app"
+	"github.com/marvinrepremarca/seguros/internal/modules/notifications"
 	"github.com/marvinrepremarca/seguros/internal/modules/parties"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies"
 	"github.com/marvinrepremarca/seguros/internal/modules/quoting"
 	"github.com/marvinrepremarca/seguros/internal/modules/renewals"
+	"github.com/marvinrepremarca/seguros/internal/modules/reporting"
 	"github.com/marvinrepremarca/seguros/internal/modules/tenancy"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/authz"
@@ -167,13 +173,27 @@ func run() error {
 	if err != nil {
 		return err
 	}
+	complianceMod := compliance.New(compliance.Deps{DB: database, Audit: recorder, Outbox: outbox.NewWriter(clock), Parties: partiesMod.Compliance, Cipher: cipher, Checker: flags.NewOpenFeatureChecker(openfeature.NewClient(flags.ProviderName)), Policy: policy, Clock: clock, Logger: logger})
 	policiesMod := policies.New(policies.Deps{
 		DB: database, Audit: recorder, Outbox: outbox.NewWriter(clock), Parties: partiesMod.Directory,
 		Catalog: catalogMod.Directory, Schemas: catalogMod.Schemas, Users: identityMod.Directory,
-		Flags: evaluator, Policy: policy, Clock: clock, Logger: logger,
+		Flags: evaluator, Kyc: complianceMod.Statuses, Policy: policy, Clock: clock, Logger: logger,
 	})
 
 	var spa http.Handler
+	docsCfg, err := config.LoadDocuments(os.LookupEnv, cfg.Env)
+	if err != nil {
+		return err
+	}
+	storage, err := documents.NewStorage(documents.S3Config{Endpoint: docsCfg.S3Endpoint, PublicEndpoint: docsCfg.S3PublicEndpoint, AccessKey: docsCfg.S3AccessKey.Reveal(), SecretKey: docsCfg.S3SecretKey.Reveal(), Bucket: docsCfg.S3Bucket, TLS: docsCfg.S3TLS})
+	if err != nil {
+		return err
+	}
+	// Sin almacenamiento la carga falla, pero el resto de la API sigue atendiendo.
+	if err := storage.EnsureBucket(ctx); err != nil {
+		logger.WarnContext(ctx, "almacenamiento de documentos no disponible", "error", err)
+	}
+	documentsMod := documents.New(documents.Deps{DB: database, Audit: recorder, Storage: storage, Scanner: documents.NewScanner(docsCfg.ClamdAddr), Cipher: cipher, Checker: flags.NewOpenFeatureChecker(openfeature.NewClient(flags.ProviderName)), Policy: policy, Clock: clock, Logger: logger, MaxBytes: docsCfg.MaxBytes, RetentionDays: docsCfg.RetentionDays, DownloadTTL: docsCfg.DownloadTTL})
 	if cfg.HTTP.SPADir != "" {
 		spa, err = httpx.NewSPAHandler(os.DirFS(cfg.HTTP.SPADir), logger)
 		if err != nil {
@@ -200,7 +220,14 @@ func run() error {
 		Crm:         crm.New(crm.Deps{DB: database, Audit: recorder, Scope: partiesMod.Scope, Users: identityMod.Directory, Checker: flags.NewOpenFeatureChecker(openfeature.NewClient(flags.ProviderName)), Policy: policy, Clock: clock, Logger: logger}),
 		Quoting:     quoting.New(quoting.Deps{DB: database, Audit: recorder, Outbox: outbox.NewWriter(clock), Scope: partiesMod.Scope, Parties: partiesMod.Directory, Users: identityMod.Directory, Catalog: catalogMod.Directory, Schemas: catalogMod.Schemas, Lines: catalogMod.LineSchemas, Checker: flags.NewOpenFeatureChecker(openfeature.NewClient(flags.ProviderName)), Policy: policy, Clock: clock, Logger: logger}),
 		Claims:      claims.New(claims.Deps{DB: database, Audit: recorder, Outbox: outbox.NewWriter(clock), Policies: policiesMod.Directory, Parties: partiesMod.Directory, Cipher: cipher, Checker: flags.NewOpenFeatureChecker(openfeature.NewClient(flags.ProviderName)), Policy: policy, Clock: clock, Logger: logger}),
-		SPA:         spa,
+		Compliance:  complianceMod,
+		Documents:   documentsMod,
+		// La API solo consulta y reencola la bandeja; el worker es quien envía.
+		Notifications:    notifications.New(notifications.Deps{DB: database, Audit: recorder, Checker: flags.NewOpenFeatureChecker(openfeature.NewClient(flags.ProviderName)), Policy: policy, Clock: clock, Logger: logger}),
+		Reporting:        reporting.New(reporting.Deps{DB: database, Checker: flags.NewOpenFeatureChecker(openfeature.NewClient(flags.ProviderName)), Policy: policy, Clock: clock, Logger: logger}),
+		Integrations:     integrations.New(integrations.Deps{DB: database, Connectors: integrationConnectors(cfg.Env), Checker: flags.NewOpenFeatureChecker(openfeature.NewClient(flags.ProviderName)), Policy: policy, Clock: clock, Logger: logger}),
+		DocumentMaxBytes: docsCfg.MaxBytes,
+		SPA:              spa,
 	})
 	if err != nil {
 		return err
@@ -253,4 +280,13 @@ func healthcheck() error {
 		return errors.New("estado " + resp.Status)
 	}
 	return nil
+}
+
+// integrationConnectors registra las aseguradoras. El simulador nunca llega a staging ni producción:
+// sus valores no son ofertas.
+func integrationConnectors(env config.Env) []integrationsapp.Connector {
+	if env.IsProductionLike() {
+		return nil
+	}
+	return []integrationsapp.Connector{integrations.SimulatorConnector()}
 }

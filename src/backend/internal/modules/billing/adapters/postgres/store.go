@@ -60,6 +60,22 @@ func (s *Store) Bind(ctx context.Context, tx pgx.Tx) (app.UnitOfWork, error) {
 	return &unitOfWork{tx: tx, store: s, repo: &repository{q: billingsqlc.New(tx), tenant: uuid.UUID(tenant), clock: s.clock}}, nil
 }
 
+// TenantsWithInstallmentsDueOn lista los tenants con cuotas por recordar (función SECURITY DEFINER, solo worker).
+func (s *Store) TenantsWithInstallmentsDueOn(ctx context.Context, dates []kernel.Date) ([]kernel.TenantID, error) {
+	var out []kernel.TenantID
+	err := s.db.WithoutTenantTx(ctx, func(tx pgx.Tx) error {
+		ids, err := billingsqlc.New(tx).TenantsWithInstallmentsDueOn(ctx, dates)
+		if err != nil {
+			return fmt.Errorf("billing: tenants con cuotas por recordar: %w", err)
+		}
+		for _, id := range ids {
+			out = append(out, kernel.TenantID(id))
+		}
+		return nil
+	})
+	return out, err
+}
+
 // TenantsWithDue lista los tenants con cuotas por revisar (función SECURITY DEFINER, solo worker).
 func (s *Store) TenantsWithDue(ctx context.Context, today kernel.Date) ([]kernel.TenantID, error) {
 	var out []kernel.TenantID
@@ -410,4 +426,16 @@ func (r *repository) SetLeadDays(ctx context.Context, days int32, at time.Time) 
 		return fmt.Errorf("billing: guardando días de anticipación: %w", err)
 	}
 	return nil
+}
+
+func (r *repository) InstallmentsDueOn(ctx context.Context, dates []kernel.Date) ([]app.DueInstallment, error) {
+	rows, err := r.q.InstallmentsDueOn(ctx, billingsqlc.InstallmentsDueOnParams{TenantID: r.tenant, Dates: dates})
+	if err != nil {
+		return nil, fmt.Errorf("billing: cuotas por recordar: %w", err)
+	}
+	out := make([]app.DueInstallment, 0, len(rows))
+	for _, x := range rows {
+		out = append(out, app.DueInstallment{InstallmentID: x.ID, PolicyID: x.PolicyID, DueDate: x.DueDate})
+	}
+	return out, nil
 }

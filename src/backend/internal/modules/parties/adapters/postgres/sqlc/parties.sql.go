@@ -135,6 +135,23 @@ func (q *Queries) GetPartyDocument(ctx context.Context, arg GetPartyDocumentPara
 	return i, err
 }
 
+const getPartyDocumentIndex = `-- name: GetPartyDocumentIndex :one
+SELECT document_bidx FROM parties.parties WHERE tenant_id = $1 AND id = $2
+`
+
+type GetPartyDocumentIndexParams struct {
+	TenantID uuid.UUID
+	ID       uuid.UUID
+}
+
+// Huella del documento vigente: liga el KYC al documento (ADR 0012).
+func (q *Queries) GetPartyDocumentIndex(ctx context.Context, arg GetPartyDocumentIndexParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getPartyDocumentIndex, arg.TenantID, arg.ID)
+	var document_bidx []byte
+	err := row.Scan(&document_bidx)
+	return document_bidx, err
+}
+
 const insertConsent = `-- name: InsertConsent :exec
 INSERT INTO parties.consents (id, tenant_id, party_id, status, purpose, text_version, consent_date, recorded_at, recorded_by)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)

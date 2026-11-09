@@ -18,6 +18,7 @@ Toda decisión que cambie stack, fronteras de módulo, modelo de datos compartid
 | 0010 | Política de licencias: solo MIT/BSD/Apache/MPL/PostgreSQL; sin ediciones Pro/Enterprise; SeaweedFS en vez de MinIO; OpenBao en vez de Vault; Docker Desktop permitido mientras la empresa esté bajo el umbral de licencia (<250 empleados y <USD 10M) | Reemplazado parcialmente por 0011 |
 | [0011](0011-politica-de-licencias-sin-pago-por-uso.md) | Política de licencias por intención: sin pago por uso y sin obligaciones sobre el código propio | Aceptado |
 | [0012](0012-flags-que-activan-controles.md) | Flags que activan controles regulatorios: bloquear si no se pueden evaluar | Aceptado |
+| [0013](0013-reporting-documentos-y-dependencias-fase-5.md) | Reporting en vivo, archivos sensibles por la API y dependencias de la Fase 5 | Aceptado |
 
 Las justificaciones de 0001–0009 están en [ARCHITECTURE.md](../architecture/ARCHITECTURE.md); escribe archivos individuales cuando alguna se revise.
 

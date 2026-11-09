@@ -113,3 +113,11 @@ SELECT lead_days FROM billing.payment_settings WHERE tenant_id = @tenant_id;
 -- name: SetLeadDays :exec
 INSERT INTO billing.payment_settings (tenant_id, lead_days, updated_at, updated_by) VALUES (@tenant_id, @lead_days, @at, @actor)
 ON CONFLICT (tenant_id) DO UPDATE SET lead_days = EXCLUDED.lead_days, updated_at = EXCLUDED.updated_at, updated_by = EXCLUDED.updated_by;
+
+-- name: InstallmentsDueOn :many
+SELECT i.id, i.due_date, p.policy_id FROM billing.plans p
+JOIN billing.installments i ON i.tenant_id = p.tenant_id AND i.plan_id = p.id
+WHERE p.tenant_id = @tenant_id AND i.status = 'pending' AND i.due_date = ANY (@dates::date[]);
+
+-- name: TenantsWithInstallmentsDueOn :many
+SELECT r.tenant_id::uuid AS tenant_id FROM billing.tenants_with_installments_due_on(@dates::date[]) AS r;

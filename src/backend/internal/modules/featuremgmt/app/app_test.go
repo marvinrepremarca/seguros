@@ -356,7 +356,10 @@ func TestListTenantFlags(t *testing.T) {
 	for _, v := range views {
 		byKey[v.Definition.Key] = v
 	}
-	assert.Len(t, views, 6)
+	assert.Len(t, views, 5, "los kill switches no se muestran a la agencia")
+	for _, v := range views {
+		assert.NotEqual(t, flags.KindOps, v.Definition.Kind)
+	}
 	assert.Equal(t, flags.Resolution{Enabled: true, Source: flags.SourceOverride}, byKey["module.commissions"].Resolution)
 	require.NotNil(t, byKey["module.commissions"].Override)
 	assert.Equal(t, "add-on comisiones", byKey["module.commissions"].Override.Reason)

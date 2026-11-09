@@ -97,3 +97,7 @@ SELECT @tenant_id, id, version, @from_agent, @to_agent, @reason, @actor, @update
 -- name: InsertResponsibleHistory :exec
 INSERT INTO parties.party_responsible_history (tenant_id, party_id, party_version, previous_agent_id, new_agent_id, reason, note, changed_by, changed_at)
 VALUES (@tenant_id, @party_id, @party_version, @previous_agent_id, @new_agent_id, @reason, @note, @actor, @changed_at);
+
+-- name: GetPartyDocumentIndex :one
+-- Huella del documento vigente: liga el KYC al documento (ADR 0012).
+SELECT document_bidx FROM parties.parties WHERE tenant_id = @tenant_id AND id = @id;

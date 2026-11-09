@@ -76,6 +76,10 @@ func (r *Runner) Modules() ([]string, error) {
 		}
 	}
 	slices.Sort(mods)
+	// Las vistas de reporting leen los esquemas de los demás módulos: siempre al final.
+	if i := slices.Index(mods, "reporting"); i >= 0 {
+		mods = append(slices.Delete(mods, i, i+1), "reporting")
+	}
 	return mods, nil
 }
 

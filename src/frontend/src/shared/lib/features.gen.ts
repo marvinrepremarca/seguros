@@ -35,6 +35,11 @@ export const features = {
   reporting: {
     module: "module.reporting",
   },
+  ops: {
+    integrations: {
+      simulator: "ops.integrations.simulator",
+    },
+  },
 } as const;
 
 export const featureKeys = [
@@ -49,6 +54,7 @@ export const featureKeys = [
   "module.quoting",
   "module.renewals",
   "module.reporting",
+  "ops.integrations.simulator",
 ] as const;
 
 export type FeatureKey = (typeof featureKeys)[number];

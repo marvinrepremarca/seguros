@@ -39,6 +39,10 @@ func (s *ListTenantFlagsHandler) Handle(ctx context.Context) ([]FlagView, error)
 		state := flags.State{Global: global, Overrides: enabledMap(overrides)}
 		for _, k := range s.reg.Keys() {
 			def, _ := s.reg.Get(k)
+			// Un kill switch es de operaciones, global: la agencia no lo ve ni lo cambia.
+			if def.Kind == flags.KindOps {
+				continue
+			}
 			v := FlagView{Definition: def, Resolution: flags.Evaluate(s.reg, state, info.Plan, k)}
 			if o, ok := overrides[k]; ok {
 				v.Override = &o

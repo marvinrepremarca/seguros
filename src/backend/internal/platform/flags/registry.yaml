@@ -95,3 +95,9 @@ flags:
     owner: integrations
     default: false
     plans: [empresarial]
+
+  - key: ops.integrations.simulator
+    kind: ops
+    description: Kill switch de la aseguradora simulada (solo existe fuera de staging y producción)
+    owner: integrations
+    default: true

@@ -1,0 +1,74 @@
+openapi: 3.0.3
+info:
+  title: Seguros — Notificaciones
+  version: 1.0.0
+  description: Bandeja de salida de los avisos a clientes.
+servers:
+  - url: /
+x-problems: &problems
+  "400": { $ref: "#/components/responses/Problem" }
+  "401": { $ref: "#/components/responses/Problem" }
+  "403": { $ref: "#/components/responses/Problem" }
+  "404": { $ref: "#/components/responses/Problem" }
+  "409": { $ref: "#/components/responses/Problem" }
+paths:
+  /api/v1/notifications/messages:
+    get:
+      operationId: listMessages
+      x-permission: notifications.message.read
+      x-feature: module.notifications
+      parameters:
+        - { name: cursor, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: limit, in: query, schema: { type: integer, format: int32, minimum: 1, maximum: 200 } }
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/MessagePage" }
+        <<: *problems
+  /api/v1/notifications/messages/{messageId}/retry:
+    parameters:
+      - { name: messageId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: retryMessage
+      x-permission: notifications.message.manage
+      x-feature: module.notifications
+      responses:
+        "204": { description: Hecho. }
+        <<: *problems
+components:
+  responses:
+    Problem:
+      description: Error.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+  schemas:
+    Problem:
+      type: object
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer, format: int32 }
+        detail: { type: string }
+        traceId: { type: string }
+    Message:
+      type: object
+      required: [id, template, channel, policyId, status, attempts, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        template: { type: string }
+        channel: { type: string }
+        policyId: { type: string, format: uuid }
+        status: { type: string, enum: [pending, sent, failed, skipped] }
+        skipReason: { type: string, enum: [no_email, consent_revoked, no_recipient] }
+        attempts: { type: integer, format: int32 }
+        createdAt: { type: string, format: date-time }
+        sentAt: { type: string, format: date-time }
+    MessagePage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Message" } }
+        nextCursor: { type: string }

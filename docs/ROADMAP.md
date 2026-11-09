@@ -122,7 +122,20 @@ Abiertos de construcción (2026-11-05):
 - **UI:** la oferta registra una cobertura desde el formulario (la API admite 20); asegurados distintos del tomador solo por API.
 
 ## Fase 5 — Transversales
-**Compliance → Documents → Notifications → Reporting → Integrations.Insurers** (una aseguradora piloto primero).
+**Compliance → Documents → Notifications → Reporting → Integrations.Insurers** (una aseguradora piloto primero). Decisiones N33–N37.
+
+Auditorías (2026-11-05), corregidos: archivos sensibles cifrados en la aplicación y servidos por la API (Alto, ADR 0013), soportes de siniestro siempre sensibles y `Operations` carga sensibles sin poder leerlos (Alto), capas de `integrations`/`reporting`, `make arch` ya falla con avisos, correos duplicados entre jobs (reclamo con `SKIP LOCKED`) y espera entre intentos, límite de frecuencia en archivos y exportes, lectura de KYC auditada y resultado fuera del evento y la bitácora, `ContactView` mínimo, `reporting` migra de último, recordatorio por fecha de Bogotá, nombre sin caracteres de control en correos, kill switches ocultos a la agencia.
+
+Abiertos:
+- **Legal, antes de la Fase 6:** no enviar avisos tras una revocación, y una supresión aceptada no detiene los correos si no se registra además la revocación (N35).
+- **Medios de seguridad:** `result` y `source` de KYC siguen sin cifrar de campo; `Operations` y `ComplianceOfficer` leen soportes no sensibles sin permiso sobre el registro dueño; no se valida que el dueño de un documento exista; sin reclasificar un documento ya cargado; el archivo queda varias veces en memoria al validar el contrato (multipart); faltan casos de 404 entre tenants por endpoint en `complianceapi` con el directorio real.
+- **Medios de arquitectura:** API y worker no arrancan sin la configuración de S3, ClamAV y SMTP aunque esos módulos estén apagados (ARCHITECTURE §1.2); llamada síncrona a la aseguradora sin retry (definir antes del piloto); `KycCheck`, `Document`, `Version` y `Message` sin encapsular en dominio; protocolo de migración de columnas usadas por vistas de `reporting` sin prueba.
+- **Bajos:** plazo de 2 min de carga antes de autenticar; `PartyID` de PQR sin validar; breaker compartido entre tenants; `sales-deps` importa claims; servicios `app` con varias operaciones; ClamAV de desarrollo sin `*hardening`; worker construye `parties`/`policies` con dependencias nil.
+- **Documents:** archivos no sensibles sin cifrado propio en S3 (solo disco, falta SSE); `SalesAgent` sin acceso; certificados y duplicados (N9) sin generar; lista de control de siniestros (N30) separada.
+- **Notifications:** plantillas en código; T1 fijo; remitente único por entorno; `messages` sin particionar; un fallo entre enviar y marcar puede repetir un correo.
+- **Reporting:** consulta en vivo; una línea de liquidación sin póliza no cuenta como recibida; fórmulas por validar (N36).
+- **Integrations:** sin conector real ni uso desde Quoting; proveedor de listas (N33) pendiente.
+- **Despliegue:** `SEGUROS_S3_*`, `SEGUROS_CLAMD_ADDR` y `SEGUROS_SMTP_*` obligatorias en api y worker; worker ahora necesita las llaves de cifrado; ClamAV ~2 GiB; no hay compose de producción con ClamAV.
 
 ## Fase 6 — Endurecimiento y salida a producción
 Pruebas k6 (objetivos en testing.md), ZAP, restauración de backup probada, runbooks, despliegue en VPS, monitoreo y alertas, onboarding del primer tenant real.
@@ -138,7 +151,7 @@ Pruebas k6 (objetivos en testing.md), ZAP, restauración de backup probada, runb
 | Fase 2 | ✅ Hecho | 2026-11-04 | Previos ✅ (CSP de la SPA, auditoría de tenants) · ADR 0012 ✅ · `parties` ✅ · `catalog` ✅ · `policies` ✅ · UI ✅. DoD verificada: make check, integración (`-p 1`), pnpm check, E2E (`make e2e-full`, bajo la CSP real). Sin hallazgos Altos/Críticos abiertos; Medios y Bajos arriba. Transiciones de mora y renovación: sin endpoint hasta la Fase 3, probadas en dominio y persistencia |
 | Fase 3 | ✅ Hecho | 2026-11-05 | `billing` ✅ · `commissions` ✅ · `renewals` ✅ · decisiones N14–N26. Verificado: make check, integración, pnpm check, E2E (`make e2e-full`). Sin Críticos ni Altos abiertos en la última auditoría. **Excepción aceptada por el dueño del producto:** cobertura de `domain` bajo 90 % (billing 86,9 %, commissions 84,6 %), sobre todo ramas de error defensivas. Medios y Bajos arriba |
 | Fase 4 | ✅ Hecho | 2026-11-05 | `crm` ✅ · `quoting` ✅ · `claims` ✅ · decisiones N27–N32. Verificado: make check, integración, pnpm check, E2E. Sin Críticos ni Altos abiertos; Medios y Bajos arriba |
-| Fase 5 | ⬜ Pendiente | | |
+| Fase 5 | 🟨 En curso | 2026-11-05 | `compliance` ✅ · `documents` ✅ · `notifications` ✅ · `reporting` ✅ · `integrations` (capa y simulador) ✅. Falta la aseguradora piloto y el conector real; ADR 0013 y N34 aceptados; N35–N36 por validar. Medios abiertos arriba |
 | Fase 6 | ⬜ Pendiente | | |
 
 Estados: ⬜ Pendiente · 🟨 En curso · ✅ Hecho (DoD verificada) · ⛔ Bloqueado (indicar motivo).

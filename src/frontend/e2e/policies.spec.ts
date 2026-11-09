@@ -173,6 +173,7 @@ test("un asesor no ve acciones de operación", async ({ page }) => {
 });
 
 test("un asesor solo ve los clientes que registró", async ({ browser }) => {
+  test.setTimeout(90_000); // dos ingresos y tres registros; falla por tiempo, en pasos distintos, con 30 s
   const suffix = String(Date.now()).slice(-8);
   const register = async (page: Page, name: string, cc: string) => {
     await goTo(page, "Clientes");

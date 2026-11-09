@@ -1,6 +1,8 @@
 // Composición: crm, quoting y claims reciben de aquí lo que usan de otros módulos.
 import { insurersQuery, linesQuery, riskSchemasQuery } from "@/modules/catalog";
-import type { ClaimsDeps } from "@/modules/claims";
+import { claimOptionsQuery, type ClaimsDeps } from "@/modules/claims";
+import type { ComplianceDeps } from "@/modules/compliance";
+import type { DocumentsDeps } from "@/modules/documents";
 import type { CrmDeps } from "@/modules/crm";
 import { PartyPicker } from "@/modules/parties";
 import {
@@ -25,3 +27,11 @@ export const quotingDeps: QuotingDeps = {
 };
 
 export const claimsDeps: ClaimsDeps = { policies: policyOptionsQuery() };
+
+export const complianceDeps: ComplianceDeps = { PartyPicker };
+
+export const documentsDeps: DocumentsDeps = {
+  PartyPicker,
+  policies: policyOptionsQuery(),
+  claims: claimOptionsQuery(),
+};
