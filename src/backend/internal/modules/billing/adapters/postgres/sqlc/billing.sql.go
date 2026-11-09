@@ -324,6 +324,43 @@ func (q *Queries) InsertPlan(ctx context.Context, arg InsertPlanParams) error {
 	return err
 }
 
+const installmentsDueOn = `-- name: InstallmentsDueOn :many
+SELECT i.id, i.due_date, p.policy_id FROM billing.plans p
+JOIN billing.installments i ON i.tenant_id = p.tenant_id AND i.plan_id = p.id
+WHERE p.tenant_id = $1 AND i.status = 'pending' AND i.due_date = ANY ($2::date[])
+`
+
+type InstallmentsDueOnParams struct {
+	TenantID uuid.UUID
+	Dates    []kernel.Date
+}
+
+type InstallmentsDueOnRow struct {
+	ID       uuid.UUID
+	DueDate  kernel.Date
+	PolicyID uuid.UUID
+}
+
+func (q *Queries) InstallmentsDueOn(ctx context.Context, arg InstallmentsDueOnParams) ([]InstallmentsDueOnRow, error) {
+	rows, err := q.db.Query(ctx, installmentsDueOn, arg.TenantID, arg.Dates)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []InstallmentsDueOnRow{}
+	for rows.Next() {
+		var i InstallmentsDueOnRow
+		if err := rows.Scan(&i.ID, &i.DueDate, &i.PolicyID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listActivities = `-- name: ListActivities :many
 SELECT id, channel, note, created_at, created_by FROM billing.collection_activities
 WHERE tenant_id = $1 AND plan_id = $2 ORDER BY id DESC LIMIT 200
@@ -748,6 +785,30 @@ SELECT r.tenant_id::uuid AS tenant_id FROM billing.tenants_with_due_installments
 
 func (q *Queries) TenantsWithDueInstallments(ctx context.Context, today kernel.Date) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, tenantsWithDueInstallments, today)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []uuid.UUID{}
+	for rows.Next() {
+		var tenant_id uuid.UUID
+		if err := rows.Scan(&tenant_id); err != nil {
+			return nil, err
+		}
+		items = append(items, tenant_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const tenantsWithInstallmentsDueOn = `-- name: TenantsWithInstallmentsDueOn :many
+SELECT r.tenant_id::uuid AS tenant_id FROM billing.tenants_with_installments_due_on($1::date[]) AS r
+`
+
+func (q *Queries) TenantsWithInstallmentsDueOn(ctx context.Context, dates []kernel.Date) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, tenantsWithInstallmentsDueOn, dates)
 	if err != nil {
 		return nil, err
 	}

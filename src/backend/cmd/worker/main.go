@@ -20,14 +20,19 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/modules/billing"
 	"github.com/marvinrepremarca/seguros/internal/modules/catalog"
 	"github.com/marvinrepremarca/seguros/internal/modules/commissions"
+	"github.com/marvinrepremarca/seguros/internal/modules/crm"
+	"github.com/marvinrepremarca/seguros/internal/modules/documents"
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
+	"github.com/marvinrepremarca/seguros/internal/modules/notifications"
 	"github.com/marvinrepremarca/seguros/internal/modules/parties"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies"
+	"github.com/marvinrepremarca/seguros/internal/modules/quoting"
 	"github.com/marvinrepremarca/seguros/internal/modules/renewals"
 	"github.com/marvinrepremarca/seguros/internal/modules/tenancy"
 	tenancycontracts "github.com/marvinrepremarca/seguros/internal/modules/tenancy/contracts"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/config"
+	"github.com/marvinrepremarca/seguros/internal/platform/crypto"
 	"github.com/marvinrepremarca/seguros/internal/platform/db"
 	"github.com/marvinrepremarca/seguros/internal/platform/flags"
 	"github.com/marvinrepremarca/seguros/internal/platform/jobs"
@@ -133,6 +138,9 @@ func run() error {
 	}
 	consumers = append(consumers, commissions.Consumers(database, audit.NewRecorder(clock), catalogMod.Directory, clock)...)
 	consumers = append(consumers, renewals.Consumers(database, audit.NewRecorder(clock), outbox.NewWriter(clock), clock)...)
+	consumers = append(consumers, crm.Consumers(database, audit.NewRecorder(clock), clock)...)
+	consumers = append(consumers, quoting.Consumers(audit.NewRecorder(clock))...)
+	consumers = append(consumers, notifications.Consumers(database, audit.NewRecorder(clock), clock)...)
 	for _, c := range consumers {
 		if err := dispatcher.Register(c); err != nil {
 			return err
@@ -146,6 +154,35 @@ func run() error {
 	periodic = append(periodic, policies.RegisterJobs(workers, database, audit.NewRecorder(clock), outbox.NewWriter(clock), clock)...)
 	periodic = append(periodic, billing.RegisterJobs(workers, database, audit.NewRecorder(clock), outbox.NewWriter(clock), evaluator, tenantPlans{dir: tenants.Directory}, clock, logger)...)
 	periodic = append(periodic, renewals.RegisterJobs(workers, database, audit.NewRecorder(clock), outbox.NewWriter(clock), evaluator, tenantPlans{dir: tenants.Directory}, clock, logger)...)
+	cryptoCfg, err := config.LoadCrypto(os.LookupEnv, cfg.Env)
+	if err != nil {
+		return err
+	}
+	keyWrapper, err := crypto.NewWrapper(cryptoCfg)
+	if err != nil {
+		return err
+	}
+	docCipher, err := crypto.NewService(database, keyWrapper, cryptoCfg.IndexKey.Reveal(), clock)
+	if err != nil {
+		return err
+	}
+	docsCfg, err := config.LoadDocuments(os.LookupEnv, cfg.Env)
+	if err != nil {
+		return err
+	}
+	storage, err := documents.NewStorage(documents.S3Config{Endpoint: docsCfg.S3Endpoint, PublicEndpoint: docsCfg.S3PublicEndpoint, AccessKey: docsCfg.S3AccessKey.Reveal(), SecretKey: docsCfg.S3SecretKey.Reveal(), Bucket: docsCfg.S3Bucket, TLS: docsCfg.S3TLS})
+	if err != nil {
+		return err
+	}
+	periodic = append(periodic, documents.RegisterJobs(workers, documents.Deps{DB: database, Audit: audit.NewRecorder(clock), Storage: storage, Scanner: documents.NewScanner(docsCfg.ClamdAddr), Cipher: docCipher, Clock: clock, Logger: logger, MaxBytes: docsCfg.MaxBytes, RetentionDays: docsCfg.RetentionDays, DownloadTTL: docsCfg.DownloadTTL}, evaluator, tenantPlans{dir: tenants.Directory})...)
+	smtpCfg, err := config.LoadSMTP(os.LookupEnv, cfg.Env)
+	if err != nil {
+		return err
+	}
+	partiesDir := parties.New(parties.Deps{DB: database, Audit: audit.NewRecorder(clock), Clock: clock, Logger: logger})
+	policiesDir := policies.New(policies.Deps{DB: database, Audit: audit.NewRecorder(clock), Outbox: outbox.NewWriter(clock), Clock: clock, Logger: logger})
+	sender := notifications.NewSMTPSender(notifications.SMTPConfig{Addr: smtpCfg.Addr, From: smtpCfg.From, User: smtpCfg.User, Password: smtpCfg.Password.Reveal(), RequireTLS: smtpCfg.RequireTLS})
+	periodic = append(periodic, notifications.RegisterJobs(workers, notifications.Deps{DB: database, Audit: audit.NewRecorder(clock), Sender: sender, Policies: policiesDir.Directory, Parties: partiesDir.Contacts, Clock: clock, Logger: logger}, evaluator, tenantPlans{dir: tenants.Directory})...)
 	riverClient, _, err := jobs.NewWorkerClient(database.Pool(), jobs.WorkerOptions{Workers: workers, Periodic: periodic, Logger: logger})
 	if err != nil {
 		return err

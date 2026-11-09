@@ -43,7 +43,7 @@ lint: ## golangci-lint
 	cd $(BACKEND) && golangci-lint run ./...
 
 arch: ## go-arch-lint (capas) + prueba de fronteras entre módulos
-	cd $(BACKEND) && go-arch-lint check
+	cd $(BACKEND) && out="$$(go-arch-lint check)"; echo "$$out"; echo "$$out" | grep -q "OK - No warnings found"
 	cd $(BACKEND) && go test -count=1 ./test/arch/...
 
 test: ## Pruebas unitarias con -race

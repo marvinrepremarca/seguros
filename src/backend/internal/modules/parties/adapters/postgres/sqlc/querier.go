@@ -12,6 +12,8 @@ type Querier interface {
 	GetParty(ctx context.Context, arg GetPartyParams) (GetPartyRow, error)
 	GetPartyByDocument(ctx context.Context, arg GetPartyByDocumentParams) (GetPartyByDocumentRow, error)
 	GetPartyDocument(ctx context.Context, arg GetPartyDocumentParams) (GetPartyDocumentRow, error)
+	// Huella del documento vigente: liga el KYC al documento (ADR 0012).
+	GetPartyDocumentIndex(ctx context.Context, arg GetPartyDocumentIndexParams) ([]byte, error)
 	InsertConsent(ctx context.Context, arg InsertConsentParams) error
 	InsertParty(ctx context.Context, arg InsertPartyParams) error
 	InsertResponsibleHistory(ctx context.Context, arg InsertResponsibleHistoryParams) error

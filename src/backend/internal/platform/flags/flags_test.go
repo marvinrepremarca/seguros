@@ -34,7 +34,7 @@ func TestEmbeddedRegistryIsValid(t *testing.T) {
 	assert.Equal(t, []flags.Key{flags.CommissionsModule}, reg.Dependents(flags.BillingModule))
 	for _, k := range reg.Keys() {
 		def, _ := reg.Get(k)
-		assert.Equal(t, flags.KindModule, def.Kind, "Fase 1 solo registra módulos")
+		assert.Contains(t, []flags.Kind{flags.KindModule, flags.KindOps}, def.Kind, "módulos y kill switches de integraciones")
 	}
 }
 

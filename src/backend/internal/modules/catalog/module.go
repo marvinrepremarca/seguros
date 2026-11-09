@@ -30,8 +30,10 @@ type Deps struct {
 // Module expone las rutas y las consultas para otros módulos.
 type Module struct {
 	Directory contracts.Directory
-	Schemas   contracts.RiskSchemas
-	server    *cataloghttp.Server
+	// LineSchemas resuelve el esquema de riesgo de un ramo.
+	LineSchemas contracts.LineSchemas
+	Schemas     contracts.RiskSchemas
+	server      *cataloghttp.Server
 }
 
 // New compone el módulo; falla si un esquema de riesgo embebido es inválido.
@@ -42,9 +44,10 @@ func New(d Deps) (*Module, error) {
 	}
 	deps := app.Deps{Store: postgres.NewStore(d.DB, d.Audit, d.Clock), Schemas: schemas}
 	return &Module{
-		Directory: &app.Directory{Deps: deps},
-		Schemas:   schemas,
-		server:    cataloghttp.NewServer(&app.Service{Deps: deps}, schemas, d.Policy, d.Logger),
+		Directory:   &app.Directory{Deps: deps},
+		LineSchemas: &app.Directory{Deps: deps},
+		Schemas:     schemas,
+		server:      cataloghttp.NewServer(&app.Service{Deps: deps}, schemas, d.Policy, d.Logger),
 	}, nil
 }
 

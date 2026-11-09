@@ -9,6 +9,7 @@ import (
 	billing "github.com/marvinrepremarca/seguros/internal/modules/billing/contracts"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies/app"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies/contracts"
+	quoting "github.com/marvinrepremarca/seguros/internal/modules/quoting/contracts"
 	renewals "github.com/marvinrepremarca/seguros/internal/modules/renewals/contracts"
 	"github.com/marvinrepremarca/seguros/internal/platform/kernel"
 	"github.com/marvinrepremarca/seguros/internal/platform/outbox"
@@ -126,6 +127,25 @@ func Renewal(store Binder, clock kernel.Clock) []outbox.Consumer {
 				}
 				return app.MarkNotRenewed(ctx, uow, clock, ev.PolicyID)
 			},
+		},
+	}
+}
+
+// QuoteAccepted crea la póliza de una oferta aceptada (DECISIONS N28). Módulo núcleo: sin flag; el evento
+// solo existe con quoting encendido.
+func QuoteAccepted(store Binder, clock kernel.Clock) outbox.Consumer {
+	return outbox.Consumer{
+		Name: "policies.quote-accepted", Topic: quoting.TopicQuoteAccepted,
+		Handle: func(ctx context.Context, tx pgx.Tx, e outbox.Event) error {
+			var ev quoting.QuoteAccepted
+			if err := e.Decode(&ev); err != nil {
+				return err
+			}
+			uow, err := store.Bind(ctx, tx)
+			if err != nil {
+				return err
+			}
+			return app.CreateFromQuote(ctx, uow, clock, ev)
 		},
 	}
 }

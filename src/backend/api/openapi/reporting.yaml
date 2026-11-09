@@ -1,0 +1,104 @@
+openapi: 3.0.3
+info:
+  title: Seguros — Reportes
+  version: 1.0.0
+  description: Indicadores de la agencia.
+servers:
+  - url: /
+x-problems: &problems
+  "400": { $ref: "#/components/responses/Problem" }
+  "401": { $ref: "#/components/responses/Problem" }
+  "403": { $ref: "#/components/responses/Problem" }
+  "404": { $ref: "#/components/responses/Problem" }
+  "422": { $ref: "#/components/responses/Problem" }
+paths:
+  /api/v1/reporting/kpis:
+    get:
+      operationId: getKpis
+      x-permission: reporting.kpi.read
+      x-feature: module.reporting
+      parameters:
+        - { name: from, in: query, required: true, schema: { type: string, minLength: 10, maxLength: 10 } }
+        - { name: to, in: query, required: true, schema: { type: string, minLength: 10, maxLength: 10 } }
+      responses:
+        "200":
+          description: Solo trae las secciones de los módulos encendidos.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Kpis" }
+        <<: *problems
+components:
+  responses:
+    Problem:
+      description: Error.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+  schemas:
+    Problem:
+      type: object
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer, format: int32 }
+        detail: { type: string }
+        traceId: { type: string }
+    Amount:
+      type: object
+      required: [currency, amount]
+      properties:
+        currency: { type: string }
+        amount: { type: string, format: decimal }
+    Conversion:
+      type: object
+      required: [requests, accepted]
+      properties:
+        requests: { type: integer, format: int32 }
+        accepted: { type: integer, format: int32 }
+    Retention:
+      type: object
+      required: [due, renewed]
+      properties:
+        due: { type: integer, format: int32 }
+        renewed: { type: integer, format: int32 }
+    AgeBucket:
+      type: object
+      required: [bucket, currency, balance]
+      properties:
+        bucket: { type: string, enum: [d0_30, d31_60, d61_90, d90_plus] }
+        currency: { type: string }
+        balance: { type: string, format: decimal }
+    CommissionLine:
+      type: object
+      required: [currency, accrued, received]
+      properties:
+        currency: { type: string }
+        accrued: { type: string, format: decimal }
+        received: { type: string, format: decimal }
+    LossRatio:
+      type: object
+      required: [currency, paid, premium]
+      properties:
+        currency: { type: string }
+        paid: { type: string, format: decimal }
+        premium: { type: string, format: decimal }
+        percentage: { type: string, format: decimal, description: Ausente si no hay primas en el periodo. }
+    PoliciesPerClient:
+      type: object
+      required: [policies, clients]
+      properties:
+        policies: { type: integer, format: int32 }
+        clients: { type: integer, format: int32 }
+    Kpis:
+      type: object
+      required: [premiums, issuanceDays, policiesPerClient]
+      properties:
+        premiums: { type: array, items: { $ref: "#/components/schemas/Amount" } }
+        issuanceDays: { type: string, format: decimal }
+        policiesPerClient: { $ref: "#/components/schemas/PoliciesPerClient" }
+        conversion: { $ref: "#/components/schemas/Conversion" }
+        retention: { $ref: "#/components/schemas/Retention" }
+        overdue: { type: array, items: { $ref: "#/components/schemas/AgeBucket" } }
+        commissions: { type: array, items: { $ref: "#/components/schemas/CommissionLine" } }
+        claimDays: { type: string, format: decimal }
+        lossRatio: { type: array, items: { $ref: "#/components/schemas/LossRatio" } }

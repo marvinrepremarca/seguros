@@ -1,0 +1,204 @@
+openapi: 3.0.3
+info:
+  title: Seguros — Documentos
+  version: 1.0.0
+  description: Gestión documental con versiones, antivirus previo a la descarga y revisión de retención.
+servers:
+  - url: /
+x-problems: &problems
+  "400": { $ref: "#/components/responses/Problem" }
+  "401": { $ref: "#/components/responses/Problem" }
+  "403": { $ref: "#/components/responses/Problem" }
+  "404": { $ref: "#/components/responses/Problem" }
+  "409": { $ref: "#/components/responses/Problem" }
+  "413": { $ref: "#/components/responses/Problem" }
+  "422": { $ref: "#/components/responses/Problem" }
+paths:
+  /api/v1/documents/documents:
+    get:
+      operationId: listDocuments
+      x-permission: documents.document.read
+      x-feature: module.documents
+      parameters:
+        - { name: ownerType, in: query, required: true, schema: { $ref: "#/components/schemas/OwnerType" } }
+        - { name: ownerId, in: query, required: true, schema: { type: string, format: uuid } }
+        - { name: cursor, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: limit, in: query, schema: { type: integer, format: int32, minimum: 1, maximum: 200 } }
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DocumentPage" }
+        <<: *problems
+    post:
+      operationId: uploadDocument
+      x-permission: documents.document.upload
+      x-feature: module.documents
+      parameters:
+        - { name: Idempotency-Key, in: header, schema: { type: string, minLength: 1, maxLength: 100 } }
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: "#/components/schemas/UploadDocument" }
+      responses:
+        "201":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Document" }
+        <<: *problems
+  /api/v1/documents/retention-review:
+    get:
+      operationId: listRetentionDue
+      x-permission: documents.retention.read
+      x-feature: module.documents
+      parameters:
+        - { name: cursor, in: query, schema: { type: string, maxLength: 64 } }
+        - { name: limit, in: query, schema: { type: integer, format: int32, minimum: 1, maximum: 200 } }
+      responses:
+        "200":
+          description: Documentos con el plazo cumplido, para revisión. Nada se borra de forma automática.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DocumentPage" }
+        <<: *problems
+  /api/v1/documents/documents/{documentId}:
+    parameters:
+      - { name: documentId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getDocument
+      x-permission: documents.document.read
+      x-feature: module.documents
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DocumentDetail" }
+        <<: *problems
+  /api/v1/documents/documents/{documentId}/versions:
+    parameters:
+      - { name: documentId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: addDocumentVersion
+      x-permission: documents.document.upload
+      x-feature: module.documents
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: "#/components/schemas/UploadVersion" }
+      responses:
+        "201":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Version" }
+        <<: *problems
+  /api/v1/documents/documents/{documentId}/versions/{versionId}/download:
+    parameters:
+      - { name: documentId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: versionId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: downloadDocumentVersion
+      x-permission: documents.document.read
+      x-feature: module.documents
+      responses:
+        "200":
+          description: URL prefirmada de corta vida.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DownloadLink" }
+        <<: *problems
+  /api/v1/documents/documents/{documentId}/versions/{versionId}/content:
+    parameters:
+      - { name: documentId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: versionId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getDocumentContent
+      x-permission: documents.document.read
+      x-feature: module.documents
+      responses:
+        "200":
+          description: Archivo sensible descifrado; siempre como descarga.
+          headers:
+            Content-Disposition: { schema: { type: string } }
+          content:
+            application/octet-stream:
+              schema: { type: string, format: binary }
+        <<: *problems
+components:
+  responses:
+    Problem:
+      description: Error.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+  schemas:
+    Problem:
+      type: object
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer, format: int32 }
+        detail: { type: string }
+        traceId: { type: string }
+    OwnerType: { type: string, enum: [party, policy, claim] }
+    ScanStatus: { type: string, enum: [pending, clean, infected] }
+    UploadDocument:
+      type: object
+      required: [file, ownerType, ownerId, title]
+      properties:
+        file: { type: string, format: binary }
+        ownerType: { $ref: "#/components/schemas/OwnerType" }
+        ownerId: { type: string, format: uuid }
+        title: { type: string, minLength: 2, maxLength: 200 }
+        sensitive: { type: boolean }
+    UploadVersion:
+      type: object
+      required: [file]
+      properties:
+        file: { type: string, format: binary }
+    Document:
+      type: object
+      required: [id, ownerType, ownerId, title, sensitive, currentNumber, createdOn, retentionUntil, version]
+      properties:
+        id: { type: string, format: uuid }
+        ownerType: { $ref: "#/components/schemas/OwnerType" }
+        ownerId: { type: string, format: uuid }
+        title: { type: string }
+        sensitive: { type: boolean }
+        currentNumber: { type: integer, format: int32 }
+        createdOn: { type: string, format: date }
+        retentionUntil: { type: string, format: date }
+        version: { type: integer, format: int32 }
+    Version:
+      type: object
+      required: [id, number, mimeType, sizeBytes, scanStatus, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        number: { type: integer, format: int32 }
+        mimeType: { type: string }
+        sizeBytes: { type: integer, format: int64 }
+        scanStatus: { $ref: "#/components/schemas/ScanStatus" }
+        createdAt: { type: string, format: date-time }
+    DocumentDetail:
+      type: object
+      required: [document, versions]
+      properties:
+        document: { $ref: "#/components/schemas/Document" }
+        versions: { type: array, items: { $ref: "#/components/schemas/Version" } }
+    DocumentPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: "#/components/schemas/Document" } }
+        nextCursor: { type: string }
+    DownloadLink:
+      type: object
+      required: [url, expiresInSeconds]
+      properties:
+        url: { type: string }
+        expiresInSeconds: { type: integer, format: int32 }

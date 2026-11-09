@@ -11,11 +11,18 @@ export type NavLink =
   | { to: "/configuracion/parametros" }
   | { to: "/cartera" }
   | { to: "/renovaciones" }
+  | { to: "/prospectos" }
+  | { to: "/cotizaciones" }
+  | { to: "/siniestros" }
   | { to: "/comisiones" }
+  | { to: "/cumplimiento" }
+  | { to: "/documentos" }
   | { to: "/configuracion/catalogo" }
   | { to: "/configuracion/traspaso-cartera" }
   | { to: "/configuracion/funcionalidades" }
-  | { to: "/modulos/$modulo"; params: { modulo: string } };
+  | { to: "/notificaciones" }
+  | { to: "/reportes" }
+  | { to: "/integraciones" };
 
 export interface NavItem {
   label: string;
@@ -24,8 +31,6 @@ export interface NavItem {
   /** Basta uno de estos permisos para ver la entrada. */
   permissions?: readonly string[];
 }
-
-const moduleLink = (modulo: string): NavLink => ({ to: "/modulos/$modulo", params: { modulo } });
 
 export interface NavSection {
   title: string;
@@ -52,8 +57,18 @@ export const NAV_SECTIONS: readonly NavSection[] = [
   {
     title: "Venta",
     items: [
-      { label: "Prospectos (CRM)", link: moduleLink("crm"), flag: features.crm.module },
-      { label: "Cotizaciones", link: moduleLink("quoting"), flag: features.quoting.module },
+      {
+        label: "Prospectos (CRM)",
+        link: { to: "/prospectos" },
+        flag: features.crm.module,
+        permissions: [permissions.leadRead, permissions.leadReadOwn],
+      },
+      {
+        label: "Cotizaciones",
+        link: { to: "/cotizaciones" },
+        flag: features.quoting.module,
+        permissions: [permissions.quoteRead, permissions.quoteReadOwn],
+      },
     ],
   },
   {
@@ -71,12 +86,23 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         flag: features.renewals.module,
         permissions: [permissions.renewalRead],
       },
-      { label: "Siniestros", link: moduleLink("claims"), flag: features.claims.module },
-      { label: "Documentos", link: moduleLink("documents"), flag: features.documents.module },
+      {
+        label: "Siniestros",
+        link: { to: "/siniestros" },
+        flag: features.claims.module,
+        permissions: [permissions.claimRead, permissions.claimReadOwn],
+      },
+      {
+        label: "Documentos",
+        link: { to: "/documentos" },
+        flag: features.documents.module,
+        permissions: [permissions.documentRead],
+      },
       {
         label: "Notificaciones",
-        link: moduleLink("notifications"),
+        link: { to: "/notificaciones" },
         flag: features.notifications.module,
+        permissions: [permissions.notificationRead],
       },
     ],
   },
@@ -89,12 +115,23 @@ export const NAV_SECTIONS: readonly NavSection[] = [
         flag: features.commissions.module,
         permissions: [permissions.commissionRead],
       },
-      { label: "Cumplimiento", link: moduleLink("compliance"), flag: features.compliance.module },
-      { label: "Reportes", link: moduleLink("reporting"), flag: features.reporting.module },
+      {
+        label: "Cumplimiento",
+        link: { to: "/cumplimiento" },
+        flag: features.compliance.module,
+        permissions: [permissions.kycRead],
+      },
+      {
+        label: "Reportes",
+        link: { to: "/reportes" },
+        flag: features.reporting.module,
+        permissions: [permissions.reportingRead],
+      },
       {
         label: "Integraciones",
-        link: moduleLink("integrations"),
+        link: { to: "/integraciones" },
         flag: features.integrations.module,
+        permissions: [permissions.integrationRead],
       },
     ],
   },
@@ -119,6 +156,7 @@ export const NAV_SECTIONS: readonly NavSection[] = [
           permissions.billingSettingsManage,
           permissions.renewalSettingsManage,
           permissions.commissionRateManage,
+          permissions.quoteSettingsManage,
         ],
       },
       {
@@ -147,10 +185,3 @@ export function visibleSections(
     }))
     .filter((s) => s.items.length > 0);
 }
-
-/** Nombre visible de cada módulo apagable (para la página del módulo). */
-export const MODULE_LABELS: Readonly<Record<string, string>> = Object.fromEntries(
-  NAV_SECTIONS.flatMap((s) => s.items).flatMap((i) =>
-    i.link.to === "/modulos/$modulo" ? [[i.link.params.modulo, i.label] as const] : [],
-  ),
-);

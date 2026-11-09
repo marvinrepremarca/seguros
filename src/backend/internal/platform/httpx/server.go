@@ -32,7 +32,9 @@ type RouterOptions struct {
 	Logger       *slog.Logger
 	Clock        kernel.Clock
 	MaxBodyBytes int64
-	Readiness    []ReadinessCheck
+	// LargeBody es opcional: rutas de carga de archivos con límite propio.
+	LargeBody *LargeBody
+	Readiness []ReadinessCheck
 }
 
 // NewRouter crea el router raíz con los middlewares de plataforma, los endpoints de salud y
@@ -45,7 +47,7 @@ func NewRouter(opts RouterOptions) *chi.Mux {
 		RequestID,
 		RouteTelemetry,
 		SecurityHeaders,
-		MaxBodyBytes(opts.MaxBodyBytes),
+		MaxBodyBytesWith(opts.MaxBodyBytes, opts.LargeBody, opts.Clock, opts.Logger),
 		AccessLog(opts.Logger, opts.Clock),
 	)
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {

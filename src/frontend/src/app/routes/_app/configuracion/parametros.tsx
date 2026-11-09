@@ -3,6 +3,7 @@ import { createFileRoute, notFound } from "@tanstack/react-router";
 import { BillingSettings } from "@/modules/billing";
 import { CommissionSettingsForm } from "@/modules/commissions";
 import { RenewalRulesForm } from "@/modules/policies";
+import { QuotingSettings } from "@/modules/quoting";
 import { RenewalSettings } from "@/modules/renewals";
 import { features } from "@/shared/lib/features";
 import { FeatureGate } from "@/shared/lib/providers";
@@ -15,6 +16,7 @@ export const Route = createFileRoute("/_app/configuracion/parametros")({
       permissions.policySettingsManage,
       permissions.billingSettingsManage,
       permissions.renewalSettingsManage,
+      permissions.quoteSettingsManage,
       permissions.commissionRateManage,
     ].some((p) => hasPermission(context.session, p));
     if (!allowed) {
@@ -29,6 +31,7 @@ function Page() {
   const canPolicies = usePermission(permissions.policySettingsManage);
   const canBilling = usePermission(permissions.billingSettingsManage);
   const canRenewals = usePermission(permissions.renewalSettingsManage);
+  const canQuoting = usePermission(permissions.quoteSettingsManage);
   const canCommissions = usePermission(permissions.commissionRateManage);
   return (
     <section aria-labelledby="parameters-title" className="space-y-6">
@@ -54,6 +57,14 @@ function Page() {
           <div className="space-y-2">
             <h2 className="text-lg font-medium">Renovaciones</h2>
             <RenewalSettings />
+          </div>
+        </FeatureGate>
+      )}
+      {canQuoting && (
+        <FeatureGate flag={features.quoting.module}>
+          <div className="space-y-2">
+            <h2 className="text-lg font-medium">Cotizaciones</h2>
+            <QuotingSettings />
           </div>
         </FeatureGate>
       )}

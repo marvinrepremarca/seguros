@@ -65,16 +65,79 @@ func (w *ScanWorker) Work(ctx context.Context, _ *river.Job[ScanArgs]) error {
 	return nil
 }
 
+// ReminderScanArgs busca los tenants con cuotas por recordar (DECISIONS T1).
+type ReminderScanArgs struct{}
+
+// Kind implementa river.JobArgs.
+func (ReminderScanArgs) Kind() string { return "billing.reminder_scan" }
+
+// ReminderTenantArgs publica los recordatorios de un tenant.
+type ReminderTenantArgs struct {
+	TenantID uuid.UUID `json:"tenantId"`
+	// Date es la fecha de negocio (Bogotá): hace único el job por día, aunque el día UTC sea otro.
+	Date string `json:"date"`
+}
+
+// Kind implementa river.JobArgs.
+func (ReminderTenantArgs) Kind() string { return "billing.reminder_tenant" }
+
+// Tenant implementa jobs.TenantArgs.
+func (a ReminderTenantArgs) Tenant() kernel.TenantID { return kernel.TenantID(a.TenantID) }
+
+// ReminderLister lista los tenants con cuotas por recordar.
+type ReminderLister interface {
+	TenantsWithInstallmentsDueOn(ctx context.Context, dates []kernel.Date) ([]kernel.TenantID, error)
+}
+
+// ReminderScanWorker encola un job diario por tenant.
+type ReminderScanWorker struct {
+	river.WorkerDefaults[ReminderScanArgs]
+	Tenants ReminderLister
+	Clock   kernel.Clock
+}
+
+// Work implementa river.Worker.
+func (w *ReminderScanWorker) Work(ctx context.Context, _ *river.Job[ReminderScanArgs]) error {
+	today := kernel.Today(w.Clock)
+	ids, err := w.Tenants.TenantsWithInstallmentsDueOn(ctx, app.ReminderDates(today))
+	if err != nil {
+		return err
+	}
+	client, err := river.ClientFromContextSafely[pgx.Tx](ctx)
+	if err != nil {
+		return fmt.Errorf("billing: cliente de jobs: %w", err)
+	}
+	for _, id := range ids {
+		opts := &river.InsertOpts{UniqueOpts: river.UniqueOpts{ByArgs: true}}
+		if _, err := client.Insert(ctx, ReminderTenantArgs{TenantID: uuid.UUID(id), Date: today.String()}, opts); err != nil {
+			return fmt.Errorf("billing: encolando recordatorios: %w", err)
+		}
+	}
+	return nil
+}
+
 // Register añade los workers y el barrido periódico. Corre varias veces al día para que el cambio de
 // fecha en America/Bogota no dependa de la hora de arranque; repetirlo no tiene efecto.
-func Register(workers *river.Workers, store app.Store, lister TenantLister, resolver jobs.FlagResolver, plans jobs.TenantPlans, clock kernel.Clock, logger *slog.Logger) []*river.PeriodicJob {
+func Register(workers *river.Workers, store app.Store, lister interface {
+	TenantLister
+	ReminderLister
+}, resolver jobs.FlagResolver, plans jobs.TenantPlans, clock kernel.Clock, logger *slog.Logger) []*river.PeriodicJob {
 	river.AddWorker(workers, &ScanWorker{Tenants: lister, Clock: clock})
 	river.AddWorker[TenantArgs](workers, &jobs.TenantWorker[TenantArgs]{
 		Flag: flags.BillingModule, Flags: resolver, Plans: plans, Logger: logger,
 		Do: func(ctx context.Context, _ *river.Job[TenantArgs]) error { return app.MarkOverdue(ctx, store, clock) },
 	})
+	river.AddWorker(workers, &ReminderScanWorker{Tenants: lister, Clock: clock})
+	river.AddWorker[ReminderTenantArgs](workers, &jobs.TenantWorker[ReminderTenantArgs]{
+		Flag: flags.BillingModule, Flags: resolver, Plans: plans, Logger: logger,
+		Do: func(ctx context.Context, _ *river.Job[ReminderTenantArgs]) error {
+			return app.SendInstallmentReminders(ctx, store, clock)
+		},
+	})
 	return []*river.PeriodicJob{
 		river.NewPeriodicJob(river.PeriodicInterval(6*time.Hour), func() (river.JobArgs, *river.InsertOpts) { return ScanArgs{}, nil },
 			&river.PeriodicJobOpts{RunOnStart: true, ID: "billing.overdue_scan"}),
+		river.NewPeriodicJob(river.PeriodicInterval(6*time.Hour), func() (river.JobArgs, *river.InsertOpts) { return ReminderScanArgs{}, nil },
+			&river.PeriodicJobOpts{RunOnStart: true, ID: "billing.reminder_scan"}),
 	}
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { MODULE_LABELS, NAV_SECTIONS, visibleSections } from "./navigation";
+import { NAV_SECTIONS, visibleSections } from "./navigation";
 
 describe("visibleSections", () => {
   it("Pólizas se ve con cualquiera de sus dos permisos de lectura", () => {
@@ -38,10 +38,5 @@ describe("visibleSections", () => {
     expect(labels).toContain("Catálogo");
     expect(labels).toContain("Traspaso de cartera");
     expect(labels).toHaveLength(18); // Inicio, Clientes, Pólizas + 11 módulos + Funcionalidades, Catálogo, Parámetros, Traspaso
-  });
-
-  it("cada módulo del menú tiene etiqueta", () => {
-    expect(MODULE_LABELS["claims"]).toBe("Siniestros");
-    expect(MODULE_LABELS["integrations"]).toBe("Integraciones");
   });
 });

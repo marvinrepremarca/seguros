@@ -87,10 +87,11 @@ Cualquier otra transición devuelve el error de dominio `ErrInvalidPolicyTransit
 - Pagos son **inmutables**: corrección = reverso + nuevo pago. Comandos de pago requieren idempotency key.
 
 ### Claim (Claims)
-- Requiere póliza existente; si la fecha de ocurrencia está fuera de vigencia o la póliza está en mora, se registra igual pero con **alerta**, no bloqueo (la aseguradora decide). [VALIDAR]
+- Requiere póliza existente; si la fecha de ocurrencia está fuera de vigencia, la póliza no está en vigor o está en mora, se registra igual pero con **alerta**, no bloqueo (la aseguradora decide). [VALIDAR]
 - Estados: `Reportado → AvisadoAseguradora → EnDocumentacion → EnEvaluacion → Aprobado | Objetado → Pagado → Cerrado` (`Objetado → EnEvaluacion` por reconsideración; `Objetado → Cerrado`).
-- `PaidAmount ≤ ClaimedAmount` salvo override auditado. La agencia **no aprueba** siniestros: el estado `Aprobado/Objetado` solo se registra con soporte de la aseguradora.
-- Datos de salud: campos cifrados, acceso solo a roles `ClaimsAnalyst`, `Manager` con auditoría de lectura.
+- `PaidAmount ≤ ClaimedAmount` salvo override auditado de `Manager` (DECISIONS N30). La agencia **no aprueba** siniestros: el estado `Aprobado/Objetado` solo se registra con soporte de la aseguradora.
+- Datos de salud: un campo opcional cifrado, acceso solo a roles `ClaimsAnalyst`, `Manager` con auditoría de lectura.
+- `SalesAgent` reporta y consulta el estado de los siniestros de sus pólizas (DECISIONS N29).
 
 ### Commissions
 - `ExpectedCommission` = base × % de `CommissionAgreement(insurer, lineOfBusiness, product, vigencia)`.
@@ -101,9 +102,15 @@ Cualquier otra transición devuelve el error de dominio `ErrInvalidPolicyTransit
 - `AgentCommission` = comisión **conciliada** × % del asesor para el ramo (fallback: % general del asesor; sin tasa → 0 % + alerta) (DECISIONS N5).
 
 ### Lead / Quote
-- `Lead` estados: `Nuevo → Contactado → Interesado → EnCotizacion → Ganado | Perdido(motivo obligatorio) | Seguimiento(fecha)`.
+- `Lead` estados y transiciones: DECISIONS N31; `Perdido` exige motivo y `Seguimiento`, fecha. Al pasar a `EnCotizacion` se enlaza una `Party` (N27).
 - `QuoteOffer` tiene `ValidUntil`; una oferta vencida no puede aceptarse.
-- Aceptar oferta → evento `QuoteAccepted` → Policies crea `Policy` en `EnTramite`.
+- Aceptar oferta → evento `QuoteAccepted` → Policies crea `Policy` en `EnTramite` (DECISIONS N28). La oferta vale hasta `ValidUntil` inclusive.
+
+### Documents, Notifications, Reporting, Integrations
+- `Document` pertenece a un cliente, póliza o siniestro; sus versiones son inmutables. Una versión solo se descarga si el antivirus la dejó limpia; pendiente o infectada, nunca. Un documento sensible es invisible sin `documents.document.sensitive`. Nada se borra automáticamente (DECISIONS N34).
+- `Message` es un aviso al tomador: `pending → sent | skipped | failed`; `failed → pending` por reintento manual. Una clave de negocio repetida no genera otro aviso (DECISIONS N35).
+- Reporting solo lee vistas `security_invoker`; cada sección existe si el módulo que la alimenta está encendido (DECISIONS N36).
+- Integrations habla con cada aseguradora por el puerto `Gateway`, tras su kill switch y un circuit breaker (DECISIONS N37).
 
 ## 3. Mapa de eventos entre módulos
 
@@ -112,7 +119,7 @@ Cualquier otra transición devuelve el error de dominio `ErrInvalidPolicyTransit
 | `QuoteAccepted` | Quoting | Policies, Crm |
 | `PolicyPartiesChanged` | Policies | Parties (alcance del asesor) |
 | `PolicyAgentChanged` | Policies | Commissions |
-| `PortfolioTransferRequested` | Policies | Policies, Parties |
+| `PortfolioTransferRequested` | Policies | Policies, Parties, Crm |
 | `PolicyIssued` | Policies | Billing, Commissions, Renewals, Notifications, Reporting |
 | `PolicyEndorsed` | Policies | Billing, Commissions |
 | `PolicyCancelled` | Policies | Billing (anula cuotas pendientes, registra devolución informada), Commissions (clawback), Renewals |
@@ -121,6 +128,7 @@ Cualquier otra transición devuelve el error de dominio `ErrInvalidPolicyTransit
 | `PolicyFellIntoArrears` / `PolicyReinstated` | Policies | Notifications, Reporting |
 | `PolicyExpiring(daysLeft)` | Renewals (job) | Notifications, Crm |
 | `InstallmentOverdue` | Billing | Policies, Notifications |
+| `InstallmentDue(daysLeft)` | Billing (job, T1) | Notifications |
 | `PaymentApplied` / `PaymentReversed` | Billing | Commissions, Policies (reinstate, solo `PaymentApplied`) |
 | `RenewalLost` | Renewals | Policies (`Vencida → NoRenovada`) |
 | `ClaimReported` / `ClaimStatusChanged` | Claims | Notifications, Reporting |
@@ -135,8 +143,8 @@ Todo consumidor verifica el flag del módulo para el tenant del evento y es **id
 | Rol | Permisos clave |
 |---|---|
 | `TenantAdmin` | Configuración, usuarios, flags del tenant |
-| `Manager` | Todo lectura; aprobación de overrides; comisiones; acuerdos de comisión; traspaso de cartera |
-| `SalesAgent` | Leads y cotizaciones propias; pólizas propias (lectura); registra clientes y actualiza los suyos, sin cambiar el documento (DECISIONS N10) |
+| `Manager` | Todo lectura; aprobación de overrides (incluye pago mayor a lo reclamado, N30); asignación de prospectos; comisiones; acuerdos de comisión; traspaso de cartera |
+| `SalesAgent` | Leads y cotizaciones propias; pólizas propias (lectura); reporta y consulta siniestros de sus pólizas (N29); registra clientes y actualiza los suyos, sin cambiar el documento (DECISIONS N10) |
 | `Operations` | Expedición, endosos, renovaciones, cancelaciones; traspaso de cartera |
 | `ClaimsAnalyst` | Siniestros (incluye datos de salud) |
 | `Collections` | Cuotas, pagos, gestión de cobro |

@@ -24,6 +24,7 @@ type Querier interface {
 	InsertAllocation(ctx context.Context, arg InsertAllocationParams) error
 	InsertPayment(ctx context.Context, arg InsertPaymentParams) error
 	InsertPlan(ctx context.Context, arg InsertPlanParams) error
+	InstallmentsDueOn(ctx context.Context, arg InstallmentsDueOnParams) ([]InstallmentsDueOnRow, error)
 	ListActivities(ctx context.Context, arg ListActivitiesParams) ([]ListActivitiesRow, error)
 	ListAllocations(ctx context.Context, arg ListAllocationsParams) ([]ListAllocationsRow, error)
 	ListArrearsSettings(ctx context.Context, tenantID uuid.UUID) ([]ListArrearsSettingsRow, error)
@@ -37,6 +38,7 @@ type Querier interface {
 	ReceivablesSummary(ctx context.Context, arg ReceivablesSummaryParams) ([]ReceivablesSummaryRow, error)
 	SetLeadDays(ctx context.Context, arg SetLeadDaysParams) error
 	TenantsWithDueInstallments(ctx context.Context, today kernel.Date) ([]uuid.UUID, error)
+	TenantsWithInstallmentsDueOn(ctx context.Context, dates []kernel.Date) ([]uuid.UUID, error)
 	UpdatePlan(ctx context.Context, arg UpdatePlanParams) (int64, error)
 	UpsertArrearsSetting(ctx context.Context, arg UpsertArrearsSettingParams) error
 	UpsertInstallment(ctx context.Context, arg UpsertInstallmentParams) error

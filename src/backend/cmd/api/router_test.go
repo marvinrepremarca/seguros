@@ -22,18 +22,26 @@ import (
 	"github.com/marvinrepremarca/seguros/internal/modules/billing"
 	"github.com/marvinrepremarca/seguros/internal/modules/catalog"
 	cataloghttp "github.com/marvinrepremarca/seguros/internal/modules/catalog/adapters/http"
+	"github.com/marvinrepremarca/seguros/internal/modules/claims"
 	"github.com/marvinrepremarca/seguros/internal/modules/commissions"
+	"github.com/marvinrepremarca/seguros/internal/modules/compliance"
+	"github.com/marvinrepremarca/seguros/internal/modules/crm"
+	"github.com/marvinrepremarca/seguros/internal/modules/documents"
 	"github.com/marvinrepremarca/seguros/internal/modules/featuremgmt"
 	featuremgmthttp "github.com/marvinrepremarca/seguros/internal/modules/featuremgmt/adapters/http"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity"
 	identityhttp "github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/http"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/adapters/oidc"
 	"github.com/marvinrepremarca/seguros/internal/modules/identity/app"
+	"github.com/marvinrepremarca/seguros/internal/modules/integrations"
+	"github.com/marvinrepremarca/seguros/internal/modules/notifications"
 	"github.com/marvinrepremarca/seguros/internal/modules/parties"
 	partieshttp "github.com/marvinrepremarca/seguros/internal/modules/parties/adapters/http"
 	"github.com/marvinrepremarca/seguros/internal/modules/policies"
 	policieshttp "github.com/marvinrepremarca/seguros/internal/modules/policies/adapters/http"
+	"github.com/marvinrepremarca/seguros/internal/modules/quoting"
 	"github.com/marvinrepremarca/seguros/internal/modules/renewals"
+	"github.com/marvinrepremarca/seguros/internal/modules/reporting"
 	tenancy "github.com/marvinrepremarca/seguros/internal/modules/tenancy/contracts"
 	"github.com/marvinrepremarca/seguros/internal/platform/audit"
 	"github.com/marvinrepremarca/seguros/internal/platform/authz"
@@ -85,11 +93,19 @@ func testRouter(t *testing.T) *chi.Mux {
 	require.NoError(t, err)
 	r, err := buildRouter(routerDeps{
 		Logger: logger, Clock: clock, MaxBodyBytes: 1 << 20, Identity: idm, FeatureMgmt: fm, Catalog: cat,
-		Parties:     parties.New(parties.Deps{Policy: policy, Clock: clock, Logger: logger}),
-		Policies:    policies.New(policies.Deps{Policy: policy, Clock: clock, Logger: logger}),
-		Billing:     billing.New(billing.Deps{Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger}),
-		Commissions: commissions.New(commissions.Deps{Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger}),
-		Renewals:    renewals.New(renewals.Deps{Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger}),
+		Parties:       parties.New(parties.Deps{Policy: policy, Clock: clock, Logger: logger}),
+		Policies:      policies.New(policies.Deps{Policy: policy, Clock: clock, Logger: logger}),
+		Billing:       billing.New(billing.Deps{Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger}),
+		Commissions:   commissions.New(commissions.Deps{Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger}),
+		Renewals:      renewals.New(renewals.Deps{Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger}),
+		Crm:           crm.New(crm.Deps{Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger}),
+		Quoting:       quoting.New(quoting.Deps{Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger}),
+		Claims:        claims.New(claims.Deps{Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger}),
+		Compliance:    compliance.New(compliance.Deps{Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger}),
+		Documents:     documents.New(documents.Deps{Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger}),
+		Notifications: notifications.New(notifications.Deps{Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger}),
+		Reporting:     reporting.New(reporting.Deps{Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger}),
+		Integrations:  integrations.New(integrations.Deps{Checker: allOff{}, Policy: policy, Clock: clock, Logger: logger}),
 	})
 	require.NoError(t, err)
 	return r
@@ -212,7 +228,7 @@ func TestMainWiresEveryRouterModule(t *testing.T) {
 	t.Parallel()
 	src, err := os.ReadFile("main.go")
 	require.NoError(t, err)
-	for _, field := range []string{"Identity:", "FeatureMgmt:", "Parties:", "Catalog:", "Policies:", "Billing:", "Commissions:", "Renewals:"} {
+	for _, field := range []string{"Identity:", "FeatureMgmt:", "Parties:", "Catalog:", "Policies:", "Billing:", "Commissions:", "Renewals:", "Crm:", "Quoting:", "Claims:", "Compliance:"} {
 		assert.Contains(t, string(src), field)
 	}
 }

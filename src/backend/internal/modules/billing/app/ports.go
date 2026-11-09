@@ -96,6 +96,7 @@ type Repository interface {
 	ListReceivables(ctx context.Context, today kernel.Date, minDays, maxDays int32, after uuid.NullUUID, limit int32) ([]Receivable, error)
 	Summary(ctx context.Context, today kernel.Date) ([]Bucket, error)
 	PoliciesWithDue(ctx context.Context, today kernel.Date) ([]uuid.UUID, error)
+	InstallmentsDueOn(ctx context.Context, dates []kernel.Date) ([]DueInstallment, error)
 }
 
 // UnitOfWork es una transacción del tenant.
@@ -133,3 +134,9 @@ func cleanText(s string, limit int) (string, error) {
 }
 
 func (s *Service) today() kernel.Date { return kernel.Today(s.Clock) }
+
+// DueInstallment es una cuota pendiente que vence en una fecha consultada.
+type DueInstallment struct {
+	InstallmentID, PolicyID uuid.UUID
+	DueDate                 kernel.Date
+}

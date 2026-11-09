@@ -1,10 +1,12 @@
 package httpx
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 	"regexp"
 	"runtime/debug"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -91,6 +93,38 @@ func MaxBodyBytes(limit int64) func(http.Handler) http.Handler {
 			}
 			r.Body = http.MaxBytesReader(w, r.Body, limit)
 			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// LargeBody amplía el límite de cuerpo y los plazos de E/S de las rutas de carga de archivos.
+type LargeBody struct {
+	Match   func(*http.Request) bool
+	Bytes   int64
+	Timeout time.Duration
+}
+
+// MaxBodyBytesWith aplica el límite general, salvo en las rutas de carga de archivos. El cuerpo no
+// se lee hasta después de autorizar la operación.
+func MaxBodyBytesWith(limit int64, large *LargeBody, clock kernel.Clock, logger *slog.Logger) func(http.Handler) http.Handler {
+	general := MaxBodyBytes(limit)
+	if large == nil {
+		return general
+	}
+	upload := MaxBodyBytes(large.Bytes)
+	return func(next http.Handler) http.Handler {
+		normal, extended := general(next), upload(next)
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if !large.Match(r) {
+				normal.ServeHTTP(w, r)
+				return
+			}
+			rc := http.NewResponseController(w)
+			deadline := clock.Now().Add(large.Timeout)
+			if err := errors.Join(rc.SetReadDeadline(deadline), rc.SetWriteDeadline(deadline)); err != nil && !errors.Is(err, http.ErrNotSupported) {
+				logger.WarnContext(r.Context(), "ampliando plazos de carga", "error", err)
+			}
+			extended.ServeHTTP(w, r)
 		})
 	}
 }

@@ -1,0 +1,87 @@
+openapi: 3.0.3
+info:
+  title: Seguros — Integraciones
+  version: 1.0.0
+  description: Conectores con aseguradoras detrás de una capa anticorrupción.
+servers:
+  - url: /
+x-problems: &problems
+  "400": { $ref: "#/components/responses/Problem" }
+  "401": { $ref: "#/components/responses/Problem" }
+  "403": { $ref: "#/components/responses/Problem" }
+  "404": { $ref: "#/components/responses/Problem" }
+  "422": { $ref: "#/components/responses/Problem" }
+  "503": { $ref: "#/components/responses/Problem" }
+paths:
+  /api/v1/integrations/connectors:
+    get:
+      operationId: listConnectors
+      x-permission: integrations.connector.read
+      x-feature: module.integrations
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Connector" }
+        <<: *problems
+  /api/v1/integrations/connectors/{connector}/quotes:
+    parameters:
+      - { name: connector, in: path, required: true, schema: { type: string, maxLength: 60 } }
+    post:
+      operationId: requestConnectorQuote
+      x-permission: integrations.quote.request
+      x-feature: module.integrations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/QuoteQuery" }
+      responses:
+        "200":
+          description: Hecho.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/QuoteResult" }
+        <<: *problems
+components:
+  responses:
+    Problem:
+      description: Error.
+      content:
+        application/problem+json:
+          schema: { $ref: "#/components/schemas/Problem" }
+  schemas:
+    Problem:
+      type: object
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer, format: int32 }
+        detail: { type: string }
+        traceId: { type: string }
+    Connector:
+      type: object
+      required: [key, name, simulated, enabled]
+      properties:
+        key: { type: string }
+        name: { type: string }
+        simulated: { type: boolean }
+        enabled: { type: boolean }
+    QuoteQuery:
+      type: object
+      additionalProperties: false
+      required: [lineOfBusiness, sumInsured]
+      properties:
+        lineOfBusiness: { type: string, minLength: 2, maxLength: 60 }
+        sumInsured: { type: string, format: decimal, maxLength: 24 }
+    QuoteResult:
+      type: object
+      required: [reference, netPremium, currency, simulated]
+      properties:
+        reference: { type: string }
+        netPremium: { type: string, format: decimal }
+        currency: { type: string }
+        simulated: { type: boolean, description: Verdadero si el valor no viene de una aseguradora real. }

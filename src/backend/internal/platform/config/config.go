@@ -196,6 +196,72 @@ func LoadAPI(lookup LookupFunc) (API, error) {
 	return cfg, r.err()
 }
 
+// Documents configura el almacenamiento, el antivirus y la retención de documentos.
+type Documents struct {
+	S3Endpoint       string
+	S3PublicEndpoint string
+	S3AccessKey      Secret
+	S3SecretKey      Secret
+	S3Bucket         string
+	S3TLS            bool
+	ClamdAddr        string
+	RetentionDays    int32
+	MaxBytes         int64
+	DownloadTTL      time.Duration
+}
+
+// LoadDocuments lee la configuración de documentos. Retención por defecto: 1 año (decisión del
+// dueño del producto, DECISIONS N34).
+func LoadDocuments(lookup LookupFunc, env Env) (Documents, error) {
+	r := reader{lookup: lookup}
+	c := Documents{
+		S3Endpoint:    r.required("SEGUROS_S3_ENDPOINT"),
+		S3AccessKey:   NewSecret(r.required("SEGUROS_S3_ACCESS_KEY")),
+		S3SecretKey:   NewSecret(r.required("SEGUROS_S3_SECRET_KEY")),
+		S3Bucket:      r.str("SEGUROS_S3_BUCKET", "seguros-documents"),
+		S3TLS:         r.bool("SEGUROS_S3_TLS", env.IsProductionLike()),
+		ClamdAddr:     r.required("SEGUROS_CLAMD_ADDR"),
+		RetentionDays: r.int32("SEGUROS_DOCUMENTS_RETENTION_DAYS", 365),
+		MaxBytes:      r.int64("SEGUROS_DOCUMENTS_MAX_BYTES", 20<<20),
+		DownloadTTL:   r.duration("SEGUROS_DOCUMENTS_DOWNLOAD_TTL", 5*time.Minute),
+	}
+	c.S3PublicEndpoint = r.str("SEGUROS_S3_PUBLIC_ENDPOINT", c.S3Endpoint)
+	if c.RetentionDays <= 0 {
+		r.fail("SEGUROS_DOCUMENTS_RETENTION_DAYS", "debe ser > 0")
+	}
+	if c.MaxBytes <= 0 {
+		r.fail("SEGUROS_DOCUMENTS_MAX_BYTES", "debe ser > 0")
+	}
+	if c.DownloadTTL <= 0 || c.DownloadTTL > 15*time.Minute {
+		r.fail("SEGUROS_DOCUMENTS_DOWNLOAD_TTL", "debe estar entre 1 s y 15 min")
+	}
+	if env.IsProductionLike() && !c.S3TLS {
+		r.fail("SEGUROS_S3_TLS", "staging/producción exige TLS")
+	}
+	return c, r.err()
+}
+
+// SMTP configura el correo de notificaciones.
+type SMTP struct {
+	Addr, From, User string
+	Password         Secret
+	RequireTLS       bool
+}
+
+// LoadSMTP lee la configuración del servidor de correo.
+func LoadSMTP(lookup LookupFunc, env Env) (SMTP, error) {
+	r := reader{lookup: lookup}
+	c := SMTP{
+		Addr: r.required("SEGUROS_SMTP_ADDR"), From: r.required("SEGUROS_SMTP_FROM"),
+		User: r.str("SEGUROS_SMTP_USER", ""), Password: NewSecret(r.str("SEGUROS_SMTP_PASSWORD", "")),
+		RequireTLS: r.bool("SEGUROS_SMTP_REQUIRE_TLS", env.IsProductionLike()),
+	}
+	if env.IsProductionLike() && !c.RequireTLS {
+		r.fail("SEGUROS_SMTP_REQUIRE_TLS", "staging/producción exige TLS")
+	}
+	return c, r.err()
+}
+
 // PlatformCtl es la configuración de cmd/platformctl (operaciones de super-administrador).
 type PlatformCtl struct {
 	Common
